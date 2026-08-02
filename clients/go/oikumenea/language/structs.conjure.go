@@ -7,6 +7,87 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+/*
+One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — an enum value (`dialect`) or an open
+code (`Eurasia`, `indo1319`) — and is exactly what you pass back as the corresponding list
+filter. Two synthetic keys never name a real value: `(unknown)` is the NULL bucket and
+`(other)` a top-N facet's collapsed tail; neither is a usable filter value.
+
+`label` carries a display name as a locale -> text map (D-i18n) and is present only for `ref`
+buckets, whose keys are RIDs. The languoid type declares NO ref facet — a glottocode and a
+macroarea are their own labels — so no bucket here carries one.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+zero-count buckets included so a chart's shape is stable; for a code facet, descending by
+count with `(other)`/`(unknown)` last.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A node in the Glottolog forest. `id` is the RID (the reference key); `code` is the stable glottocode; `name` is the locale->text display map.
 type Languoid struct {
 	// The languoid's RID (language service); what person/unit/locale links reference.
@@ -109,6 +190,53 @@ func (o LanguoidList) MarshalYAML() (interface{}, error) {
 }
 
 func (o *LanguoidList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listLanguages` returns under the same structural
+filters (M58 / D-ObjectFacets), so `totalCount` equals the rows exhaustively paging
+`listLanguages` would return.
+*/
+type LanguoidStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o LanguoidStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpLanguoidStats LanguoidStats
+	return safejson.Marshal(_tmpLanguoidStats(o))
+}
+
+func (o *LanguoidStats) UnmarshalJSON(data []byte) error {
+	type _tmpLanguoidStats LanguoidStats
+	var rawLanguoidStats _tmpLanguoidStats
+	if err := safejson.Unmarshal(data, &rawLanguoidStats); err != nil {
+		return err
+	}
+	if rawLanguoidStats.Facets == nil {
+		rawLanguoidStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = LanguoidStats(rawLanguoidStats)
+	return nil
+}
+
+func (o LanguoidStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LanguoidStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

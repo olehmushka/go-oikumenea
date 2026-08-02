@@ -615,6 +615,59 @@ func (o *OrganizationPage) UnmarshalYAML(unmarshal func(interface{}) error) erro
 }
 
 /*
+Facet distributions over the SAME set `listOrganizations` returns under the same filters,
+with the shadow gate folded INTO the count (M58 / D-ObjectFacets).
+
+For an organization that gate is `visibility = 'public'` and NOT the reach predicate the
+unit dashboard uses: a role assignment's `target_unit_id` FKs `tenant_units`, so an
+organization RID can never appear in any subject's readable reach, and a shadow
+organization is visible to an instance admin and to nobody else. That is exactly what
+`gateUnits` leaves on the list, which is why `totalCount` equals the rows exhaustively
+paging `listOrganizations` under these filters would return.
+*/
+type OrganizationStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o OrganizationStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpOrganizationStats OrganizationStats
+	return safejson.Marshal(_tmpOrganizationStats(o))
+}
+
+func (o *OrganizationStats) UnmarshalJSON(data []byte) error {
+	type _tmpOrganizationStats OrganizationStats
+	var rawOrganizationStats _tmpOrganizationStats
+	if err := safejson.Unmarshal(data, &rawOrganizationStats); err != nil {
+		return err
+	}
+	if rawOrganizationStats.Facets == nil {
+		rawOrganizationStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = OrganizationStats(rawOrganizationStats)
+	return nil
+}
+
+func (o OrganizationStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *OrganizationStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 Set, correct, or clear a unit's code (D-UnitCodeLifecycle, M28). An omitted `code` CLEARS the
 code (the unit becomes a non-separate sub-unit). `reason` is recorded on the append-only ledger.
 */

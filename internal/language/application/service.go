@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olegamysk/go-oikumenea/internal/language/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // defaultLimit / maxLimit bound a languoid listing (the catalog is ~26k rows; callers narrow via the
@@ -32,11 +33,38 @@ type RepositoryFactory func(conn db.DBTX) domain.Repository
 type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
+	labeler stats.Labeler
 }
 
 // NewService wires the service with the pool and the repository factory.
 func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory) *Service {
 	return &Service{pool: pool, newRepo: newRepo}
+}
+
+// SetBucketLabeler injects the dashboard's ref-bucket name resolver (M58 ticket 4 / D-ObjectFacets),
+// wired at the composition root.
+//
+// It is INERT for languoid as declared: the type has no `ref` facet — a glottocode and a macroarea are
+// their own labels, and `level`/`status` are enums — so the kernel never calls it. It is wired anyway
+// so that adding a ref facet later cannot silently ship a chart whose axis is RID tails.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
+
+// LanguoidStats is the languoid dashboard (M58 ticket 4 / D-ObjectFacets): every selected facet's
+// distribution plus the total, over EXACTLY the set ListLanguoidsPage would page under the same
+// structural filters.
+//
+// isAdmin=true with an empty subject is the ABSENCE of a visibility decision, not an escalation: the
+// languoid registry has no row-level security, no unit column and no reach predicate, so there is
+// nothing for a scoped arm to narrow. That is vehicle's and external_organization's shape, and it is
+// deliberately not the audit ledger's — where the one arm exists because the RLS policy on the pinned
+// connection IS the decision.
+func (s *Service) LanguoidStats(ctx context.Context, f domain.Filter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, true, "", func(string) ([]stats.Group, error) {
+		return s.newRepo(s.pool).LanguoidStats(ctx, f, sel)
+	})
 }
 
 // clampLimit bounds a requested page size to [1, maxLimit], applying the default when unset.

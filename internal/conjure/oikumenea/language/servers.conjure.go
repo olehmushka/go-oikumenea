@@ -23,10 +23,33 @@ Reads are gated by `language.read`. Writes happen via the hermenea import pipeli
 type LanguageService interface {
 	/*
 	   List languoids in code order, optionally filtered by level, root family (glottocode), and a
-	   name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
-	   large (~26k); narrow with the filters.
+	   name/code substring. `pageSize` caps the page (default/clamped server-side) since the catalog
+	   is large (~26k); narrow with the filters.
+
+	   `pageSize` was named `limit` before M58 ticket 4. The rename is a WIRE BREAK, taken because
+	   the paging-arg convention (`pageSize`/`pageToken`) is a checked invariant held by every other
+	   faceted type, and this endpoint was the only holdout.
 	*/
-	ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error)
+	ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, parentArg *string, topLevelArg *bool, queryArg *string, pageSizeArg *int, pageTokenArg *string) (LanguoidList, error)
+	/*
+	   Facet distributions over the languoid registry — the dashboard half of the languoid facet
+	   vocabulary (M58 / D-ObjectFacets). Takes exactly the STRUCTURAL filter args `listLanguages`
+	   takes — `level`, `family`, `macroarea`, `status` and the free-text `query` — plus the
+	   `facets` CSV, so a dashboard and a list are two renderings of one request state.
+
+	   The tree-traversal args `parent`/`topLevel` have no counterpart here on purpose: they switch
+	   the LIST to a one-level hierarchy walk rather than describing the registry, so there is
+	   nothing for them to count.
+
+	   ONE arm, and no subject. The languoid catalog is instance-global reference data — no
+	   row-level security, no unit column, no reach predicate — so `language.read` held anywhere is
+	   the whole visibility decision and there is none left to fold into the count.
+
+	   The path is `/stats/languages` rather than `/languages/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{id}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	LanguoidStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, queryArg *string) (LanguoidStats, error)
 	// Fetch one languoid by its RID.
 	GetLanguage(ctx context.Context, authHeader bearertoken.Token, idArg string) (Languoid, error)
 	// List the ISO-15924 writing systems in code order.
@@ -42,6 +65,9 @@ func RegisterRoutesLanguageService(router wrouter.Router, impl LanguageService, 
 	resource := wresource.New("languageservice", router)
 	if err := resource.Get("ListLanguages", "/language/v1/languages", httpserver.NewJSONHandler(handler.HandleListLanguages, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listLanguages route")
+	}
+	if err := resource.Get("LanguoidStats", "/language/v1/stats/languages", httpserver.NewJSONHandler(handler.HandleLanguoidStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add languoidStats route")
 	}
 	if err := resource.Get("GetLanguage", "/language/v1/languages/{id}", httpserver.NewJSONHandler(handler.HandleGetLanguage, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getLanguage route")
@@ -71,6 +97,16 @@ func (l *languageServiceHandler) HandleListLanguages(rw http.ResponseWriter, req
 		familyArgInternal := familyArgStr
 		familyArg = &familyArgInternal
 	}
+	var macroareaArg *string
+	if macroareaArgStr := req.URL.Query().Get("macroarea"); macroareaArgStr != "" {
+		macroareaArgInternal := macroareaArgStr
+		macroareaArg = &macroareaArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
 	var parentArg *string
 	if parentArgStr := req.URL.Query().Get("parent"); parentArgStr != "" {
 		parentArgInternal := parentArgStr
@@ -89,20 +125,63 @@ func (l *languageServiceHandler) HandleListLanguages(rw http.ResponseWriter, req
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
-	var limitArg *int
-	if limitArgStr := req.URL.Query().Get("limit"); limitArgStr != "" {
-		limitArgInternal, err := strconv.Atoi(limitArgStr)
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
 		if err != nil {
-			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"limit\" as integer")
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
 		}
-		limitArg = &limitArgInternal
+		pageSizeArg = &pageSizeArgInternal
 	}
 	var pageTokenArg *string
 	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := l.impl.ListLanguages(req.Context(), bearertoken.Token(authHeader), levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg, pageTokenArg)
+	respArg, err := l.impl.ListLanguages(req.Context(), bearertoken.Token(authHeader), levelArg, familyArg, macroareaArg, statusArg, parentArg, topLevelArg, queryArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (l *languageServiceHandler) HandleLanguoidStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var levelArg *string
+	if levelArgStr := req.URL.Query().Get("level"); levelArgStr != "" {
+		levelArgInternal := levelArgStr
+		levelArg = &levelArgInternal
+	}
+	var familyArg *string
+	if familyArgStr := req.URL.Query().Get("family"); familyArgStr != "" {
+		familyArgInternal := familyArgStr
+		familyArg = &familyArgInternal
+	}
+	var macroareaArg *string
+	if macroareaArgStr := req.URL.Query().Get("macroarea"); macroareaArgStr != "" {
+		macroareaArgInternal := macroareaArgStr
+		macroareaArg = &macroareaArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	respArg, err := l.impl.LanguoidStats(req.Context(), bearertoken.Token(authHeader), facetsArg, levelArg, familyArg, macroareaArg, statusArg, queryArg)
 	if err != nil {
 		return err
 	}

@@ -69,6 +69,27 @@ type TenantServiceClient interface {
 	   `internal/platform/transport`.
 	*/
 	UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
+	/*
+	   Facet distributions over the organization registry — the dashboard half of the
+	   organization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args
+	   `listOrganizations` takes, minus paging, so a dashboard and a list are two renderings of
+	   one request state.
+
+	   Unlike `unitStats` there is no `org` arg: the organization registry is the instance's
+	   whole realm catalog, not a per-org tree.
+
+	   The shadow gate is folded into SQL: on the list `gateUnits` trims the page once it is cut,
+	   which is right for a page and wrong for a count. For an organization that gate reduces to
+	   `visibility = 'public'` for every non-instance-admin caller — a role assignment's
+	   `target_unit_id` FKs `tenant_units` and can never name an organization, so there is no
+	   reachable shadow org for the two surfaces to disagree about. `totalCount` therefore equals
+	   the rows exhaustively paging `listOrganizations` under these filters would return.
+
+	   The path is `/stats/organizations` rather than `/organizations/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{orgId}` — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	OrganizationStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, domainArg *string, visibilityArg *string, stateArg *string) (OrganizationStats, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -116,16 +137,27 @@ type TenantServiceClient interface {
 	// Rename / retire a unit kind or adjust its attr schema. Returns Tenant:UnitKindNotFound.
 	UpdateUnitKind(ctx context.Context, authHeader bearertoken.Token, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error)
 	/*
-	   List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
-	   M40). Shadow-gated. Gated by organization.read.
+	   List organizations, token-paginated, optionally filtered by domain, visibility and state
+	   (D-TenantOrganizations, M40; facet vocabulary M58 / D-ObjectFacets). Shadow-gated. Gated by
+	   organization.read. A malformed filter is a Tenant:OrganizationInvalid.
 	*/
-	ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
+	ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, visibilityArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
 	/*
 	   Create an organization and seed its command + operational graphs in one transaction
 	   (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
 	*/
 	CreateOrganization(ctx context.Context, authHeader bearertoken.Token, requestArg CreateOrganizationRequest) (Organization, error)
-	// Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.
+	/*
+	   Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach
+	   is `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because
+	   `shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm
+	   the organization is real.
+
+	   This line already said "(shadow-gated)" before M58 ticket 4 and the implementation applied
+	   no gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed
+	   them over to anyone holding `organization.read`. Fixed there; the two surfaces now share one
+	   gate rather than one of them being remembered.
+	*/
 	GetOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (Organization, error)
 	// Update an organization's name/domain/metadata/visibility (organization.update).
 	UpdateOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error)
@@ -333,6 +365,37 @@ func (c *tenantServiceClient) UnitStats(ctx context.Context, authHeader bearerto
 	}
 	if returnVal == nil {
 		return *new(UnitStats), werror.ErrorWithContextParams(ctx, "unitStats response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) OrganizationStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, domainArg *string, visibilityArg *string, stateArg *string) (OrganizationStats, error) {
+	var returnVal *OrganizationStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("OrganizationStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/stats/organizations"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if domainArg != nil {
+		queryParams.Set("domain", fmt.Sprint(*domainArg))
+	}
+	if visibilityArg != nil {
+		queryParams.Set("visibility", fmt.Sprint(*visibilityArg))
+	}
+	if stateArg != nil {
+		queryParams.Set("state", fmt.Sprint(*stateArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(OrganizationStats), werror.WrapWithContextParams(ctx, err, "organizationStats failed")
+	}
+	if returnVal == nil {
+		return *new(OrganizationStats), werror.ErrorWithContextParams(ctx, "organizationStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -711,7 +774,7 @@ func (c *tenantServiceClient) UpdateUnitKind(ctx context.Context, authHeader bea
 	return *returnVal, nil
 }
 
-func (c *tenantServiceClient) ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
+func (c *tenantServiceClient) ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, visibilityArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
 	var returnVal *OrganizationPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListOrganizations"))
@@ -720,6 +783,12 @@ func (c *tenantServiceClient) ListOrganizations(ctx context.Context, authHeader 
 	queryParams := make(url.Values)
 	if domainArg != nil {
 		queryParams.Set("domain", fmt.Sprint(*domainArg))
+	}
+	if visibilityArg != nil {
+		queryParams.Set("visibility", fmt.Sprint(*visibilityArg))
+	}
+	if stateArg != nil {
+		queryParams.Set("state", fmt.Sprint(*stateArg))
 	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
@@ -883,6 +952,27 @@ type TenantServiceClientWithAuth interface {
 	   `internal/platform/transport`.
 	*/
 	UnitStats(ctx context.Context, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
+	/*
+	   Facet distributions over the organization registry — the dashboard half of the
+	   organization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args
+	   `listOrganizations` takes, minus paging, so a dashboard and a list are two renderings of
+	   one request state.
+
+	   Unlike `unitStats` there is no `org` arg: the organization registry is the instance's
+	   whole realm catalog, not a per-org tree.
+
+	   The shadow gate is folded into SQL: on the list `gateUnits` trims the page once it is cut,
+	   which is right for a page and wrong for a count. For an organization that gate reduces to
+	   `visibility = 'public'` for every non-instance-admin caller — a role assignment's
+	   `target_unit_id` FKs `tenant_units` and can never name an organization, so there is no
+	   reachable shadow org for the two surfaces to disagree about. `totalCount` therefore equals
+	   the rows exhaustively paging `listOrganizations` under these filters would return.
+
+	   The path is `/stats/organizations` rather than `/organizations/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{orgId}` — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	OrganizationStats(ctx context.Context, facetsArg *string, domainArg *string, visibilityArg *string, stateArg *string) (OrganizationStats, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -930,16 +1020,27 @@ type TenantServiceClientWithAuth interface {
 	// Rename / retire a unit kind or adjust its attr schema. Returns Tenant:UnitKindNotFound.
 	UpdateUnitKind(ctx context.Context, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error)
 	/*
-	   List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
-	   M40). Shadow-gated. Gated by organization.read.
+	   List organizations, token-paginated, optionally filtered by domain, visibility and state
+	   (D-TenantOrganizations, M40; facet vocabulary M58 / D-ObjectFacets). Shadow-gated. Gated by
+	   organization.read. A malformed filter is a Tenant:OrganizationInvalid.
 	*/
-	ListOrganizations(ctx context.Context, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
+	ListOrganizations(ctx context.Context, domainArg *string, visibilityArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
 	/*
 	   Create an organization and seed its command + operational graphs in one transaction
 	   (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
 	*/
 	CreateOrganization(ctx context.Context, requestArg CreateOrganizationRequest) (Organization, error)
-	// Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.
+	/*
+	   Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach
+	   is `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because
+	   `shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm
+	   the organization is real.
+
+	   This line already said "(shadow-gated)" before M58 ticket 4 and the implementation applied
+	   no gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed
+	   them over to anyone holding `organization.read`. Fixed there; the two surfaces now share one
+	   gate rather than one of them being remembered.
+	*/
 	GetOrganization(ctx context.Context, orgIdArg string) (Organization, error)
 	// Update an organization's name/domain/metadata/visibility (organization.update).
 	UpdateOrganization(ctx context.Context, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error)
@@ -984,6 +1085,10 @@ func (c *tenantServiceClientWithAuth) ListUnits(ctx context.Context, orgArg stri
 
 func (c *tenantServiceClientWithAuth) UnitStats(ctx context.Context, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error) {
 	return c.client.UnitStats(ctx, c.authHeader, orgArg, facetsArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg)
+}
+
+func (c *tenantServiceClientWithAuth) OrganizationStats(ctx context.Context, facetsArg *string, domainArg *string, visibilityArg *string, stateArg *string) (OrganizationStats, error) {
+	return c.client.OrganizationStats(ctx, c.authHeader, facetsArg, domainArg, visibilityArg, stateArg)
 }
 
 func (c *tenantServiceClientWithAuth) AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error) {
@@ -1066,8 +1171,8 @@ func (c *tenantServiceClientWithAuth) UpdateUnitKind(ctx context.Context, unitKi
 	return c.client.UpdateUnitKind(ctx, c.authHeader, unitKindIdArg, requestArg)
 }
 
-func (c *tenantServiceClientWithAuth) ListOrganizations(ctx context.Context, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
-	return c.client.ListOrganizations(ctx, c.authHeader, domainArg, pageSizeArg, pageTokenArg)
+func (c *tenantServiceClientWithAuth) ListOrganizations(ctx context.Context, domainArg *string, visibilityArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
+	return c.client.ListOrganizations(ctx, c.authHeader, domainArg, visibilityArg, stateArg, pageSizeArg, pageTokenArg)
 }
 
 func (c *tenantServiceClientWithAuth) CreateOrganization(ctx context.Context, requestArg CreateOrganizationRequest) (Organization, error) {
@@ -1153,6 +1258,14 @@ func (c *tenantServiceClientWithTokenProvider) UnitStats(ctx context.Context, or
 		return *new(UnitStats), err
 	}
 	return c.client.UnitStats(ctx, bearertoken.Token(token), orgArg, facetsArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) OrganizationStats(ctx context.Context, facetsArg *string, domainArg *string, visibilityArg *string, stateArg *string) (OrganizationStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(OrganizationStats), err
+	}
+	return c.client.OrganizationStats(ctx, bearertoken.Token(token), facetsArg, domainArg, visibilityArg, stateArg)
 }
 
 func (c *tenantServiceClientWithTokenProvider) AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error) {
@@ -1315,12 +1428,12 @@ func (c *tenantServiceClientWithTokenProvider) UpdateUnitKind(ctx context.Contex
 	return c.client.UpdateUnitKind(ctx, bearertoken.Token(token), unitKindIdArg, requestArg)
 }
 
-func (c *tenantServiceClientWithTokenProvider) ListOrganizations(ctx context.Context, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
+func (c *tenantServiceClientWithTokenProvider) ListOrganizations(ctx context.Context, domainArg *string, visibilityArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(OrganizationPage), err
 	}
-	return c.client.ListOrganizations(ctx, bearertoken.Token(token), domainArg, pageSizeArg, pageTokenArg)
+	return c.client.ListOrganizations(ctx, bearertoken.Token(token), domainArg, visibilityArg, stateArg, pageSizeArg, pageTokenArg)
 }
 
 func (c *tenantServiceClientWithTokenProvider) CreateOrganization(ctx context.Context, requestArg CreateOrganizationRequest) (Organization, error) {

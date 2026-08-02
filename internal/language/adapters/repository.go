@@ -40,13 +40,15 @@ func (r *Repository) ListLanguoids(ctx context.Context, f domain.Filter) ([]doma
 	var rows []languagesql.ListLanguoidsRow
 	if q := strings.TrimSpace(f.Query); q != "" {
 		found, err := r.q.SearchLanguoids(ctx, languagesql.SearchLanguoidsParams{
-			Level:    f.Level,
-			Family:   f.Family,
-			Parent:   f.Parent,
-			TopLevel: f.TopLevel,
-			Q:        q,
-			After:    f.After,
-			Lim:      int32(f.Limit),
+			Level:     textPtr(f.Level),
+			Family:    textPtr(f.Family),
+			Macroarea: textPtr(f.Macroarea),
+			Status:    textPtr(f.Status),
+			Parent:    f.Parent,
+			TopLevel:  f.TopLevel,
+			Q:         q,
+			After:     textPtr(strPtrOrNil(f.After)),
+			Lim:       int32(f.Limit),
 		})
 		if err != nil {
 			return nil, err
@@ -58,12 +60,14 @@ func (r *Repository) ListLanguoids(ctx context.Context, f domain.Filter) ([]doma
 	} else {
 		var err error
 		if rows, err = r.q.ListLanguoids(ctx, languagesql.ListLanguoidsParams{
-			Level:    f.Level,
-			Family:   f.Family,
-			Parent:   f.Parent,
-			TopLevel: f.TopLevel,
-			After:    f.After,
-			Lim:      int32(f.Limit),
+			Level:     textPtr(f.Level),
+			Family:    textPtr(f.Family),
+			Macroarea: textPtr(f.Macroarea),
+			Status:    textPtr(f.Status),
+			Parent:    f.Parent,
+			TopLevel:  f.TopLevel,
+			After:     textPtr(strPtrOrNil(f.After)),
+			Lim:       int32(f.Limit),
 		}); err != nil {
 			return nil, err
 		}

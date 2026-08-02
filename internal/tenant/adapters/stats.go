@@ -95,6 +95,67 @@ func unitStatsWants(sel stats.Selection) unitStatsWantFlags {
 	}
 }
 
+// OrganizationStats is the organization dashboard aggregate (M58 ticket 4 / D-ObjectFacets): every
+// selected facet's distribution plus the total, over the same candidate set ListOrganizations pages
+// under the same filters.
+//
+// subjectPersonID empty means the INSTANCE-ADMIN arm. Otherwise the shadow gate is folded into the
+// candidate CTE — and for an organization the reach is DERIVED rather than assigned: an org is
+// visible when any of its live units is in the subject's reach, because an organization RID can never
+// be a grant target. The argument is spelled out in full on OrganizationStatsForSubject in tenant.sql.
+func (r *Repository) OrganizationStats(ctx context.Context, subjectPersonID string, f domain.OrgFilter, sel stats.Selection) ([]stats.Group, error) {
+	w := orgStatsWants(sel)
+	if subjectPersonID != "" {
+		rows, err := r.q.OrganizationStatsForSubject(ctx, tenantsql.OrganizationStatsForSubjectParams{
+			SubjectPersonID: subjectPersonID,
+			DomainID:        textPtr(f.DomainID),
+			Visibility:      textPtr(f.Visibility),
+			State:           textPtr(f.State),
+			TopN:            int32(sel.TopN()),
+			WantDomain:      w.domain,
+			WantVisibility:  w.visibility,
+			WantState:       w.state,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]stats.Group, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, unitStatsGroup(row.Facet, row.Bucket, row.N))
+		}
+		return out, nil
+	}
+	rows, err := r.q.OrganizationStats(ctx, tenantsql.OrganizationStatsParams{
+		DomainID:       textPtr(f.DomainID),
+		Visibility:     textPtr(f.Visibility),
+		State:          textPtr(f.State),
+		TopN:           int32(sel.TopN()),
+		WantDomain:     w.domain,
+		WantVisibility: w.visibility,
+		WantState:      w.state,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]stats.Group, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, unitStatsGroup(row.Facet, row.Bucket, row.N))
+	}
+	return out, nil
+}
+
+type orgStatsWantFlags struct {
+	domain, visibility, state bool
+}
+
+func orgStatsWants(sel stats.Selection) orgStatsWantFlags {
+	return orgStatsWantFlags{
+		domain:     sel.Wants("domain"),
+		visibility: sel.Wants("visibility"),
+		state:      sel.Wants("state"),
+	}
+}
+
 // unitStatsGroup maps one raw aggregate row; a NULL bucket stays NULL (the (unknown) bucket). No
 // ordinal: no unit facet has an inherent order beyond its declared band/CHECK-set order, which the
 // kernel supplies from the catalog.

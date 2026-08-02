@@ -73,13 +73,48 @@ func (f UnitFilter) Validate() error {
 	return validateUnitEnum("state", f.State)
 }
 
+// OrgFilter is the organization facet vocabulary (M58 ticket 4 / D-ObjectFacets). Unlike UnitFilter
+// there was no filter struct here at all before this ticket: listOrganizations took a bare *string
+// domain, which is why the application-layer signature changes with it.
+//
+// Visibility NARROWS and never widens, exactly as on UnitFilter — but for a different reason. A
+// shadow UNIT inside the subject's reach is genuinely visible; a shadow ORGANIZATION is visible to
+// an instance admin and to nobody else, because a role assignment's target_unit_id FKs tenant_units
+// and can never name an organization. Asking for visibility=shadow without instance-admin standing
+// therefore yields an empty page rather than an error, and the dashboard's scoped arm is a flat
+// `visibility = 'public'` rather than unit's reach predicate (see OrganizationStatsForSubject).
+type OrgFilter struct {
+	DomainID   *string
+	Visibility *string
+	State      *string
+}
+
+// Validate rejects a malformed filter with ErrInvalidOrg, which the transport maps to
+// Tenant:OrganizationInvalid.
+func (f OrgFilter) Validate() error {
+	if f.DomainID != nil && !rid.IsRID(*f.DomainID) {
+		return fmt.Errorf("%w: domain must be a RID", ErrInvalidOrg)
+	}
+	if err := validateFacetEnum("organization", "visibility", f.Visibility, ErrInvalidOrg); err != nil {
+		return err
+	}
+	return validateFacetEnum("organization", "state", f.State, ErrInvalidOrg)
+}
+
 func validateUnitEnum(facetKey string, v *string) error {
+	return validateFacetEnum("unit", facetKey, v, ErrInvalidUnit)
+}
+
+// validateFacetEnum checks one enum arg against the facet catalog's declared Values, so the CHECK set
+// is written down in Go exactly once (in pkg/facet) rather than once per module filter. sentinel is
+// the caller's own invalid-argument error, so each object type keeps its own Conjure error mapping.
+func validateFacetEnum(objectType, facetKey string, v *string, sentinel error) error {
 	if v == nil {
 		return nil
 	}
-	o, ok := facet.Default.Get("unit")
+	o, ok := facet.Default.Get(objectType)
 	if !ok {
-		return fmt.Errorf("%w: unit facets are not registered", ErrInvalidUnit)
+		return fmt.Errorf("%w: %s facets are not registered", sentinel, objectType)
 	}
 	for _, f := range o.Facets {
 		if f.Key != facetKey {
@@ -90,7 +125,7 @@ func validateUnitEnum(facetKey string, v *string) error {
 				return nil
 			}
 		}
-		return fmt.Errorf("%w: %s must be one of %v", ErrInvalidUnit, facetKey, f.Values)
+		return fmt.Errorf("%w: %s must be one of %v", sentinel, facetKey, f.Values)
 	}
-	return fmt.Errorf("%w: no %q facet is declared for unit", ErrInvalidUnit, facetKey)
+	return fmt.Errorf("%w: no %q facet is declared for %s", sentinel, facetKey, objectType)
 }

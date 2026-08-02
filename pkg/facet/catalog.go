@@ -19,8 +19,9 @@ package facet
 // the mandatory Module field and enforced by the plaintext/table guards.
 func catalog() []ObjectType {
 	return []ObjectType{
-		personType(), unitType(), membershipType(), orderType(), documentType(), auditType(),
-		externalOrgType(), taxonType(), vehicleType(), accountType(), cardType(),
+		personType(), unitType(), organizationType(), membershipType(), orderType(), documentType(),
+		auditType(), externalOrgType(), taxonType(), languoidType(), vehicleType(), accountType(),
+		cardType(),
 	}
 }
 
@@ -292,6 +293,81 @@ func levelBands() []Band {
 		{Key: "4-5", Lo: iptr(4), Hi: iptr(6)},
 		{Key: "6-7", Lo: iptr(6), Hi: iptr(8)},
 		{Key: "8+", Lo: iptr(8)},
+	}
+}
+
+// ── organization ─────────────────────────────────────────────────────────────
+//
+// M58 ticket 4, and the tenant module's SECOND object type. Two arms, like `unit` — but for a reason
+// that is not unit's, and getting that wrong by imitation is the whole of this type's design.
+//
+// listOrganizations is gated by gateUnits (tenant/transport/service.go), the SAME app-layer shadow
+// gate the unit list uses. On a unit that gate is real: FilterVisibleUnits probes the subject's reach
+// with ReadableUnitsForSubjectAmong, and a shadow unit inside the reach passes. On an ORGANIZATION it
+// is not: authz_role_assignments.target_unit_id is NOT NULL and REFERENCES tenant_units, so an
+// organization RID matches neither arm of that probe. The reach set for an org is ALWAYS EMPTY, and a
+// shadow organization is visible to an instance admin and to nobody else.
+//
+// That gap is now CLOSED (M58 ticket 4 follow-up, D-VisibilityScope amendment): organization reach is
+// DERIVED from unit reach — an organization is visible when any of its live units is in the subject's
+// reach — so the scoped arm is `visibility = 'public' OR id IN (<orgs of reachable units>)` and the
+// list gates through `gateOrgs` rather than `gateUnits`.
+//
+// The shape of the arm is still NOT unit's `id IN (authz_readable_units(...))`, and that is the part
+// worth remembering: a unit IS a grant target, an organization is not, so the same predicate copied
+// across matches nothing. It has to join through tenant_units to mean anything.
+//
+// tenant_organizations.search_text exists (pii:basic) and listOrganizations ships no `query` arg.
+// Out of scope: adding one is a search decision, not a facet decision.
+//
+// All three faceted columns are pii:none and NOT NULL, so ReadPermission stays empty and no facet
+// declares an (unknown) bucket.
+func organizationType() ObjectType {
+	return ObjectType{
+		// Type / Module / ListEndpoint / StatsEndpoint stay ADJACENT and in this order — genfacetargs
+		// matches them as one strict pattern and a field wedged between them is a hard error.
+		Type:          "organization",
+		Module:        "tenant",
+		ListEndpoint:  "TenantService.listOrganizations",
+		StatsEndpoint: "TenantService.organizationStats",
+		Facets: []Facet{
+			{
+				Key:     "domain",
+				Kind:    KindRef,
+				Table:   "oikumenea.tenant_organizations",
+				Column:  "domain_id",
+				RefType: "domain",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "-> oikumenea.tenant_domains, the org-kind catalog (D-TenantOrganizations, M40). " +
+					"The `domain` arg predates this vocabulary and already took a domain RID, so a bucket " +
+					"key was a usable filter value from the start — no widening, no ArgOverride. NOT NULL.",
+			},
+			{
+				Key:     "visibility",
+				Kind:    KindEnum,
+				Table:   "oikumenea.tenant_organizations",
+				Column:  "visibility",
+				Values:  []string{"public", "shadow"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The same CHECK set unit.visibility has and the same NARROWS-never-widens rule " +
+					"(D-VisibilityScope) — but see the type comment: for an org the scoped arm is a flat " +
+					"`visibility = 'public'`, so a non-admin's shadow bucket is structurally zero rather " +
+					"than reach-dependent. An identity bucket still renders it, correctly, as zero.",
+			},
+			{
+				Key:     "state",
+				Kind:    KindEnum,
+				Table:   "oikumenea.tenant_organizations",
+				Column:  "state",
+				Values:  []string{"active", "suspended", "archived"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note:    "Lifecycle. The console tones suspended amber and archived slate.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor over the time-ordered RID (pkg/listing codec)"},
+		},
 	}
 }
 
@@ -801,6 +877,126 @@ func taxonType() ObjectType {
 			{Arg: "query", Class: ClassSearch, Why: "case-insensitive code/name substring match", Drives: "ListTaxa"},
 			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
 			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── languoid ────────────────────────────────────────────────────────────────
+//
+// M58 ticket 4. The Glottolog forest (D-Languages, M18): 27 177 rows of instance-global reference
+// data, no row-level security, no unit column, no subject anywhere in the module. The gate is
+// RequireAnywhere(language.read) and that is the whole visibility decision — so ONE aggregate arm,
+// for external_organization's and vehicle's reason (the ABSENCE of a decision) and emphatically not
+// audit's (a decision made entirely by which connection the query runs on).
+//
+// It is the SECOND type with an R-21 SEARCH TWIN, after person: ListLanguoids and SearchLanguoids
+// differ only by the trigram line, so the stats side ships LanguoidStats + LanguoidStatsSearch and
+// FOUR queries carry one identical filter block. The repository branches between the twins on exactly
+// the condition the list branches on, so a searched list and its dashboard cannot describe different
+// sets.
+//
+// `macroarea` is the first COMPOSITE code facet. The column is set-valued, stored semicolon-joined
+// ("Africa;Eurasia", 183 of 27 177 rows), and it is grouped by the LITERAL STRING rather than
+// unnested. That is not a shortcut: the filter is an exact match, so each bucket's count equals what
+// its own filter returns — the property the whole vocabulary rests on. It therefore PARTITIONS and
+// needs no NonPartitioning; it could not take one anyway, since the kernel refuses that exemption
+// when the facet's Table IS the listed table (a row has one value in its own column, so it CANNOT
+// overlap). The composite keys read as what they are: a languoid spanning two macroareas.
+//
+// Two args changed shape with this ticket, both recorded rather than silent: the four facet
+// predicates moved off the legacy `sqlc.arg(x)::text = ”` sentinels onto nargs the parity guard can
+// see, and the paging arg was RENAMED `limit` -> `pageSize` — a wire break, taken because ClassPaging
+// covers only pageSize/pageToken and the convention it names is held by every other type.
+//
+// Every faceted column is pii:none. The pii:basic `search_text` haystack is the `query` search arg and
+// is deliberately unfaceted: it is a substring index, not a distribution.
+func languoidType() ObjectType {
+	return ObjectType{
+		Type:          "languoid",
+		Module:        "language",
+		ListEndpoint:  "LanguageService.listLanguages",
+		StatsEndpoint: "LanguageService.languoidStats",
+		Facets: []Facet{
+			{
+				Key:     "level",
+				Kind:    KindEnum,
+				Table:   "oikumenea.language_languoids",
+				Column:  "level",
+				Values:  []string{"family", "language", "dialect"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The Glottolog taxonomy rung, in TREE order (family -> language -> dialect): not " +
+					"alphabetical and not by frequency. The arg predates this vocabulary (M18) and took " +
+					"the same values, so no ArgOverride — what changed is the SQL.",
+			},
+			{
+				Key:     "macroarea",
+				Kind:    KindCode,
+				Table:   "oikumenea.language_languoids",
+				Column:  "macroarea",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "Glottolog macroarea. KindCode rather than enum: the column carries NO CHECK, so the " +
+					"value set is open (the audit.action case) and the key is its own label — `Eurasia` " +
+					"reads as itself. SET-VALUED, stored semicolon-joined; grouped by the literal string, " +
+					"so `Africa;Eurasia` is its own bucket and its own filter value. Nullable, so the " +
+					"(unknown) bucket is mandatory.",
+			},
+			{
+				Key:    "status",
+				Kind:   KindEnum,
+				Table:  "oikumenea.language_languoids",
+				Column: "status",
+				Values: []string{
+					"not_endangered", "threatened", "shifting", "moribund", "nearly_extinct", "extinct",
+				},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "AES endangerment. The CHECK set is ALREADY IN SEVERITY ORDER in the DDL " +
+					"(0007_reference_verticals.sql), and that order is the chart's — an endangerment " +
+					"profile re-sorted by frequency destroys the only ordering that means anything.",
+			},
+			{
+				Key:     "family",
+				Kind:    KindCode,
+				Table:   "oikumenea.language_languoids",
+				Column:  "family_code",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "The denormalized root-family GLOTTOCODE, derived via the closure. KindCode, not " +
+					"ref: a glottocode is not a RID, and it is its own label. The column is char(8), which " +
+					"pads on read, so the branch emits rtrim(family_code) — belt-and-braces rather than a " +
+					"fix: measured against the live catalog, every glottocode is exactly 8 characters and " +
+					"the ::text cast strips trailing blanks on its own. It states the intent where the " +
+					"conversion rule would otherwise be load-bearing and invisible. " +
+					"Nullable in the DDL, so IncludeUnknown is mandatory even though the shipped catalog " +
+					"has zero nulls: the bucket's existence is the schema's decision, its emptiness the " +
+					"data's.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (clamped to [1,1000] by the application); RENAMED from `limit` in M58 ticket 4, because this class covers only pageSize/pageToken and eleven other types hold that convention"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor over the GLOTTOCODE — the list is ordered by l.code, not by id"},
+			{
+				Arg:    "query",
+				Class:  ClassSearch,
+				Why:    "free-text name/glottocode substring against the STORED search_text haystack; a separate plan shape from the structural filters (R-21 List/Search split), and it SHIPS on the stats endpoint too (external_organization's precedent) so a searched list and its dashboard describe one set",
+				Drives: "SearchLanguoids",
+			},
+			{
+				Arg:   "parent",
+				Class: ClassTraversal,
+				Why: "restricts to the IMMEDIATE children of one languoid — the lazy one-level expansion the " +
+					"tree browser walks. Not a facet on purpose: an exact-parent dimension partitions " +
+					"honestly and then dead-ends after one click, which is taxon.subtree's argument in " +
+					"reverse. NOTE this stretches the class: unit.parent switches the endpoint to a " +
+					"DIFFERENT query (ListChildUnits), while this one adds a predicate to the same query. " +
+					"What it shares with unit.parent is the part the class is for — it selects a tree-walk " +
+					"MODE rather than describing the registry, so no aggregate counts it.",
+				Drives: "ListLanguoids",
+			},
+			{
+				Arg:    "topLevel",
+				Class:  ClassTraversal,
+				Why:    "switches the listing to the forest ROOTS (parent_id IS NULL) — the other half of the tree-browser mode, over the same column `parent` walks",
+				Drives: "ListLanguoids",
+			},
 		},
 	}
 }

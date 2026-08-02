@@ -1067,20 +1067,33 @@ const listOrganizations = `-- name: ListOrganizations :many
 SELECT id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at, search_text FROM oikumenea.tenant_organizations
 WHERE deleted_at IS NULL
   AND ($1::uuid IS NULL OR domain_id = $1::uuid)
-  AND ($2::uuid IS NULL OR id > $2::uuid)
+  AND ($2::text IS NULL OR visibility = $2::text)
+  AND ($3::text IS NULL OR state = $3::text)
+  AND ($4::uuid IS NULL OR id > $4::uuid)
 ORDER BY id
-LIMIT $3
+LIMIT $5
 `
 
 type ListOrganizationsParams struct {
-	DomainID pgtype.Text
-	After    pgtype.Text
-	Lim      int32
+	DomainID   pgtype.Text
+	Visibility pgtype.Text
+	State      pgtype.Text
+	After      pgtype.Text
+	Lim        int32
 }
 
-// Keyset pagination over the time-ordered RID (id), optional domain filter.
+// Keyset pagination over the time-ordered RID (id), with the organization facet filters
+// (M58 / D-ObjectFacets). The shadow gate is NOT here: it runs app-side in gateUnits once the page
+// is cut, which is right for a page — a short page, never a skipped row. The dashboard's arm folds
+// it into SQL instead, because a trimmed row would still have been counted.
 func (q *Queries) ListOrganizations(ctx context.Context, arg ListOrganizationsParams) ([]OikumeneaTenantOrganization, error) {
-	rows, err := q.db.Query(ctx, listOrganizations, arg.DomainID, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listOrganizations,
+		arg.DomainID,
+		arg.Visibility,
+		arg.State,
+		arg.After,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1393,6 +1406,195 @@ func (q *Queries) LockGraphForClosure(ctx context.Context, graphID string) (stri
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const organizationStats = `-- name: OrganizationStats :many
+WITH cand AS MATERIALIZED (
+  SELECT id, domain_id, visibility, state
+  FROM oikumenea.tenant_organizations
+  WHERE deleted_at IS NULL
+  AND ($1::uuid IS NULL OR domain_id = $1::uuid)
+  AND ($2::text IS NULL OR visibility = $2::text)
+  AND ($3::text IS NULL OR state = $3::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'domain'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $4::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.domain_id::text AS k, count(*) AS n
+            FROM cand c WHERE $5::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+FROM cand c WHERE $6::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $7::boolean GROUP BY 2
+`
+
+type OrganizationStatsParams struct {
+	DomainID       pgtype.Text
+	Visibility     pgtype.Text
+	State          pgtype.Text
+	TopN           int32
+	WantDomain     bool
+	WantVisibility bool
+	WantState      bool
+}
+
+type OrganizationStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The INSTANCE-ADMIN dashboard aggregate for the organization registry (M58 ticket 4 /
+// D-ObjectFacets): every facet distribution in ONE round-trip and ONE scan. The candidate CTE carries
+// ListOrganizations' filter block verbatim minus the keyset cursor, so the dashboard and the list see
+// one world; a branch whose want_* flag is false is skipped by the planner, not merely dropped from
+// the response.
+//
+// Unlike UnitStats there is no @org_id: the organization registry is the instance's whole realm
+// catalog rather than one org's tree.
+//
+// `domain` collapses its tail to '(other)' IN SQL, which UnitStats' ref branches do not. That is
+// deliberate rather than inconsistent: the kernel's topNBuckets ORDERS and appends the synthetic
+// buckets but never truncates, so a facet declaring TopN 15 whose SQL emits every group would render
+// more bars than it promised. Unit's branches get away with it because a unit's org/domain/kind
+// cardinality is bounded by a handful of catalog rows; the domain catalog is instance-extensible, so
+// this one keeps its own promise.
+func (q *Queries) OrganizationStats(ctx context.Context, arg OrganizationStatsParams) ([]OrganizationStatsRow, error) {
+	rows, err := q.db.Query(ctx, organizationStats,
+		arg.DomainID,
+		arg.Visibility,
+		arg.State,
+		arg.TopN,
+		arg.WantDomain,
+		arg.WantVisibility,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrganizationStatsRow
+	for rows.Next() {
+		var i OrganizationStatsRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const organizationStatsForSubject = `-- name: OrganizationStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT id, domain_id, visibility, state
+  FROM oikumenea.tenant_organizations
+  WHERE deleted_at IS NULL
+  AND ($1::uuid IS NULL OR domain_id = $1::uuid)
+  AND ($2::text IS NULL OR visibility = $2::text)
+  AND ($3::text IS NULL OR state = $3::text)
+  AND (visibility = 'public'
+       OR id IN (SELECT u.org_id
+                 FROM oikumenea.tenant_units u
+                 WHERE u.deleted_at IS NULL
+                   AND u.id IN (SELECT oikumenea.authz_readable_units($4))))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'domain'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $5::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.domain_id::text AS k, count(*) AS n
+            FROM cand c WHERE $6::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+FROM cand c WHERE $7::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $8::boolean GROUP BY 2
+`
+
+type OrganizationStatsForSubjectParams struct {
+	DomainID        pgtype.Text
+	Visibility      pgtype.Text
+	State           pgtype.Text
+	SubjectPersonID string
+	TopN            int32
+	WantDomain      bool
+	WantVisibility  bool
+	WantState       bool
+}
+
+type OrganizationStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The visibility-scoped arm of OrganizationStats: identical filters and BYTE-IDENTICAL aggregates,
+// with the shadow gate folded into the candidate set (D-ObjectFacets rule 3 — on the list gateOrgs
+// trims the page once it is cut, which is right for a page and wrong for a count).
+//
+// THE ORGANIZATION REACH IS DERIVED, not assigned: an organization is visible when any of its LIVE
+// UNITS is in the subject's reach. UnitStatsForSubject can write `id IN (authz_readable_units(...))`
+// because a unit IS a grantable target; `authz_role_assignments.target_unit_id` is NOT NULL and
+// REFERENCES tenant_units, so an organization RID can never appear in that set and the same predicate
+// copied here would match nothing.
+//
+// Until M58 ticket 4 this arm was a flat `visibility = 'public'`, which matched what the list left
+// and was therefore differentially correct — but only because org reach was empty BY CONSTRUCTION,
+// an accident of the assignment table's shape rather than a decision anyone made. Deriving reach from
+// unit reach is that decision, and it leaks nothing new: listUnits takes the org RID as a REQUIRED
+// argument and gates the units rather than the organization, so a subject with reach inside an org
+// can already enumerate its units and is already holding its RID.
+//
+// One join through tenant_units off ONE reach definition, rather than a second reach semantic that
+// would have to be kept in step with authz_readable_units.
+func (q *Queries) OrganizationStatsForSubject(ctx context.Context, arg OrganizationStatsForSubjectParams) ([]OrganizationStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, organizationStatsForSubject,
+		arg.DomainID,
+		arg.Visibility,
+		arg.State,
+		arg.SubjectPersonID,
+		arg.TopN,
+		arg.WantDomain,
+		arg.WantVisibility,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrganizationStatsForSubjectRow
+	for rows.Next() {
+		var i OrganizationStatsForSubjectRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const pruneClosureSelfRows = `-- name: PruneClosureSelfRows :exec

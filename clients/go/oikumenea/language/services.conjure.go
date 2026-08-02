@@ -20,10 +20,33 @@ Reads are gated by `language.read`. Writes happen via the hermenea import pipeli
 type LanguageServiceClient interface {
 	/*
 	   List languoids in code order, optionally filtered by level, root family (glottocode), and a
-	   name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
-	   large (~26k); narrow with the filters.
+	   name/code substring. `pageSize` caps the page (default/clamped server-side) since the catalog
+	   is large (~26k); narrow with the filters.
+
+	   `pageSize` was named `limit` before M58 ticket 4. The rename is a WIRE BREAK, taken because
+	   the paging-arg convention (`pageSize`/`pageToken`) is a checked invariant held by every other
+	   faceted type, and this endpoint was the only holdout.
 	*/
-	ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error)
+	ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, parentArg *string, topLevelArg *bool, queryArg *string, pageSizeArg *int, pageTokenArg *string) (LanguoidList, error)
+	/*
+	   Facet distributions over the languoid registry — the dashboard half of the languoid facet
+	   vocabulary (M58 / D-ObjectFacets). Takes exactly the STRUCTURAL filter args `listLanguages`
+	   takes — `level`, `family`, `macroarea`, `status` and the free-text `query` — plus the
+	   `facets` CSV, so a dashboard and a list are two renderings of one request state.
+
+	   The tree-traversal args `parent`/`topLevel` have no counterpart here on purpose: they switch
+	   the LIST to a one-level hierarchy walk rather than describing the registry, so there is
+	   nothing for them to count.
+
+	   ONE arm, and no subject. The languoid catalog is instance-global reference data — no
+	   row-level security, no unit column, no reach predicate — so `language.read` held anywhere is
+	   the whole visibility decision and there is none left to fold into the count.
+
+	   The path is `/stats/languages` rather than `/languages/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{id}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	LanguoidStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, queryArg *string) (LanguoidStats, error)
 	// Fetch one languoid by its RID.
 	GetLanguage(ctx context.Context, authHeader bearertoken.Token, idArg string) (Languoid, error)
 	// List the ISO-15924 writing systems in code order.
@@ -38,7 +61,7 @@ func NewLanguageServiceClient(client httpclient.Client) LanguageServiceClient {
 	return &languageServiceClient{client: client}
 }
 
-func (c *languageServiceClient) ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error) {
+func (c *languageServiceClient) ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, parentArg *string, topLevelArg *bool, queryArg *string, pageSizeArg *int, pageTokenArg *string) (LanguoidList, error) {
 	var returnVal *LanguoidList
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListLanguages"))
@@ -51,6 +74,12 @@ func (c *languageServiceClient) ListLanguages(ctx context.Context, authHeader be
 	if familyArg != nil {
 		queryParams.Set("family", fmt.Sprint(*familyArg))
 	}
+	if macroareaArg != nil {
+		queryParams.Set("macroarea", fmt.Sprint(*macroareaArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
 	if parentArg != nil {
 		queryParams.Set("parent", fmt.Sprint(*parentArg))
 	}
@@ -60,8 +89,8 @@ func (c *languageServiceClient) ListLanguages(ctx context.Context, authHeader be
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
 	}
-	if limitArg != nil {
-		queryParams.Set("limit", fmt.Sprint(*limitArg))
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
 	}
 	if pageTokenArg != nil {
 		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
@@ -74,6 +103,43 @@ func (c *languageServiceClient) ListLanguages(ctx context.Context, authHeader be
 	}
 	if returnVal == nil {
 		return *new(LanguoidList), werror.ErrorWithContextParams(ctx, "listLanguages response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *languageServiceClient) LanguoidStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, queryArg *string) (LanguoidStats, error) {
+	var returnVal *LanguoidStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("LanguoidStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/language/v1/stats/languages"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if levelArg != nil {
+		queryParams.Set("level", fmt.Sprint(*levelArg))
+	}
+	if familyArg != nil {
+		queryParams.Set("family", fmt.Sprint(*familyArg))
+	}
+	if macroareaArg != nil {
+		queryParams.Set("macroarea", fmt.Sprint(*macroareaArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(LanguoidStats), werror.WrapWithContextParams(ctx, err, "languoidStats failed")
+	}
+	if returnVal == nil {
+		return *new(LanguoidStats), werror.ErrorWithContextParams(ctx, "languoidStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -119,10 +185,33 @@ Reads are gated by `language.read`. Writes happen via the hermenea import pipeli
 type LanguageServiceClientWithAuth interface {
 	/*
 	   List languoids in code order, optionally filtered by level, root family (glottocode), and a
-	   name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
-	   large (~26k); narrow with the filters.
+	   name/code substring. `pageSize` caps the page (default/clamped server-side) since the catalog
+	   is large (~26k); narrow with the filters.
+
+	   `pageSize` was named `limit` before M58 ticket 4. The rename is a WIRE BREAK, taken because
+	   the paging-arg convention (`pageSize`/`pageToken`) is a checked invariant held by every other
+	   faceted type, and this endpoint was the only holdout.
 	*/
-	ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error)
+	ListLanguages(ctx context.Context, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, parentArg *string, topLevelArg *bool, queryArg *string, pageSizeArg *int, pageTokenArg *string) (LanguoidList, error)
+	/*
+	   Facet distributions over the languoid registry — the dashboard half of the languoid facet
+	   vocabulary (M58 / D-ObjectFacets). Takes exactly the STRUCTURAL filter args `listLanguages`
+	   takes — `level`, `family`, `macroarea`, `status` and the free-text `query` — plus the
+	   `facets` CSV, so a dashboard and a list are two renderings of one request state.
+
+	   The tree-traversal args `parent`/`topLevel` have no counterpart here on purpose: they switch
+	   the LIST to a one-level hierarchy walk rather than describing the registry, so there is
+	   nothing for them to count.
+
+	   ONE arm, and no subject. The languoid catalog is instance-global reference data — no
+	   row-level security, no unit column, no reach predicate — so `language.read` held anywhere is
+	   the whole visibility decision and there is none left to fold into the count.
+
+	   The path is `/stats/languages` rather than `/languages/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{id}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	LanguoidStats(ctx context.Context, facetsArg *string, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, queryArg *string) (LanguoidStats, error)
 	// Fetch one languoid by its RID.
 	GetLanguage(ctx context.Context, idArg string) (Languoid, error)
 	// List the ISO-15924 writing systems in code order.
@@ -138,8 +227,12 @@ type languageServiceClientWithAuth struct {
 	authHeader bearertoken.Token
 }
 
-func (c *languageServiceClientWithAuth) ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error) {
-	return c.client.ListLanguages(ctx, c.authHeader, levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg, pageTokenArg)
+func (c *languageServiceClientWithAuth) ListLanguages(ctx context.Context, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, parentArg *string, topLevelArg *bool, queryArg *string, pageSizeArg *int, pageTokenArg *string) (LanguoidList, error) {
+	return c.client.ListLanguages(ctx, c.authHeader, levelArg, familyArg, macroareaArg, statusArg, parentArg, topLevelArg, queryArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *languageServiceClientWithAuth) LanguoidStats(ctx context.Context, facetsArg *string, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, queryArg *string) (LanguoidStats, error) {
+	return c.client.LanguoidStats(ctx, c.authHeader, facetsArg, levelArg, familyArg, macroareaArg, statusArg, queryArg)
 }
 
 func (c *languageServiceClientWithAuth) GetLanguage(ctx context.Context, idArg string) (Languoid, error) {
@@ -159,12 +252,20 @@ type languageServiceClientWithTokenProvider struct {
 	tokenProvider httpclient.TokenProvider
 }
 
-func (c *languageServiceClientWithTokenProvider) ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error) {
+func (c *languageServiceClientWithTokenProvider) ListLanguages(ctx context.Context, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, parentArg *string, topLevelArg *bool, queryArg *string, pageSizeArg *int, pageTokenArg *string) (LanguoidList, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(LanguoidList), err
 	}
-	return c.client.ListLanguages(ctx, bearertoken.Token(token), levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg, pageTokenArg)
+	return c.client.ListLanguages(ctx, bearertoken.Token(token), levelArg, familyArg, macroareaArg, statusArg, parentArg, topLevelArg, queryArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *languageServiceClientWithTokenProvider) LanguoidStats(ctx context.Context, facetsArg *string, levelArg *string, familyArg *string, macroareaArg *string, statusArg *string, queryArg *string) (LanguoidStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(LanguoidStats), err
+	}
+	return c.client.LanguoidStats(ctx, bearertoken.Token(token), facetsArg, levelArg, familyArg, macroareaArg, statusArg, queryArg)
 }
 
 func (c *languageServiceClientWithTokenProvider) GetLanguage(ctx context.Context, idArg string) (Languoid, error) {

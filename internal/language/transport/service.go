@@ -58,14 +58,22 @@ func deref(p *string) string {
 	return *p
 }
 
-// ListLanguages implements GET /languages.
-func (s Service) ListLanguages(ctx context.Context, token bearertoken.Token, level, family, parent *string, topLevel *bool, query *string, limit *int, pageToken *string) (languageapi.LanguoidList, error) {
+// ListLanguages implements GET /languages. The four facet args are built through the shared
+// languoidFilter so this list and its dashboard read one URL identically (M58 ticket 4); the
+// traversal, search and paging fields are added on top, because the aggregate counts none of them.
+func (s Service) ListLanguages(ctx context.Context, token bearertoken.Token, level, family, macroarea, status, parent *string, topLevel *bool, query *string, pageSize *int, pageToken *string) (languageapi.LanguoidList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermLanguageRead)); err != nil {
 		return languageapi.LanguoidList{}, err
 	}
-	f := domain.Filter{Level: deref(level), Family: deref(family), Parent: deref(parent), TopLevel: topLevel != nil && *topLevel, Query: deref(query), After: deref(pageToken)}
-	if limit != nil {
-		f.Limit = *limit
+	f := languoidFilter(level, family, macroarea, status, query)
+	f.Parent = deref(parent)
+	f.TopLevel = topLevel != nil && *topLevel
+	f.After = deref(pageToken)
+	if pageSize != nil {
+		f.Limit = *pageSize
+	}
+	if err := f.Validate(); err != nil {
+		return languageapi.LanguoidList{}, mapLanguoidError(ctx, err, "list languoids failed")
 	}
 	langs, next, err := s.app.ListLanguoidsPage(ctx, f)
 	if err != nil {

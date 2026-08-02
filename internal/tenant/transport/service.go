@@ -371,6 +371,43 @@ func gateUnits[T any](ctx context.Context, enf *pep.Enforcer, items []T, id func
 	return out, nil
 }
 
+// gateOrgs applies the shadow-visibility gate to ORGANIZATIONS. It is gateUnits' sibling and not a
+// call into it, because the two ask different questions: a shadow UNIT is visible when the subject
+// reaches that unit, a shadow ORGANIZATION when the subject reaches ANY of its live units
+// (D-VisibilityScope as amended after M58 ticket 4 — an organization RID can never appear in a grant,
+// so its reach is derived rather than assigned).
+//
+// Before that amendment the org list called gateUnits directly, which type-checked, read plausibly,
+// and asked the reach probe whether an ORGANIZATION rid was among the subject's readable UNITS — a
+// question whose answer is always no. That is why this is its own function with its own name: the
+// difference has to be visible at the call site.
+func gateOrgs(ctx context.Context, enf *pep.Enforcer, items []domain.Organization) ([]domain.Organization, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+	ids := make([]string, len(items))
+	shadowMap := make(map[string]bool, len(items))
+	for i, o := range items {
+		ids[i] = o.ID
+		shadowMap[o.ID] = o.Visibility == domain.VisibilityShadow
+	}
+	visible, err := enf.FilterVisibleOrgs(ctx, ids, shadowMap)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]struct{}, len(visible))
+	for _, o := range visible {
+		allowed[o] = struct{}{}
+	}
+	out := make([]domain.Organization, 0, len(items))
+	for _, o := range items {
+		if _, ok := allowed[o.ID]; ok {
+			out = append(out, o)
+		}
+	}
+	return out, nil
+}
+
 // ---------------------------------------------------------------- closure
 
 func (s Service) VerifyClosure(ctx context.Context, token bearertoken.Token, graph *string) (tenantapi.ClosureReportList, error) {
@@ -543,15 +580,15 @@ func (s Service) UpdateUnitKind(ctx context.Context, token bearertoken.Token, un
 
 // ---------------------------------------------------------------- organizations (M40)
 
-func (s Service) ListOrganizations(ctx context.Context, token bearertoken.Token, domainID *string, pageSize *int, pageToken *string) (tenantapi.OrganizationPage, error) {
+func (s Service) ListOrganizations(ctx context.Context, token bearertoken.Token, domainID *string, visibility *string, state *string, pageSize *int, pageToken *string) (tenantapi.OrganizationPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationRead)); err != nil {
 		return tenantapi.OrganizationPage{}, err
 	}
-	page, err := s.app.ListOrganizations(ctx, domainID, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	page, err := s.app.ListOrganizations(ctx, orgFilterFrom(domainID, visibility, state), derefOr(pageSize, 0), derefOr(pageToken, ""))
 	if err != nil {
 		return tenantapi.OrganizationPage{}, s.mapError(ctx, err, errCtx{})
 	}
-	visible, err := gateUnits(ctx, s.pep, page.Orgs, func(o domain.Organization) string { return o.ID }, func(o domain.Organization) bool { return o.Visibility == domain.VisibilityShadow })
+	visible, err := gateOrgs(ctx, s.pep, page.Orgs)
 	if err != nil {
 		return tenantapi.OrganizationPage{}, s.mapError(ctx, err, errCtx{})
 	}
@@ -579,6 +616,19 @@ func (s Service) CreateOrganization(ctx context.Context, token bearertoken.Token
 	return s.organizationToAPI(ctx, created)
 }
 
+// GetOrganization reads one organization by RID, shadow-gated — which it was NOT before M58 ticket 4
+// despite the contract saying so. `listOrganizations` trims shadow organizations a caller cannot
+// reach; this point read applied `organization.read` and handed the row over, so anyone holding that
+// code could read any shadow organization by RID. The list hid it and the point read did not.
+//
+// The gate is `gateOrgs`, the same helper the list uses, deliberately rather than an inlined
+// visibility check: the rule has ONE implementation, so both surfaces moved together when
+// organization reach stopped being empty by construction — which is exactly what happened one commit
+// later, and cost nothing here.
+//
+// A gated-out organization is `OrganizationNotFound`, NOT a permission error. `shadow` exists to hide
+// EXISTENCE (F-002 / D-VisibilityScope), and a 403 would confirm that the RID names a real
+// organization — which is exactly what the list refuses to say by omitting the row.
 func (s Service) GetOrganization(ctx context.Context, token bearertoken.Token, orgID string) (tenantapi.Organization, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationRead)); err != nil {
 		return tenantapi.Organization{}, err
@@ -587,7 +637,14 @@ func (s Service) GetOrganization(ctx context.Context, token bearertoken.Token, o
 	if err != nil {
 		return tenantapi.Organization{}, s.mapError(ctx, err, errCtx{orgID: orgID})
 	}
-	return s.organizationToAPI(ctx, o)
+	visible, err := gateOrgs(ctx, s.pep, []domain.Organization{o})
+	if err != nil {
+		return tenantapi.Organization{}, s.mapError(ctx, err, errCtx{orgID: orgID})
+	}
+	if len(visible) == 0 {
+		return tenantapi.Organization{}, s.mapError(ctx, domain.ErrOrgNotFound, errCtx{orgID: orgID})
+	}
+	return s.organizationToAPI(ctx, visible[0])
 }
 
 func (s Service) UpdateOrganization(ctx context.Context, token bearertoken.Token, orgID string, req tenantapi.UpdateOrganizationRequest) (tenantapi.Organization, error) {
@@ -881,6 +938,8 @@ func (s Service) mapError(ctx context.Context, err error, c errCtx) error {
 		return tenantapi.NewTransitionInvalid(err.Error())
 	case errors.Is(err, domain.ErrInvalidUnit):
 		return tenantapi.NewUnitInvalid(err.Error())
+	case errors.Is(err, domain.ErrInvalidOrg):
+		return tenantapi.NewOrganizationInvalid(err.Error())
 	case errors.Is(err, domain.ErrGraphNotFound):
 		return tenantapi.NewGraphNotFound(c.graph)
 	case errors.Is(err, domain.ErrGraphCodeConflict):

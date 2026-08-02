@@ -224,7 +224,39 @@ func (s *seeder) phaseADirectory() error {
 	if err := s.exec("rel_profile", `INSERT INTO oikumenea.religion_org_profiles (unit_id) VALUES ($1)`, chUnit); err != nil {
 		return err
 	}
-	return nil
+	return s.spreadOrgFacets()
+}
+
+// spreadOrgFacets gives the organization dashboard something to draw (M58 ticket 4). createOrg
+// inserts every demo org with the column defaults, so `visibility` and `state` would each be ONE bar
+// — and a single-bucket distribution cannot exercise the click-through the facet exists for. That is
+// the ticket-3 lesson repeating in its other form: there, three ref facets had exactly one
+// `(unknown)` bucket because the seeder never REFERENCED catalogs it seeded; here every row shares
+// one value. Either way the chart renders and proves nothing.
+//
+// It UPDATEs in place rather than varying the INSERTs, and runs unconditionally on every seed, so a
+// dev database seeded before this ticket gets the spread without a rebuild — `seed-demo -reset` is
+// blocked on some dev databases by hand-made rows the seeder does not own and must not delete.
+// Deterministic by `code`, so a re-run does not shuffle the charts under someone reading them.
+//
+// The target with five demo orgs across four domains: 3 public / 2 shadow, and 4 active / 1
+// suspended. `archived` stays empty on purpose — `state` is an identity-bucket enum, so the third
+// tile still renders and correctly reads zero, which is exactly the property identity buckets exist
+// to give a chart (a stable shape that does not depend on the data).
+func (s *seeder) spreadOrgFacets() error {
+	const demo = `metadata->>'seed'='demo' AND deleted_at IS NULL`
+	if err := s.exec("org_visibility", `
+		UPDATE oikumenea.tenant_organizations SET visibility='shadow'
+		WHERE `+demo+` AND code IN (
+			SELECT code FROM oikumenea.tenant_organizations
+			WHERE `+demo+` ORDER BY code OFFSET 3)`); err != nil {
+		return err
+	}
+	return s.exec("org_state", `
+		UPDATE oikumenea.tenant_organizations SET state='suspended'
+		WHERE `+demo+` AND code = (
+			SELECT code FROM oikumenea.tenant_organizations
+			WHERE `+demo+` ORDER BY code DESC LIMIT 1)`)
 }
 
 func (s *seeder) buildBrigade(orgID, cmd, bgName string) error {

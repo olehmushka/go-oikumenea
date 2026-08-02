@@ -149,6 +149,25 @@ func (e *Enforcer) FilterVisibleUnits(ctx context.Context, candidates []string, 
 	return e.svc.FilterVisibleUnits(ctx, Subject(ctx), candidates, shadow)
 }
 
+// FilterVisibleOrgs is the ORGANIZATION shadow gate — the same second pass FilterVisibleUnits makes,
+// over a reach that is DERIVED rather than assigned: an organization is reachable when any of its
+// live units is. Organizations cannot be granted directly (an assignment's target_unit_id FKs
+// tenant_units), so before M58 ticket 4 their reach set was empty by construction and every shadow
+// organization was instance-admin-only — an accident of the assignment table's shape, not a decision.
+//
+// Kept a separate method rather than folded into FilterVisibleUnits with a flag: the two answer
+// different questions ("is this unit in reach" vs "is any unit of this org in reach"), and a shared
+// entry point taking a mode would make the caller's choice invisible at the call site, which is
+// exactly how the gate came to be applied to organization RIDs in the first place.
+func (e *Enforcer) FilterVisibleOrgs(ctx context.Context, candidates []string, shadow map[string]bool) ([]string, error) {
+	// Same machine-subject denial as FilterVisibleUnits, for the same reason: a principal has no unit
+	// reach, so it has no derived organization reach either (M51).
+	if authn.IsService(ctx) {
+		return nil, nil
+	}
+	return e.svc.FilterVisibleOrgs(ctx, Subject(ctx), candidates, shadow)
+}
+
 // ============================ machine subjects (M51 / D-ServiceIdentities) ============================
 
 // RequireService enforces `action` for a MACHINE subject (a facade with standing of its own, or a

@@ -11,6 +11,7 @@ import { IGraph } from "./graph";
 import { IGraphList } from "./graphList";
 import { IOrganization } from "./organization";
 import { IOrganizationPage } from "./organizationPage";
+import { IOrganizationStats } from "./organizationStats";
 import { ISetUnitCodeRequest } from "./setUnitCodeRequest";
 import { ITransitionRequest } from "./transitionRequest";
 import { IUnit } from "./unit";
@@ -94,6 +95,28 @@ export interface ITenantService {
      *
      */
     unitStats(org: string, facets?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats>;
+    /**
+     * Facet distributions over the organization registry — the dashboard half of the
+     * organization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args
+     * `listOrganizations` takes, minus paging, so a dashboard and a list are two renderings of
+     * one request state.
+     *
+     * Unlike `unitStats` there is no `org` arg: the organization registry is the instance's
+     * whole realm catalog, not a per-org tree.
+     *
+     * The shadow gate is folded into SQL: on the list `gateUnits` trims the page once it is cut,
+     * which is right for a page and wrong for a count. For an organization that gate reduces to
+     * `visibility = 'public'` for every non-instance-admin caller — a role assignment's
+     * `target_unit_id` FKs `tenant_units` and can never name an organization, so there is no
+     * reachable shadow org for the two surfaces to disagree about. `totalCount` therefore equals
+     * the rows exhaustively paging `listOrganizations` under these filters would return.
+     *
+     * The path is `/stats/organizations` rather than `/organizations/stats` because the server's
+     * router rejects a literal path segment that is a sibling of `{orgId}` — see the
+     * route-conflict guard in `internal/platform/transport`.
+     *
+     */
+    organizationStats(facets?: string | null, domain?: string | null, visibility?: string | null, state?: string | null): Promise<IOrganizationStats>;
     /** Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle. */
     addEdge(unitId: string, request: IAddEdgeRequest): Promise<IUnitEdge>;
     /** Detach the path unit from a parent within a graph. */
@@ -143,18 +166,30 @@ export interface ITenantService {
     /** Rename / retire a unit kind or adjust its attr schema. Returns Tenant:UnitKindNotFound. */
     updateUnitKind(unitKindId: string, request: IUpdateUnitKindRequest): Promise<IUnitKind>;
     /**
-     * List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
-     * M40). Shadow-gated. Gated by organization.read.
+     * List organizations, token-paginated, optionally filtered by domain, visibility and state
+     * (D-TenantOrganizations, M40; facet vocabulary M58 / D-ObjectFacets). Shadow-gated. Gated by
+     * organization.read. A malformed filter is a Tenant:OrganizationInvalid.
      *
      */
-    listOrganizations(domain?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IOrganizationPage>;
+    listOrganizations(domain?: string | null, visibility?: string | null, state?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IOrganizationPage>;
     /**
      * Create an organization and seed its command + operational graphs in one transaction
      * (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
      *
      */
     createOrganization(request: ICreateOrganizationRequest): Promise<IOrganization>;
-    /** Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound. */
+    /**
+     * Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach
+     * is `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because
+     * `shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm
+     * the organization is real.
+     *
+     * This line already said "(shadow-gated)" before M58 ticket 4 and the implementation applied
+     * no gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed
+     * them over to anyone holding `organization.read`. Fixed there; the two surfaces now share one
+     * gate rather than one of them being remembered.
+     *
+     */
     getOrganization(orgId: string): Promise<IOrganization>;
     /** Update an organization's name/domain/metadata/visibility (organization.update). */
     updateOrganization(orgId: string, request: IUpdateOrganizationRequest): Promise<IOrganization>;
@@ -345,6 +380,47 @@ export class TenantService implements ITenantService {
                 "visibility": visibility,
                 "state": state,
                 "pdpScoped": pdpScoped,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions over the organization registry — the dashboard half of the
+     * organization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args
+     * `listOrganizations` takes, minus paging, so a dashboard and a list are two renderings of
+     * one request state.
+     *
+     * Unlike `unitStats` there is no `org` arg: the organization registry is the instance's
+     * whole realm catalog, not a per-org tree.
+     *
+     * The shadow gate is folded into SQL: on the list `gateUnits` trims the page once it is cut,
+     * which is right for a page and wrong for a count. For an organization that gate reduces to
+     * `visibility = 'public'` for every non-instance-admin caller — a role assignment's
+     * `target_unit_id` FKs `tenant_units` and can never name an organization, so there is no
+     * reachable shadow org for the two surfaces to disagree about. `totalCount` therefore equals
+     * the rows exhaustively paging `listOrganizations` under these filters would return.
+     *
+     * The path is `/stats/organizations` rather than `/organizations/stats` because the server's
+     * router rejects a literal path segment that is a sibling of `{orgId}` — see the
+     * route-conflict guard in `internal/platform/transport`.
+     *
+     */
+    public organizationStats(facets?: string | null, domain?: string | null, visibility?: string | null, state?: string | null): Promise<IOrganizationStats> {
+        return this.bridge.call<IOrganizationStats>(
+            "TenantService",
+            "organizationStats",
+            "GET",
+            "/tenant/v1/stats/organizations",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "domain": domain,
+                "visibility": visibility,
+                "state": state,
             },
             __undefined,
             __undefined,
@@ -723,11 +799,12 @@ export class TenantService implements ITenantService {
     }
 
     /**
-     * List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
-     * M40). Shadow-gated. Gated by organization.read.
+     * List organizations, token-paginated, optionally filtered by domain, visibility and state
+     * (D-TenantOrganizations, M40; facet vocabulary M58 / D-ObjectFacets). Shadow-gated. Gated by
+     * organization.read. A malformed filter is a Tenant:OrganizationInvalid.
      *
      */
-    public listOrganizations(domain?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IOrganizationPage> {
+    public listOrganizations(domain?: string | null, visibility?: string | null, state?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IOrganizationPage> {
         return this.bridge.call<IOrganizationPage>(
             "TenantService",
             "listOrganizations",
@@ -737,6 +814,8 @@ export class TenantService implements ITenantService {
             __undefined,
             {
                 "domain": domain,
+                "visibility": visibility,
+                "state": state,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
             },
@@ -766,7 +845,18 @@ export class TenantService implements ITenantService {
         );
     }
 
-    /** Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound. */
+    /**
+     * Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach
+     * is `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because
+     * `shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm
+     * the organization is real.
+     *
+     * This line already said "(shadow-gated)" before M58 ticket 4 and the implementation applied
+     * no gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed
+     * them over to anyone holding `organization.read`. Fixed there; the two surfaces now share one
+     * gate rather than one of them being remembered.
+     *
+     */
     public getOrganization(orgId: string): Promise<IOrganization> {
         return this.bridge.call<IOrganization>(
             "TenantService",
