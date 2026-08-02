@@ -219,6 +219,7 @@ not audited — D-ClosureDriftHealth)
 > group by), so the drift guard classifies it as a traversal arg.
 
 | `GET /organizations` | List organizations, token-paginated, filtered by the declared facets — `domain`, `visibility`, `state` (M58 ticket 4; [facets catalog](../architecture/facets.md)). Malformed values are `Tenant:OrganizationInvalid` | `organization.read` + shadow gate |
+| `GET /organizations/{orgId}` | Read one organization. A `shadow` organization the caller cannot reach is `Tenant:OrganizationNotFound` — the **same** error an unknown RID gets, because `shadow` hides existence and a permission error would confirm the organization is real. **This gate did not exist before M58 ticket 4** although the contract claimed it: the list trimmed shadow orgs while the point read handed them over | `organization.read` + shadow gate |
 | `GET /stats/organizations` | Facet distributions over the **same** filter args + an optional `facets` CSV. The shadow gate is folded **into the SQL**, as for units. No `org` arg: the organization registry is the instance's whole realm catalog, not one org's tree. Path is `/stats/organizations`, not `/organizations/stats` (router) | `organization.read` + shadow gate |
 
 > **The organization shadow gate is `visibility = 'public'`, and NOT unit's reach predicate**

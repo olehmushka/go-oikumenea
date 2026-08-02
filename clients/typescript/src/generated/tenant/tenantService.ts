@@ -178,7 +178,18 @@ export interface ITenantService {
      *
      */
     createOrganization(request: ICreateOrganizationRequest): Promise<IOrganization>;
-    /** Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound. */
+    /**
+     * Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach
+     * is `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because
+     * `shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm
+     * the organization is real.
+     *
+     * This line already said "(shadow-gated)" before M58 ticket 4 and the implementation applied
+     * no gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed
+     * them over to anyone holding `organization.read`. Fixed there; the two surfaces now share one
+     * gate rather than one of them being remembered.
+     *
+     */
     getOrganization(orgId: string): Promise<IOrganization>;
     /** Update an organization's name/domain/metadata/visibility (organization.update). */
     updateOrganization(orgId: string, request: IUpdateOrganizationRequest): Promise<IOrganization>;
@@ -834,7 +845,18 @@ export class TenantService implements ITenantService {
         );
     }
 
-    /** Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound. */
+    /**
+     * Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach
+     * is `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because
+     * `shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm
+     * the organization is real.
+     *
+     * This line already said "(shadow-gated)" before M58 ticket 4 and the implementation applied
+     * no gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed
+     * them over to anyone holding `organization.read`. Fixed there; the two surfaces now share one
+     * gate rather than one of them being remembered.
+     *
+     */
     public getOrganization(orgId: string): Promise<IOrganization> {
         return this.bridge.call<IOrganization>(
             "TenantService",

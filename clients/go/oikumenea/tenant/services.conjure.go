@@ -147,7 +147,17 @@ type TenantServiceClient interface {
 	   (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
 	*/
 	CreateOrganization(ctx context.Context, authHeader bearertoken.Token, requestArg CreateOrganizationRequest) (Organization, error)
-	// Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.
+	/*
+	   Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach
+	   is `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because
+	   `shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm
+	   the organization is real.
+
+	   This line already said "(shadow-gated)" before M58 ticket 4 and the implementation applied
+	   no gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed
+	   them over to anyone holding `organization.read`. Fixed there; the two surfaces now share one
+	   gate rather than one of them being remembered.
+	*/
 	GetOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (Organization, error)
 	// Update an organization's name/domain/metadata/visibility (organization.update).
 	UpdateOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error)
@@ -1020,7 +1030,17 @@ type TenantServiceClientWithAuth interface {
 	   (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
 	*/
 	CreateOrganization(ctx context.Context, requestArg CreateOrganizationRequest) (Organization, error)
-	// Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.
+	/*
+	   Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach
+	   is `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because
+	   `shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm
+	   the organization is real.
+
+	   This line already said "(shadow-gated)" before M58 ticket 4 and the implementation applied
+	   no gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed
+	   them over to anyone holding `organization.read`. Fixed there; the two surfaces now share one
+	   gate rather than one of them being remembered.
+	*/
 	GetOrganization(ctx context.Context, orgIdArg string) (Organization, error)
 	// Update an organization's name/domain/metadata/visibility (organization.update).
 	UpdateOrganization(ctx context.Context, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error)

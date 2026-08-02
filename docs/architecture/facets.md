@@ -683,7 +683,9 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
   ordinary directory history, while a revoked grant is a security artefact whose reachability is an
   authz-plane read-surface decision, not a facet-vocabulary one. `roleId`, `targetUnitId`, `scope` and
   `graphId` are unaffected.
-- **A shadow organization is reachable by nobody but an instance admin.** Found while building
+- **A shadow organization is reachable by nobody but an instance admin.** *(Distinct from the
+  `getOrganization` leak this seam turned up, which WAS a bug and is fixed — the point read claimed
+  to be shadow-gated and was not. This entry is the remaining design question.)* Found while building
   organization's scoped aggregate arm (M58 ticket 4). `listOrganizations` is gated by **`gateUnits`**
   — the unit gate, applied to organization rows — whose non-admin probe
   (`ReadableUnitsForSubjectAmong`) matches only on `a.target_unit_id = cand.unit_id`. But

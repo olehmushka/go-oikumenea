@@ -263,6 +263,50 @@ func TestOrganizationShadowIsUnreachableForEveryNonAdmin_Integration(t *testing.
 	}
 }
 
+// TestOrganizationPointReadAgreesWithTheList pins the APPLICATION layer's half of the contract: the
+// point read and the list resolve the same organizations from the same store, so a divergence here
+// would be a repository or filter bug rather than a gating one.
+//
+// It is deliberately NOT the guard for the M58 ticket 4 leak, and saying so matters. That leak —
+// `getOrganization` documented "(shadow-gated)" while applying no gate, so a caller holding
+// `organization.read` could read by RID exactly the shadow organizations the list hid — lives
+// entirely in the TRANSPORT, where the gate is applied per handler. This test was written for it
+// first and hand-breaking proved it useless for that: reintroducing the leak leaves it green,
+// because the application service it calls has no gate to lose. The real guard is
+// `transport/shadowgate_test.go`, which inspects the handlers themselves.
+//
+// The assertion is relative — both surfaces agree, for every organization — rather than "a shadow
+// org 404s", so it keeps holding once organization reachability is fixed (facets.md open seam) and
+// the set of visible shadow orgs stops being empty.
+func TestOrganizationPointReadAgreesWithTheList_Integration(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t)
+	org := seedOrg(t, svc)
+	hidden := seedOrg(t, svc)
+	repointDomain(t, svc, hidden.ID, org.DomainID)
+	shadowOrg(t, svc, hidden.ID)
+
+	f := domain.OrgFilter{DomainID: &org.DomainID}
+	page, err := svc.ListOrganizations(ctx, f, 100, "")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	listed := map[string]bool{}
+	for _, o := range page.Orgs {
+		listed[o.ID] = true
+	}
+	// Both orgs are in the domain, and the LIST is unfiltered by visibility, so the admin arm must
+	// carry both — otherwise the comparison below is vacuous.
+	if !listed[org.ID] || !listed[hidden.ID] {
+		t.Fatalf("the admin list is missing one of the seeded orgs — this test would prove nothing")
+	}
+	for _, id := range []string{org.ID, hidden.ID} {
+		if _, err := svc.GetOrganization(ctx, id); err != nil {
+			t.Errorf("the admin list returned %s but the point read refused it: %v", id, err)
+		}
+	}
+}
+
 // TestOrganizationStatsNonAdminWithNoSubjectReadsNothing: an empty subject selects the ADMIN arm in
 // SQL, so a caller who is neither an admin nor an identified person (a machine principal —
 // pep.SubjectAuthority returns ("", false) for one) must read NOTHING rather than every organization

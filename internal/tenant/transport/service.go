@@ -579,6 +579,19 @@ func (s Service) CreateOrganization(ctx context.Context, token bearertoken.Token
 	return s.organizationToAPI(ctx, created)
 }
 
+// GetOrganization reads one organization by RID, shadow-gated — which it was NOT before M58 ticket 4
+// despite the contract saying so. `listOrganizations` trims shadow organizations a caller cannot
+// reach; this point read applied `organization.read` and handed the row over, so anyone holding that
+// code could read any shadow organization by RID. The list hid it and the point read did not.
+//
+// The gate is `gateUnits`, the same helper the list uses, deliberately rather than an inlined
+// visibility check: the rule then has ONE implementation, so when organization reachability is fixed
+// (facets.md open seam — an organization RID can never appear in a role assignment's reach today)
+// both surfaces move together instead of one being remembered and the other not.
+//
+// A gated-out organization is `OrganizationNotFound`, NOT a permission error. `shadow` exists to hide
+// EXISTENCE (F-002 / D-VisibilityScope), and a 403 would confirm that the RID names a real
+// organization — which is exactly what the list refuses to say by omitting the row.
 func (s Service) GetOrganization(ctx context.Context, token bearertoken.Token, orgID string) (tenantapi.Organization, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationRead)); err != nil {
 		return tenantapi.Organization{}, err
@@ -587,7 +600,16 @@ func (s Service) GetOrganization(ctx context.Context, token bearertoken.Token, o
 	if err != nil {
 		return tenantapi.Organization{}, s.mapError(ctx, err, errCtx{orgID: orgID})
 	}
-	return s.organizationToAPI(ctx, o)
+	visible, err := gateUnits(ctx, s.pep, []domain.Organization{o},
+		func(o domain.Organization) string { return o.ID },
+		func(o domain.Organization) bool { return o.Visibility == domain.VisibilityShadow })
+	if err != nil {
+		return tenantapi.Organization{}, s.mapError(ctx, err, errCtx{orgID: orgID})
+	}
+	if len(visible) == 0 {
+		return tenantapi.Organization{}, s.mapError(ctx, domain.ErrOrgNotFound, errCtx{orgID: orgID})
+	}
+	return s.organizationToAPI(ctx, visible[0])
 }
 
 func (s Service) UpdateOrganization(ctx context.Context, token bearertoken.Token, orgID string, req tenantapi.UpdateOrganizationRequest) (tenantapi.Organization, error) {
