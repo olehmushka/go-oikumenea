@@ -223,15 +223,18 @@ func TestOrganizationStatsShadowGateIsInsideTheCount_Integration(t *testing.T) {
 	}
 }
 
-// TestOrganizationShadowIsUnreachableForEveryNonAdmin pins the FINDING rather than the behaviour: the
-// scoped arm is `visibility = 'public'` and not unit's `public OR in-reach` because an organization
-// can never be in anyone's reach. Grant the subject a subtree-scoped read over the org's own root
-// unit — the strongest grant the model has — and the org count must still be public-only.
+// TestOrganizationReachIsDerivedFromUnitReach pins the rule organizations actually run on: an
+// organization is visible when ANY of its live units is in the subject's reach.
 //
-// If org reachability is ever added (a nullable target_org_id, an org-level assignment scope, or
-// deriving org reach from unit reach — see facets.md open seams), this test goes red, and that is the
-// signal to change the arm rather than to relax the test.
-func TestOrganizationShadowIsUnreachableForEveryNonAdmin_Integration(t *testing.T) {
+// It replaces `TestOrganizationShadowIsUnreachableForEveryNonAdmin`, which pinned the OPPOSITE and
+// was written to go red on the day this changed — and did, with the message it carried for the
+// purpose. That is the guard working, not a guard being wrong: what it protected against was the
+// semantics drifting silently, and the semantics changed loudly instead.
+//
+// Both directions are asserted from ONE setup, because either alone is satisfiable by a bug. "Sees
+// it with reach" alone passes if the gate stopped gating; "does not see it without" alone passes if
+// reach stayed empty by construction, which is exactly the state this replaced.
+func TestOrganizationReachIsDerivedFromUnitReach_Integration(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t)
 	org := seedOrg(t, svc)
@@ -241,26 +244,48 @@ func TestOrganizationShadowIsUnreachableForEveryNonAdmin_Integration(t *testing.
 	unit := mustCreate(t, svc, hidden, uniqueCode(t, "reachprobe"))
 	graph := commandGraph(t, svc, hidden.ID)
 
-	// A reader role with a '*.read' permission, assigned subtree over the shadow org's own unit. This
-	// is the grant that WOULD reach the org if organizations were reachable at all.
-	subject := seedStatsPerson(t, pool)
-	grantSubtreeRead(t, pool, subject, unit.ID, graph)
+	insider := seedStatsPerson(t, pool)
+	grantSubtreeRead(t, pool, insider, unit.ID, graph)
+	outsider := seedStatsPerson(t, pool) // no grants at all
+
+	// The grant has to be real, or "the insider sees it" would be trivially true of everyone.
+	if n := readableUnitCount(t, pool, insider); n == 0 {
+		t.Fatal("the insider reaches no units — the grant did not take, so this test proves nothing")
+	}
+	if n := readableUnitCount(t, pool, outsider); n != 0 {
+		t.Fatalf("the outsider reaches %d units — it must reach none, or the negative half is vacuous", n)
+	}
 
 	f := domain.OrgFilter{DomainID: &org.DomainID}
-	scoped, err := svc.OrganizationStats(ctx, subject, false, f, allOrgFacets(t))
+	sel := allOrgFacets(t)
+
+	inside, err := svc.OrganizationStats(ctx, insider, false, f, sel)
 	if err != nil {
-		t.Fatalf("scoped stats: %v", err)
+		t.Fatalf("insider stats: %v", err)
 	}
-	if got := countOf(orgBuckets(t, scoped, "visibility"), "shadow"); got != 0 {
-		t.Errorf("a subject holding subtree read over the shadow org's OWN unit counted %d shadow "+
-			"organizations. If that is now correct, organizations became reachable and "+
-			"OrganizationStatsForSubject's `visibility = 'public'` arm must be replaced with a reach "+
-			"predicate — see docs/architecture/facets.md open seams", got)
+	if got := countOf(orgBuckets(t, inside, "visibility"), "shadow"); got != 1 {
+		t.Errorf("insider counted %d shadow organizations, want 1: reach into a shadow org's units is "+
+			"what makes that org visible (D-VisibilityScope as amended after M58 ticket 4)", got)
 	}
-	// And the reach itself is real, so the test is not passing because the grant did nothing.
-	if n := readableUnitCount(t, pool, subject); n == 0 {
-		t.Fatal("the subject reaches no units at all — the grant did not take, so this test proves nothing")
+
+	outside, err := svc.OrganizationStats(ctx, outsider, false, f, sel)
+	if err != nil {
+		t.Fatalf("outsider stats: %v", err)
 	}
+	if got := countOf(orgBuckets(t, outside, "visibility"), "shadow"); got != 0 {
+		t.Errorf("outsider counted %d shadow organizations, want 0: deriving reach must not make every "+
+			"shadow organization public", got)
+	}
+	if inside.TotalCount <= outside.TotalCount {
+		t.Errorf("insider total %d is not greater than outsider total %d — the derivation is not "+
+			"narrowing anything", inside.TotalCount, outside.TotalCount)
+	}
+
+	// The list-vs-chart agreement ACROSS the visibility boundary is deliberately not asserted here.
+	// The gate that trims the list is applied in the transport (gateOrgs), and this suite constructs
+	// the application service — it has no handler to run the gate. Faking it with a test-only
+	// accessor would produce a test that agrees with itself; that is the same layer confusion that
+	// made the first getOrganization guard useless. It is verified live over HTTP instead.
 }
 
 // TestOrganizationPointReadAgreesWithTheList pins the APPLICATION layer's half of the contract: the

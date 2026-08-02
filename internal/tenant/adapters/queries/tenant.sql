@@ -332,21 +332,24 @@ FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
 
 -- name: OrganizationStatsForSubject :many
 -- The visibility-scoped arm of OrganizationStats: identical filters and BYTE-IDENTICAL aggregates,
--- with the shadow gate folded into the candidate set.
+-- with the shadow gate folded into the candidate set (D-ObjectFacets rule 3 — on the list gateOrgs
+-- trims the page once it is cut, which is right for a page and wrong for a count).
 --
--- THE GATE IS `visibility = 'public'` AND NOT UNIT'S REACH SET, and that is a decision rather than a
--- simplification. UnitStatsForSubject writes
---     visibility = 'public' OR id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))
--- because a shadow UNIT inside the subject's reach is genuinely visible. An ORGANIZATION never is:
--- authz_role_assignments.target_unit_id is NOT NULL and REFERENCES tenant_units, so an organization
--- RID matches neither arm of ReadableUnitsForSubjectAmong and the reach set is empty by construction.
--- This predicate is therefore EXACTLY what gateUnits leaves on the list — which is the differential
--- contract — while unit's predicate copied here would compile, pass every guard and count the same
--- rows today, then start counting rows the list never returns the moment org reachability is fixed.
--- That gap is an authorization-plane read-surface question, recorded as an open seam in
--- docs/architecture/facets.md and deliberately not addressed here.
+-- THE ORGANIZATION REACH IS DERIVED, not assigned: an organization is visible when any of its LIVE
+-- UNITS is in the subject's reach. UnitStatsForSubject can write `id IN (authz_readable_units(...))`
+-- because a unit IS a grantable target; `authz_role_assignments.target_unit_id` is NOT NULL and
+-- REFERENCES tenant_units, so an organization RID can never appear in that set and the same predicate
+-- copied here would match nothing.
 --
--- It takes NO subject parameter, for the same reason: there is nothing to probe.
+-- Until M58 ticket 4 this arm was a flat `visibility = 'public'`, which matched what the list left
+-- and was therefore differentially correct — but only because org reach was empty BY CONSTRUCTION,
+-- an accident of the assignment table's shape rather than a decision anyone made. Deriving reach from
+-- unit reach is that decision, and it leaks nothing new: listUnits takes the org RID as a REQUIRED
+-- argument and gates the units rather than the organization, so a subject with reach inside an org
+-- can already enumerate its units and is already holding its RID.
+--
+-- One join through tenant_units off ONE reach definition, rather than a second reach semantic that
+-- would have to be kept in step with authz_readable_units.
 WITH cand AS MATERIALIZED (
   SELECT id, domain_id, visibility, state
   FROM oikumenea.tenant_organizations
@@ -354,7 +357,11 @@ WITH cand AS MATERIALIZED (
   AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
   AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
   AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
-  AND visibility = 'public'
+  AND (visibility = 'public'
+       OR id IN (SELECT u.org_id
+                 FROM oikumenea.tenant_units u
+                 WHERE u.deleted_at IS NULL
+                   AND u.id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))))
 )
 SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
 FROM cand

@@ -449,18 +449,18 @@ change gives it two buckets. Recorded here rather than shipped silently.
 > RID can never appear in it.** The reach set for an org is empty by construction, and a shadow
 > organization is visible to an instance admin and to nobody else.
 >
-> So the scoped arm is `AND visibility = 'public'`, not
-> `visibility='public' OR id IN (SELECT authz_readable_units(@subject))`. Copying unit's predicate
-> would compile, pass every guard, and count **exactly the same rows today** — and then, on the day
-> org reachability is fixed, the list would still show zero shadow orgs while the chart showed some,
-> and the differential would break in the direction nobody looks at. The honest arm matches
-> `gateUnits`' actual behaviour, which is what the differential contract asks for.
+> That gap is now **closed** (follow-up commit; D-VisibilityScope amendment): organization reach is
+> **derived from unit reach** — an organization is visible when any of its live units is in the
+> subject's reach. The scoped arm is `visibility = 'public' OR id IN (<orgs of reachable units>)`,
+> and the list gates through `gateOrgs`, a sibling of `gateUnits` rather than a call into it.
 >
-> That is a load-bearing claim about *another module's* schema, so it is asserted rather than
-> assumed: `TestOrganizationShadowIsUnreachableForEveryNonAdmin` grants a subject **subtree** read
-> over the shadow org's own unit — checking the reach really took — and shows the org count does not
-> move. It is written to go **red** the day the gap is closed, which is exactly the day this arm must
-> change. The gap itself is an [open seam](#open-seams), not this ticket's to fix.
+> The part that survives unchanged is why the arm can never be unit's
+> `id IN (authz_readable_units(...))`: a unit IS a grant target, an organization is not, so that
+> predicate copied across matches nothing. It has to join through `tenant_units` to mean anything.
+>
+> `TestOrganizationShadowIsUnreachableForEveryNonAdmin` did what it was written to do — went red on
+> the day this changed, carrying the message that said so — and is replaced by
+> `TestOrganizationReachIsDerivedFromUnitReach`, which asserts both directions from one setup.
 
 > **`domain` collapses its tail in SQL; `UnitStats`' ref branches do not.** The kernel's `topNBuckets`
 > orders and appends `(unknown)`/`(other)` but never truncates, so a facet declaring `TopN 15` whose
@@ -683,23 +683,28 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
   ordinary directory history, while a revoked grant is a security artefact whose reachability is an
   authz-plane read-surface decision, not a facet-vocabulary one. `roleId`, `targetUnitId`, `scope` and
   `graphId` are unaffected.
-- **A shadow organization is reachable by nobody but an instance admin.** *(Distinct from the
-  `getOrganization` leak this seam turned up, which WAS a bug and is fixed — the point read claimed
-  to be shadow-gated and was not. This entry is the remaining design question.)* Found while building
-  organization's scoped aggregate arm (M58 ticket 4). `listOrganizations` is gated by **`gateUnits`**
-  — the unit gate, applied to organization rows — whose non-admin probe
-  (`ReadableUnitsForSubjectAmong`) matches only on `a.target_unit_id = cand.unit_id`. But
+- ~~**A shadow organization is reachable by nobody but an instance admin.**~~ **CLOSED (M58 ticket 4
+  follow-up): organization reach is now DERIVED from unit reach.** The seam was that
   `authz_role_assignments.target_unit_id` is `NOT NULL REFERENCES tenant_units`, so an organization
-  RID matches nothing and the reach set is **empty by construction**. Shadow-org visibility is
-  therefore an admin-only bit in practice, whatever the visibility model reads like.
-  The facet ticket **models this honestly rather than fixing it**: the scoped arm is
-  `visibility = 'public'`, which is exactly what the list leaves, so the differential holds. Fixing
-  it is an authorization-plane read-surface change and needs its own argument — three shapes are
-  available, none argued: a nullable `target_org_id` on the assignment; an org-level `scope`; or
-  deriving org reach from unit reach (an org is reachable if any of its units is), which is the
-  cheapest and also the one that quietly changes what `shadow` means. Pinned by
-  `TestOrganizationShadowIsUnreachableForEveryNonAdmin`, which goes **red** on the day it is fixed —
-  and that is the signal to change the arm, not to relax the test.
+  RID could never appear in a grant and the org reach set was **empty by construction** — making
+  shadow-org visibility an admin-only bit by accident of the assignment table's shape rather than by
+  anyone's decision. Of the three shapes on the table, **deriving reach from unit reach** was chosen:
+  an organization is visible when any of its live units is in the subject's reach
+  (`ReadableOrgsForSubjectAmong`, `application.FilterVisibleOrgs`, and the same predicate folded into
+  `OrganizationStatsForSubject`).
+  It **leaks nothing new**, which is what made it the cheap answer: `listUnits` takes the org RID as a
+  REQUIRED argument and gates the *units*, not the organization, so a subject with reach inside an
+  org could already enumerate its units and was already holding its RID — the organization simply did
+  not say so. It is also **precise**: reaching one shadow org does not reveal another (verified live —
+  a subject with reach into `privatbank` sees it and still 404s on `upc-parish`).
+  The alternatives are recorded as rejected rather than dropped: a nullable `target_org_id` and an
+  org-level `scope` both add a new grant primitive to the PDP for a visibility question that unit
+  reach already answers.
+  `TestOrganizationShadowIsUnreachableForEveryNonAdmin` did what it was written to do — it went red on
+  the day this changed, carrying the message that said so — and is replaced by
+  `TestOrganizationReachIsDerivedFromUnitReach`, which asserts **both** directions from one setup
+  (either alone is satisfiable by a bug: "sees it with reach" passes if the gate stopped gating,
+  "does not see it without" passes if reach went back to empty).
 - **A table's shape is no longer its `CREATE TABLE`.** The migration consolidation (46 files → 15)
   means a column may be created near the top of a file and altered or dropped 600 lines below it, in
   that same file. The M58 ticket-2 survey read `vehicle_vehicles`' `CREATE TABLE`, recorded a defect

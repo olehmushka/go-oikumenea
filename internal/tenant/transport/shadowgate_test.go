@@ -25,25 +25,31 @@ import (
 // have stayed green through exactly this regression.
 //
 // The check is deliberately structural rather than behavioural: it asks whether the handler routes
-// its result through `gateUnits`, the ONE helper that owns the rule, and not whether it produces a
-// particular answer today. That matters because organization reachability is currently empty by
-// construction (docs/architecture/facets.md open seams) — a behavioural assertion written against
-// today's answers would have to be rewritten the moment that is fixed, which is precisely when a
-// guard is least likely to be re-derived correctly.
-var shadowGatedHandlers = []string{
+// its result through the ONE helper that owns its object's rule, not whether it produces a particular
+// answer today. That choice paid immediately — organization reach changed from "empty by
+// construction" to "derived from unit reach" one commit later, and every assertion here survived
+// unchanged, where anything written against the old answers would have needed rewriting at precisely
+// the moment a guard is least likely to be re-derived correctly.
+//
+// The helper differs by object because the QUESTION differs: a shadow unit is visible when the
+// subject reaches that unit, a shadow organization when the subject reaches any of its live units.
+var shadowGatedHandlers = map[string]string{
 	// Units: the flat list and both closure walks. `GetUnit` is absent on purpose — it gates through
 	// the SCOPED pep.Require(unit.read, unitID), which resolves reach for that one unit and is a
-	// stronger check than the post-hoc trim. Organizations have no such scoped form (the PDP scopes
-	// on units), which is why theirs must go through gateUnits.
-	"ListUnits",
-	"UnitAncestors",
-	"UnitDescendants",
-	// Organizations: the list, and the point read this guard exists for.
-	"ListOrganizations",
-	"GetOrganization",
+	// stronger check than a post-hoc trim. Organizations have no scoped form (the PDP scopes on
+	// units), which is why theirs must go through a gate helper.
+	"ListUnits":       "gateUnits",
+	"UnitAncestors":   "gateUnits",
+	"UnitDescendants": "gateUnits",
+	// Organizations: the list, and the point read this guard was written for. They must call
+	// gateOrgs, NOT gateUnits — the org list called gateUnits for the whole of M40..M58 ticket 4,
+	// which type-checked and asked the reach probe whether an ORGANIZATION rid was among the
+	// subject's readable UNITS, a question whose answer is always no.
+	"ListOrganizations": "gateOrgs",
+	"GetOrganization":   "gateOrgs",
 }
 
-func TestShadowGatedHandlersCallGateUnits(t *testing.T) {
+func TestShadowGatedHandlersCallTheirGateHelper(t *testing.T) {
 	fset := token.NewFileSet()
 	pkg, err := parser.ParseDir(fset, ".", nil, 0)
 	if err != nil {
@@ -75,30 +81,44 @@ func TestShadowGatedHandlersCallGateUnits(t *testing.T) {
 	if len(bodies) < 20 {
 		t.Fatalf("parsed only %d methods — the parse is broken, so every check below is vacuous", len(bodies))
 	}
-	for _, name := range shadowGatedHandlers {
+	for name, helper := range shadowGatedHandlers {
 		body, ok := bodies[name]
 		if !ok {
 			t.Errorf("%s is not a method on this package's Service — renamed or removed? A shadow-gated "+
 				"handler that disappears from the source must fail here rather than silently leave the list", name)
 			continue
 		}
-		if !strings.Contains(body, "gateUnits ") {
-			t.Errorf("%s does not route its result through gateUnits — a shadow-bearing object would be "+
-				"returned to a caller who cannot reach it. This is the getOrganization leak (M58 ticket 4): "+
-				"the list trimmed shadow rows and the point read did not, while the contract claimed both did.", name)
+		if !strings.Contains(body, helper+" ") {
+			t.Errorf("%s does not route its result through %s — a shadow-bearing object would be returned "+
+				"to a caller who cannot reach it. This is the getOrganization leak (M58 ticket 4): the list "+
+				"trimmed shadow rows and the point read did not, while the contract claimed both did.", name, helper)
+		}
+	}
+	// An organization handler calling gateUnits is the ORIGINAL bug, not merely the wrong helper: it
+	// type-checks and asks the unit reach probe about an organization RID, which is always no. Name it
+	// separately so the failure says what actually went wrong.
+	for name, helper := range shadowGatedHandlers {
+		if helper != "gateOrgs" {
+			continue
+		}
+		if strings.Contains(bodies[name], "gateUnits ") {
+			t.Errorf("%s calls gateUnits on organizations — that probe asks whether an ORGANIZATION rid is "+
+				"among the subject's readable UNITS, and the answer is always no. Organization reach is "+
+				"DERIVED from unit reach; use gateOrgs.", name)
 		}
 	}
 }
 
-// TestGateUnitsIsTheOnlyShadowRule keeps the guard above meaningful. It is a presence check on ONE
-// helper name, so it is only worth anything while that helper really is the single implementation of
-// the rule — a second, inlined `Visibility == VisibilityShadow` comparison in a handler would satisfy
+// TestGateHelpersOwnTheShadowRule keeps the guard above meaningful. It is a presence check on helper
+// NAMES, so it is only worth anything while those helpers really are the single implementation of the
+// rule — a second, inlined `Visibility == VisibilityShadow` comparison in a handler would satisfy
 // nothing here and drift on its own.
 //
-// gateUnits itself is exempt (it IS the rule), and so are the pure wire<->domain enum converters,
+// The gate helpers themselves are exempt (they ARE the rule), and so are the pure wire<->domain enum
+// converters,
 // which TRANSLATE the value rather than deciding anything with it — `toAPIVisibility` turning
 // `VisibilityShadow` into its Conjure spelling is not a visibility decision and never could be.
-func TestGateUnitsIsTheOnlyShadowRule(t *testing.T) {
+func TestGateHelpersOwnTheShadowRule(t *testing.T) {
 	// Named rather than pattern-matched: a converter is exempt because someone checked what it does,
 	// and a new one has to be checked too rather than inheriting the exemption from its name.
 	converters := map[string]bool{"toAPIVisibility": true, "fromAPIVisibility": true}
@@ -116,7 +136,7 @@ func TestGateUnitsIsTheOnlyShadowRule(t *testing.T) {
 			}
 			for _, decl := range f.Decls {
 				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Body == nil || fn.Name.Name == "gateUnits" || converters[fn.Name.Name] {
+				if !ok || fn.Body == nil || fn.Name.Name == "gateUnits" || fn.Name.Name == "gateOrgs" || converters[fn.Name.Name] {
 					continue
 				}
 				ast.Inspect(fn.Body, func(n ast.Node) bool {
@@ -132,21 +152,13 @@ func TestGateUnitsIsTheOnlyShadowRule(t *testing.T) {
 			}
 		}
 	}
-	// Every legitimate mention is a `shadow func(T) bool` closure handed to gateUnits, so each
-	// offender must also call gateUnits. Anything naming VisibilityShadow WITHOUT calling it has
-	// written its own rule.
+	// Outside the two helpers the only legitimate mention is a `shadow func(T) bool` closure handed to
+	// gateUnits. Anything else naming VisibilityShadow has written its own copy of the rule.
 	for _, fnName := range offenders {
 		if fnName == "" {
 			continue
 		}
-		found := false
-		for _, h := range shadowGatedHandlers {
-			if h == fnName {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if _, found := shadowGatedHandlers[fnName]; !found {
 			t.Errorf("%s compares against VisibilityShadow but is not a registered shadow-gated handler — "+
 				"either it inlined the rule (add it to gateUnits instead) or the list above is stale", fnName)
 		}

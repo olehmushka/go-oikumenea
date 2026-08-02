@@ -2195,6 +2195,32 @@ point-probe reach predicate; no schema change). `pep.Enforcer` gains the non-err
 `AllowedAnywhere` probe. New object types that want cross-type exposure declare their scope shape
 at design time (alongside their Object/Link/Action kind, D-Ontology).
 
+**Amendment (M58 ticket 4 follow-up) — organization reach is DERIVED from unit reach.** The
+unit-scope shape above was, in practice, applied to **organizations** as well: tenant's org list
+called `FilterVisibleUnits` on organization RIDs. That type-checks and reads plausibly, and it asks
+the unit reach probe whether an ORGANIZATION rid is among the subject's readable **units** — a
+question whose answer is always no, because `authz_role_assignments.target_unit_id` is
+`NOT NULL REFERENCES tenant_units` and an organization can never be a grant target. The consequence
+was not a policy anyone chose: a shadow organization was visible to an instance admin and to nobody
+else, by accident of the assignment table's shape.
+
+Organizations therefore get their **own** gate — `FilterVisibleOrgs` / `ReadableOrgsForSubjectAmong`,
+with the same predicate folded into the org dashboard's scoped arm — under this rule: **an
+organization is visible when any of its live units is in the subject's reach.** Derived, not granted.
+
+*Why derivation rather than a new grant primitive.* The two alternatives — a nullable
+`target_org_id` on the assignment, or an org-level `scope` value — both add a primitive to the PDP
+for a question unit reach already answers. Derivation also **discloses nothing new**: `listUnits`
+takes the org RID as a REQUIRED argument and gates the units rather than the organization, so a
+subject with reach inside an org could already enumerate its units and was already holding its RID.
+And it is precise — reaching one shadow org does not reveal another.
+
+*Consequence.* `gateOrgs` is a sibling of `gateUnits` rather than a call into it, and deliberately
+so: the two ask different questions, and a shared entry point taking a mode is exactly what let an
+organization RID be passed to the unit probe unnoticed. `internal/tenant/transport/shadowgate_test.go`
+pins which helper each shadow-bearing handler uses, and names an org handler calling `gateUnits` as
+the original bug rather than a style slip.
+
 ---
 
 ### D-UnifiedSearch — One cross-type SearchService as a fan-in over the per-module trigram queries

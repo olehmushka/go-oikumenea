@@ -222,19 +222,22 @@ not audited — D-ClosureDriftHealth)
 | `GET /organizations/{orgId}` | Read one organization. A `shadow` organization the caller cannot reach is `Tenant:OrganizationNotFound` — the **same** error an unknown RID gets, because `shadow` hides existence and a permission error would confirm the organization is real. **This gate did not exist before M58 ticket 4** although the contract claimed it: the list trimmed shadow orgs while the point read handed them over | `organization.read` + shadow gate |
 | `GET /stats/organizations` | Facet distributions over the **same** filter args + an optional `facets` CSV. The shadow gate is folded **into the SQL**, as for units. No `org` arg: the organization registry is the instance's whole realm catalog, not one org's tree. Path is `/stats/organizations`, not `/organizations/stats` (router) | `organization.read` + shadow gate |
 
-> **The organization shadow gate is `visibility = 'public'`, and NOT unit's reach predicate**
-> (M58 ticket 4). `listOrganizations` is gated by `gateUnits` — the *unit* gate, applied to
-> organization rows. On a unit that gate is real; on an organization it is not.
-> `ReadableUnitsForSubjectAmong` matches only on `a.target_unit_id = cand.unit_id`, and
-> `authz_role_assignments.target_unit_id` is `NOT NULL REFERENCES tenant_units` — so an organization
-> RID can never appear in it and the reach set is **empty by construction**. A shadow organization is
-> visible to an instance admin and to nobody else.
+> **Organization reach is DERIVED from unit reach** (M58 ticket 4 follow-up; D-VisibilityScope
+> amendment). A shadow organization is visible when **any of its live units** is in the subject's
+> reach — organizations cannot be granted directly, because `authz_role_assignments.target_unit_id`
+> is `NOT NULL REFERENCES tenant_units`.
 >
-> The dashboard's scoped arm therefore says exactly that, rather than copying unit's
-> `public OR in-reach`, which would count identical rows today and diverge silently the day org
-> reachability is fixed. That underlying gap is an authorization-plane read-surface question recorded
-> as an [open seam](../architecture/facets.md#open-seams) and pinned by
-> `TestOrganizationShadowIsUnreachableForEveryNonAdmin`, which goes red when it is closed.
+> Until that amendment the org list called **`gateUnits`**, the *unit* gate, on organization rows. It
+> type-checks and reads plausibly, and it asks the unit reach probe whether an ORGANIZATION rid is
+> among the subject's readable **units** — always no. So a shadow org was instance-admin-only by
+> accident of the assignment table's shape, not by decision. Organizations now have their own
+> `gateOrgs` / `FilterVisibleOrgs`, a **sibling** of the unit gate rather than a call into it,
+> precisely because the two ask different questions and a shared entry point is what hid the
+> mismatch. The dashboard's scoped arm folds the same derivation into SQL.
+>
+> It discloses nothing new — `listUnits` takes the org RID as a REQUIRED arg and gates the units, so
+> a subject with reach inside an org could already enumerate them — and it is precise: reaching one
+> shadow org does not reveal another.
 | `POST /units/{id}/edges` | Add a parent in a graph (body: `parentId`, `graph`) | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |
 | `DELETE /units/{id}/edges?graph={g}&parentId={p}` | Detach from a parent in a graph | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |
 | `GET /units/{id}/ancestors?graph={g}` | Ancestors in graph `g` (closure; default `command`) | `unit.read` + shadow gate |

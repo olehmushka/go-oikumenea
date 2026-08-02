@@ -308,14 +308,14 @@ func levelBands() []Band {
 // organization RID matches neither arm of that probe. The reach set for an org is ALWAYS EMPTY, and a
 // shadow organization is visible to an instance admin and to nobody else.
 //
-// So the scoped aggregate arm is `AND visibility = 'public'`, NOT unit's
-// `visibility='public' OR id IN (SELECT authz_readable_units(@subject))`. Copying unit's predicate
-// would compile, pass every guard, and count exactly the same rows — until org reachability is ever
-// fixed, at which point the LIST would still show zero shadow orgs while the CHART showed some, and
-// the differential would break in the direction nobody looks. The honest arm matches gateUnits'
-// actual behaviour, which is what the differential contract asks for. The underlying gap is recorded
-// as an open seam in docs/architecture/facets.md and deliberately NOT fixed here: it is an
-// authorization-plane read-surface question, not a facet one.
+// That gap is now CLOSED (M58 ticket 4 follow-up, D-VisibilityScope amendment): organization reach is
+// DERIVED from unit reach — an organization is visible when any of its live units is in the subject's
+// reach — so the scoped arm is `visibility = 'public' OR id IN (<orgs of reachable units>)` and the
+// list gates through `gateOrgs` rather than `gateUnits`.
+//
+// The shape of the arm is still NOT unit's `id IN (authz_readable_units(...))`, and that is the part
+// worth remembering: a unit IS a grant target, an organization is not, so the same predicate copied
+// across matches nothing. It has to join through tenant_units to mean anything.
 //
 // tenant_organizations.search_text exists (pii:basic) and listOrganizations ships no `query` arg.
 // Out of scope: adding one is a search decision, not a facet decision.

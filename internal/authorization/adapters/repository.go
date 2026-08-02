@@ -276,6 +276,18 @@ func (r *Repository) ReadableUnitsForSubjectAmong(ctx context.Context, subjectPe
 	})
 }
 
+// ReadableOrgsForSubjectAmong is the batch reach probe behind the ORGANIZATION shadow gate: an
+// organization is reachable when any of its live units is (D-VisibilityScope as amended after M58
+// ticket 4 — an organization RID can never appear in a grant, so its reach is derived).
+func (r *Repository) ReadableOrgsForSubjectAmong(ctx context.Context, subjectPersonID string, orgIDs []string) ([]string, error) {
+	if len(orgIDs) == 0 {
+		return nil, nil
+	}
+	return r.q.ReadableOrgsForSubjectAmong(ctx, authzsql.ReadableOrgsForSubjectAmongParams{
+		OrgIds: orgIDs, SubjectPersonID: subjectPersonID,
+	})
+}
+
 // HasActiveInstanceAdmin reports whether ANY active instance admin exists — the idempotency gate for
 // the first-admin bootstrap (D-Bootstrap).
 func (r *Repository) HasActiveInstanceAdmin(ctx context.Context) (bool, error) {

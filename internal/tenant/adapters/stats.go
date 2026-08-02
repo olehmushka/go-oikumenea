@@ -100,21 +100,21 @@ func unitStatsWants(sel stats.Selection) unitStatsWantFlags {
 // under the same filters.
 //
 // subjectPersonID empty means the INSTANCE-ADMIN arm. Otherwise the shadow gate is folded into the
-// candidate CTE — and for an organization that gate is a flat `visibility = 'public'` rather than
-// unit's reach predicate, because a role assignment's target_unit_id FKs tenant_units and can never
-// name an organization. The scoped query therefore takes no subject parameter at all; the argument is
-// spelled out in full on OrganizationStatsForSubject in tenant.sql.
+// candidate CTE — and for an organization the reach is DERIVED rather than assigned: an org is
+// visible when any of its live units is in the subject's reach, because an organization RID can never
+// be a grant target. The argument is spelled out in full on OrganizationStatsForSubject in tenant.sql.
 func (r *Repository) OrganizationStats(ctx context.Context, subjectPersonID string, f domain.OrgFilter, sel stats.Selection) ([]stats.Group, error) {
 	w := orgStatsWants(sel)
 	if subjectPersonID != "" {
 		rows, err := r.q.OrganizationStatsForSubject(ctx, tenantsql.OrganizationStatsForSubjectParams{
-			DomainID:       textPtr(f.DomainID),
-			Visibility:     textPtr(f.Visibility),
-			State:          textPtr(f.State),
-			TopN:           int32(sel.TopN()),
-			WantDomain:     w.domain,
-			WantVisibility: w.visibility,
-			WantState:      w.state,
+			SubjectPersonID: subjectPersonID,
+			DomainID:        textPtr(f.DomainID),
+			Visibility:      textPtr(f.Visibility),
+			State:           textPtr(f.State),
+			TopN:            int32(sel.TopN()),
+			WantDomain:      w.domain,
+			WantVisibility:  w.visibility,
+			WantState:       w.state,
 		})
 		if err != nil {
 			return nil, err

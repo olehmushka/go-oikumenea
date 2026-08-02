@@ -204,6 +204,32 @@ WHERE EXISTS (
                          AND c.descendant_id = cand.unit_id))))
 );
 
+-- name: ReadableOrgsForSubjectAmong :many
+-- Batch reach probe for the ORGANIZATION shadow gate (FilterVisibleOrgs). An organization is
+-- reachable when ANY of its live units is — D-VisibilityScope as amended after M58 ticket 4.
+--
+-- Why derived rather than granted: `authz_role_assignments.target_unit_id` is NOT NULL and REFERENCES
+-- tenant_units, so an organization RID can never appear in a grant. Before this query the org reach
+-- set was empty BY CONSTRUCTION and a shadow organization was visible to an instance admin and to
+-- nobody else — not a policy anyone chose, just the shape of the assignment table showing through.
+--
+-- It leaks nothing new. `listUnits` takes the org RID as a REQUIRED argument and gates the units, not
+-- the organization, so a subject with reach into an org's units can already enumerate them and is
+-- already holding that org's RID. What changes is that the organization now says so.
+--
+-- The reach set itself is authz_readable_units, the same STABLE set function the unit dashboards
+-- probe — so this stays ONE definition of reach, read through one more join, rather than a second
+-- reach semantic that would have to be kept in step.
+SELECT cand.org_id::uuid AS org_id
+FROM unnest(@org_ids::uuid[]) AS cand(org_id)
+WHERE EXISTS (
+  SELECT 1
+  FROM oikumenea.tenant_units u
+  WHERE u.org_id = cand.org_id
+    AND u.deleted_at IS NULL
+    AND u.id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))
+);
+
 -- ============================ principal grants (M51) ============================
 -- The machine-subject authority plane (D-ServiceIdentities). A grant is FLAT — no target unit, no
 -- scope, no graph — because a service principal has no unit reach by construction. org_id NULL means

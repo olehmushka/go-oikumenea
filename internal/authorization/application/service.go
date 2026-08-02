@@ -291,6 +291,57 @@ func (s *Service) FilterVisibleUnits(ctx context.Context, subjectPersonID string
 	return out, nil
 }
 
+// FilterVisibleOrgs applies the shadow-visibility gate to ORGANIZATIONS: from candidates, drop shadow
+// organizations the subject does not reach. Same shape as FilterVisibleUnits — one batch probe over
+// only the shadow candidates, public ones never touching the database, input order preserved — but a
+// different question, because organization reach is DERIVED: an organization is reachable when any of
+// its live units is (D-VisibilityScope as amended after M58 ticket 4).
+//
+// The derivation is deliberate rather than a workaround. `authz_role_assignments.target_unit_id` is
+// NOT NULL and REFERENCES tenant_units, so an organization RID can never be granted; before this the
+// org reach set was empty BY CONSTRUCTION and every shadow organization was visible to an instance
+// admin and to nobody else. It leaks nothing new: `listUnits` takes the org RID as a REQUIRED arg and
+// gates the units rather than the organization, so a subject with reach inside an org can already
+// enumerate its units and is already holding its RID. What changed is that the organization says so.
+func (s *Service) FilterVisibleOrgs(ctx context.Context, subjectPersonID string, candidates []string, shadow map[string]bool) ([]string, error) {
+	shadowCandidates := make([]string, 0, len(candidates))
+	for _, o := range candidates {
+		if shadow[o] {
+			shadowCandidates = append(shadowCandidates, o)
+		}
+	}
+	reachable := map[string]struct{}{}
+	if len(shadowCandidates) > 0 {
+		isAdmin, _, err := s.authorityFor(ctx, subjectPersonID)
+		if err != nil {
+			return nil, err
+		}
+		if isAdmin {
+			for _, o := range shadowCandidates {
+				reachable[o] = struct{}{}
+			}
+		} else {
+			ids, err := s.newRepo(s.pool).ReadableOrgsForSubjectAmong(ctx, subjectPersonID, shadowCandidates)
+			if err != nil {
+				return nil, err
+			}
+			for _, o := range ids {
+				reachable[o] = struct{}{}
+			}
+		}
+	}
+	out := make([]string, 0, len(candidates))
+	for _, o := range candidates {
+		if shadow[o] {
+			if _, ok := reachable[o]; !ok {
+				continue
+			}
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
 // ============================ roles ============================
 
 // CreateRole validates and creates a custom role (is_base=false), persists its permission membership,

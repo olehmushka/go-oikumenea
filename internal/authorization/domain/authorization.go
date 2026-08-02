@@ -217,6 +217,11 @@ type Repository interface {
 	// reach covers, as one batch SQL probe mirroring ReachSet's semantics (shadow gate;
 	// review-2026-07 R-02.1). Order is not preserved.
 	ReadableUnitsForSubjectAmong(ctx context.Context, subjectPersonID string, unitIDs []string) ([]string, error)
+	// ReadableOrgsForSubjectAmong returns which of the candidate organizations the subject reaches.
+	// An organization is reachable when ANY of its live units is — organizations cannot be granted
+	// directly (target_unit_id FKs tenant_units), so their reach is DERIVED rather than assigned.
+	// Order is not preserved.
+	ReadableOrgsForSubjectAmong(ctx context.Context, subjectPersonID string, orgIDs []string) ([]string, error)
 
 	// instance admins
 	InsertInstanceAdmin(ctx context.Context, personID, grantedBy string) (InstanceAdmin, error)

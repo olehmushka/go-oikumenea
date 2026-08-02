@@ -129,12 +129,14 @@ type LanguoidStatsRow struct {
 // filter value, and the distribution PARTITIONS. Unnesting would double-count and would need the
 // NonPartitioning exemption, which this facet could not legally take anyway — the kernel refuses it
 // when the facet's table IS the listed table, because a row has one value in its own column.
-// family_code is char(8) and therefore SPACE-PADDED on read. The rtrim is not cosmetic: an untrimmed
-// key would not round-trip as a filter value, so the bucket would count rows its own click-through
-// could not return. (The ::text cast alone also strips, per the character-type conversion rule; the
-// rtrim says so out loud rather than depending on it.) 479 distinct families in the shipped catalog,
-// so the tail MUST be collapsed here — the kernel's topNBuckets orders and appends the synthetic
-// buckets but never truncates.
+// family_code is char(8), which pads on read, so the key is rtrim()ed — belt-and-braces rather than a
+// fix. Measured against the shipped catalog: every glottocode is exactly 8 characters, and the ::text
+// cast strips trailing blanks on its own. The rtrim states the intent where that conversion rule
+// would otherwise be load-bearing and invisible.
+//
+// 479 distinct families, so the tail MUST be collapsed HERE: the kernel's topNBuckets orders and
+// appends the synthetic buckets but never truncates, so a facet declaring TopN 15 whose SQL emitted
+// every group would render 479 bars.
 func (q *Queries) LanguoidStats(ctx context.Context, arg LanguoidStatsParams) ([]LanguoidStatsRow, error) {
 	rows, err := q.db.Query(ctx, languoidStats,
 		arg.Level,
@@ -235,12 +237,14 @@ type LanguoidStatsSearchRow struct {
 // filter value, and the distribution PARTITIONS. Unnesting would double-count and would need the
 // NonPartitioning exemption, which this facet could not legally take anyway — the kernel refuses it
 // when the facet's table IS the listed table, because a row has one value in its own column.
-// family_code is char(8) and therefore SPACE-PADDED on read. The rtrim is not cosmetic: an untrimmed
-// key would not round-trip as a filter value, so the bucket would count rows its own click-through
-// could not return. (The ::text cast alone also strips, per the character-type conversion rule; the
-// rtrim says so out loud rather than depending on it.) 479 distinct families in the shipped catalog,
-// so the tail MUST be collapsed here — the kernel's topNBuckets orders and appends the synthetic
-// buckets but never truncates.
+// family_code is char(8), which pads on read, so the key is rtrim()ed — belt-and-braces rather than a
+// fix. Measured against the shipped catalog: every glottocode is exactly 8 characters, and the ::text
+// cast strips trailing blanks on its own. The rtrim states the intent where that conversion rule
+// would otherwise be load-bearing and invisible.
+//
+// 479 distinct families, so the tail MUST be collapsed HERE: the kernel's topNBuckets orders and
+// appends the synthetic buckets but never truncates, so a facet declaring TopN 15 whose SQL emitted
+// every group would render 479 bars.
 func (q *Queries) LanguoidStatsSearch(ctx context.Context, arg LanguoidStatsSearchParams) ([]LanguoidStatsSearchRow, error) {
 	rows, err := q.db.Query(ctx, languoidStatsSearch,
 		arg.Level,
