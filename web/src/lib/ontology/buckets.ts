@@ -48,7 +48,12 @@ export function bucketPatch(
       return { [f.params[0]]: bucketKey };
     case "date-range":
       if (f.buckets === "bands") return ageBandPatch(f, bucketKey, now);
-      return /^\d{4}-\d{2}-\d{2}$/.test(bucketKey) ? dayPatch(f, bucketKey) : monthPatch(f, bucketKey);
+      // Grain is read off the KEY's shape, not off a declaration: `2026-07-30` is a day, `2026-07` a
+      // month, `1913` a year. Three grains now — year arrived with company/institution `foundedOn`
+      // (M58 ticket 5), whose data spans a century and would otherwise be ~1500 mostly-empty months.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(bucketKey)) return dayPatch(f, bucketKey);
+      if (/^\d{4}-\d{2}$/.test(bucketKey)) return monthPatch(f, bucketKey);
+      return yearPatch(f, bucketKey);
     case "numeric-range":
       return numericBandPatch(f, bucketKey);
     default:
@@ -103,6 +108,24 @@ function monthPatch(f: FilterDef, key: string): FilterPatch | null {
   return f.argType === "datetime"
     ? { [f.params[0]]: dayBound(isoDate(first), false), [f.params[1]]: dayBound(isoDate(last), true) }
     : { [f.params[0]]: isoDate(first), [f.params[1]]: isoDate(last) };
+}
+
+/**
+ * `1913` → the first and last day of that year, in the facet's own two args (M58 ticket 5).
+ *
+ * The same shape monthPatch has, including the datetime widening — not because a year-grain DATETIME
+ * facet exists today (both are calendar dates), but because the month branch's absence of it is
+ * exactly the bug ticket 2 found: every month segment of external_organization.asOf linked to a 400
+ * for the whole of its existence, because monthPatch had never met a datetime facet. Writing the
+ * branch once, here, is cheaper than discovering it again from a dead link.
+ */
+function yearPatch(f: FilterDef, key: string): FilterPatch | null {
+  if (!/^\d{4}$/.test(key) || f.params.length < 2) return null;
+  const first = `${key}-01-01`;
+  const last = `${key}-12-31`;
+  return f.argType === "datetime"
+    ? { [f.params[0]]: dayBound(first, false), [f.params[1]]: dayBound(last, true) }
+    : { [f.params[0]]: first, [f.params[1]]: last };
 }
 
 /** `2026-07-30` → that day's bounds, in whichever form the facet's args take. */

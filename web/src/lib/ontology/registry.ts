@@ -110,7 +110,12 @@ export type RefControl =
   | "model"
   | "color"
   | "accountType"
-  | "cardNetwork";
+  | "cardNetwork"
+  // M58 ticket 5. Companies and institutions themselves reuse nothing here — they ARE organizations
+  // (M41), so `org` already names them; what these three add are their CATALOGS.
+  | "legalForm"
+  | "industryClass"
+  | "institutionKind";
 
 /**
  * One filterable dimension of an object type — the console half of a `pkg/facet` Facet.
@@ -1414,7 +1419,12 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     labelPlural: "Institutions",
     module: "education",
     blurb: "External reference education institution (where people studied/taught) + its structure tree.",
-    list: { path: "/education/v1/institutions", search: "?pageSize=50", parse: pageParse("institutions") },
+    list: {
+      path: "/education/v1/institutions",
+      search: "?pageSize=50",
+      searchParam: "query",
+      parse: pageParse("institutions"),
+    },
     get: (id) => `/education/v1/institutions/${id}`,
     title: (i) => loc(i.name) || s(i.code) || ridTail(i.id),
     subtitle: (i) => s(i.code),
@@ -1423,6 +1433,38 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { key: "name", header: "Name", value: (i) => loc(i.name) },
       { key: "state", header: "State", value: (i) => s(i.state), render: "pill", tone: (i) => statusTone(i.state) },
     ],
+    filters: [
+      { key: "kindId", kind: "ref", label: "Kind", params: ["kindId"], control: "institutionKind" },
+      { key: "countryId", kind: "ref", label: "Country", params: ["countryId"], control: "country",
+        hint: "Nullable: setting it excludes international / online-only institutions." },
+      {
+        // A calendar DATE (founded_on is a `date` column), so NO argType — the year bucket inverse
+        // sends bare YYYY-MM-DD bounds.
+        key: "foundedOn", kind: "date-range", label: "Founded", params: ["foundedOnFrom", "foundedOnTo"],
+        buckets: "dateTrunc",
+        hint: "Inclusive bounds; either one excludes institutions with no recorded founding date.",
+      },
+      {
+        key: "state", kind: "enum", label: "State", params: ["state"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "closed", label: "Closed" },
+          { value: "merged", label: "Merged" },
+        ],
+      },
+    ],
+    dashboard: {
+      path: "/education/v1/stats/institutions",
+      charts: [
+        { key: "state", title: "Lifecycle", form: "tiles", facet: "state", tone: { active: "green", closed: "slate", merged: "amber" } },
+        { key: "kindId", title: "Kind mix", form: "bar", facet: "kindId", orientation: "horizontal" },
+        { key: "countryId", title: "By country", form: "bar", facet: "countryId", orientation: "horizontal" },
+        {
+          key: "foundedOn", title: "Foundings by year", form: "histogram", facet: "foundedOn", pastDue: false,
+          note: "By year of founding — universities span centuries, so the axis is years, not months. The (unknown) bucket is institutions with no recorded date.",
+        },
+      ],
+    },
     properties: [
       { label: "Name", value: (i) => loc(i.name) },
       { label: "Code", value: (i) => s(i.code), render: "mono" },
@@ -2312,6 +2354,97 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Status", value: (c) => s(c.status), render: "pill", tone: (c) => (s(c.status) === "active" ? "green" : s(c.status) === "blocked" ? "red" : "amber") },
     ],
   },
+
+  // Company (M21 / D-Companies; browsable M58 ticket 5). A company IS a `company`-domain tenant
+  // ORGANIZATION plus a company_org_profiles sidecar (M41 / D-UnifiedOrgGraph) — which is why its
+  // rows carry an `organization` RID and why /o/<rid> renders the organization view rather than this
+  // one. The registry entry is what makes the REGISTRY browsable; the object view is the org's.
+  company: {
+    type: "company",
+    kind: "object",
+    label: "Company",
+    labelPlural: "Companies",
+    module: "company",
+    blurb:
+      "A legal entity at registry grade (D-Companies) — legal form and ownership category as two " +
+      "independent axes, with registrations, industries and the ownership graph hanging off it.",
+    list: {
+      path: "/company/v1/companies",
+      search: "?pageSize=50",
+      searchParam: "query",
+      parse: pageParse("companies"),
+    },
+    get: (id) => `/company/v1/companies/${id}`,
+    title: (c) => loc(c.legalName) || s(c.shortName) || s(c.code) || ridTail(c.id),
+    subtitle: (c) => s(c.shortName) || s(c.code),
+    columns: [
+      { key: "code", header: "Code", value: (c) => s(c.code), render: "mono" },
+      { key: "legalName", header: "Legal name", value: (c) => loc(c.legalName) },
+      { key: "shortName", header: "Trading name", value: (c) => s(c.shortName) },
+      { key: "ownershipCategory", header: "Ownership", value: (c) => s(c.ownershipCategory), render: "pill", tone: () => "slate" },
+      { key: "foundedOn", header: "Founded", value: (c) => s(c.foundedOn) },
+      { key: "state", header: "State", value: (c) => s(c.state), render: "pill", tone: (c) => statusTone(c.state) },
+    ],
+    filters: [
+      { key: "legalForm", kind: "ref", label: "Legal form", params: ["legalForm"], control: "legalForm" },
+      {
+        key: "ownershipCategory", kind: "enum", label: "Ownership", params: ["ownershipCategory"],
+        values: [
+          { value: "private", label: "Private" },
+          { value: "public", label: "Public" },
+          { value: "state_owned", label: "State-owned" },
+          { value: "municipal", label: "Municipal" },
+          { value: "foreign", label: "Foreign" },
+          { value: "mixed", label: "Mixed" },
+        ],
+      },
+      { key: "countryId", kind: "ref", label: "Country", params: ["countryId"], control: "country",
+        hint: "Nullable: setting it excludes multinationals with no recorded country." },
+      { key: "industryClass", kind: "ref", label: "Industry", params: ["industryClass"], control: "industryClass",
+        hint: "The company's PRIMARY classification — its line of business, not every industry it touches." },
+      {
+        // A calendar DATE (founded_on is a `date` column), so NO argType — the year bucket inverse
+        // sends bare YYYY-MM-DD bounds.
+        key: "foundedOn", kind: "date-range", label: "Founded", params: ["foundedOnFrom", "foundedOnTo"],
+        buckets: "dateTrunc",
+        hint: "Inclusive bounds; either one excludes companies with no recorded founding date.",
+      },
+      {
+        key: "state", kind: "enum", label: "State", params: ["state"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "dissolved", label: "Dissolved" },
+          { value: "merged", label: "Merged" },
+        ],
+      },
+    ],
+    dashboard: {
+      path: "/company/v1/stats/companies",
+      charts: [
+        { key: "state", title: "Lifecycle", form: "tiles", facet: "state", tone: { active: "green", dissolved: "red", merged: "amber" } },
+        { key: "legalForm", title: "Legal forms", form: "bar", facet: "legalForm", orientation: "horizontal" },
+        { key: "ownershipCategory", title: "Ownership", form: "donut", facet: "ownershipCategory" },
+        { key: "industryClass", title: "Industries", form: "bar", facet: "industryClass", orientation: "horizontal",
+          note: "By PRIMARY classification, so each company is counted once." },
+        { key: "countryId", title: "By country", form: "bar", facet: "countryId", orientation: "horizontal" },
+        {
+          key: "foundedOn", title: "Foundings by year", form: "histogram", facet: "foundedOn", pastDue: false,
+          note: "By year of founding — the span is decades, so the axis is years, not months. The (unknown) bucket is companies with no recorded date.",
+        },
+      ],
+    },
+    properties: [
+      { label: "Legal name", value: (c) => loc(c.legalName) },
+      { label: "Trading name", value: (c) => s(c.shortName) },
+      { label: "Code", value: (c) => s(c.code), render: "mono" },
+      { label: "Legal form", value: (c) => (c.legalFormId ? ridTail(s(c.legalFormId)!) : undefined), render: "mono" },
+      { label: "Ownership", value: (c) => s(c.ownershipCategory), render: "pill" },
+      { label: "Country", value: (c) => (c.countryId ? ridTail(s(c.countryId)!) : undefined), render: "mono" },
+      { label: "Founded", value: (c) => s(c.foundedOn) },
+      { label: "Dissolved", value: (c) => s(c.dissolvedOn) },
+      { label: "State", value: (c) => s(c.state), render: "pill", tone: (c) => statusTone(c.state) },
+    ],
+  },
 };
 
 /**
@@ -2336,6 +2469,7 @@ const READ_CODE_BY_MODULE: Record<string, string> = {
   religion: "religion.read",
   vehicle: "vehicle.read",
   finance: "finance.read",
+  company: "company.read",
 };
 
 /**

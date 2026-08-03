@@ -161,8 +161,20 @@ Translatable labels return as a `locale → text` map (assembled via [localizati
 Defines/gates `education.read`, `education.manage`, `education.position.manage`,
 `education.enrollment.manage`, and the instance-scope `education.catalog.manage`. Education entities
 are **instance-global external reference data** — they carry **no unit scope of their own**, so the PEP
-satisfies these **anywhere** (like [location](location.md)); there is **no shadow gate** and **no RLS**
-on the education tables. Nothing here is ever an authorization input (D-Rank parallel).
+satisfies these **anywhere** (like [location](location.md)), and there is **no RLS** on the education
+tables. Nothing here is ever an authorization input (D-Rank parallel).
+
+**The INSTITUTION ROW itself is shadow-gated** (M58 ticket 5). An institution IS a
+`university`-domain tenant organization plus a sidecar (M41 / D-UnifiedOrgGraph), so it carries that
+organization's public/shadow bit and is trimmed by the same rule `listOrganizations` applies —
+organization reach DERIVED from unit reach (D-VisibilityScope). This is a correction, not an addition:
+the gate should always have been here and was not, so `listInstitutions`, `getInstitution` and unified
+**search** handed shadow organizations to any caller holding `education.read` from M20 until M58
+ticket 5. All three now route through one helper (`gateInstitutions` in the transport,
+`scope.NewOrgScope` for search), and a gated-out institution is `InstitutionNotFound` rather than a
+permission error, because `shadow` hides existence. The institution's CHILDREN (units, buildings,
+groups, positions) are not separately gated: they are reached through the institution's RID, which
+this gate is what a caller obtains, and they carry no visibility bit of their own.
 
 ## Patterns
 

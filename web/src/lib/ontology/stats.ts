@@ -103,9 +103,46 @@ export function daySpan(keys: string[]): string[] {
   return out;
 }
 
+/**
+ * The maximum number of YEAR buckets worth densifying. A dense axis exists to make a GAP visible, and
+ * past a screenful of bars it stops showing gaps and starts showing nothing else.
+ *
+ * The number is not arbitrary: the widest chart that already ships is the vehicle fleet-age histogram
+ * at ~54 month bars, so this is the same visual budget expressed in the new grain.
+ */
+const MAX_DENSE_YEARS = 60;
+
+/**
+ * The inclusive `YYYY` sequence covering the buckets present — the third grain (M58 ticket 5), for the
+ * company/institution founding histograms. Same reason as its two siblings: a founding curve with the
+ * dormant decades omitted reads as steady activity, which is the opposite of what it shows.
+ *
+ * UNLIKE its siblings it gives up past `MAX_DENSE_YEARS` and returns the populated years instead, and
+ * that is the one thing about this function found by running it rather than by writing it: the seeded
+ * institutions span 1661–2016, so the dense axis rendered **356 bars for 8 rows** — every one of them
+ * a live link, 348 of them empty. A month histogram covers an operational window and cannot do that;
+ * a founding histogram covers however long the institution has existed.
+ *
+ * What is lost past the threshold is the visibility of gaps, and at that width nobody was reading the
+ * gaps anyway. What is kept is every property the vocabulary depends on: each bar is still a real
+ * year, still counts what its own filter returns, and still sums to `totalCount`.
+ */
+export function yearSpan(keys: string[]): string[] {
+  const years = keys.filter((k) => /^\d{4}$/.test(k)).sort();
+  if (years.length < 2) return years;
+  const first = Number(years[0]);
+  const last = Number(years[years.length - 1]);
+  if (last - first + 1 > MAX_DENSE_YEARS) return years;
+  const out: string[] = [];
+  for (let y = first; y <= last; y++) out.push(String(y).padStart(4, "0"));
+  return out;
+}
+
 /** The dense axis for a dateTrunc distribution, whichever grain it came back at. */
 export function timeSpan(keys: string[]): string[] {
-  return keys.some((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)) ? daySpan(keys) : monthSpan(keys);
+  if (keys.some((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))) return daySpan(keys);
+  if (keys.some((k) => /^\d{4}-\d{2}$/.test(k))) return monthSpan(keys);
+  return yearSpan(keys);
 }
 
 /**

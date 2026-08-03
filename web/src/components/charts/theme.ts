@@ -132,7 +132,9 @@ export function fmtDay(key: string, locale: string): string {
 
 /** A dateTrunc bucket key rendered at whichever grain it came back at. */
 export function fmtTimeBucket(key: string, locale: string): string {
-  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? fmtDay(key, locale) : fmtMonth(key, locale);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(key)) return fmtDay(key, locale);
+  if (/^\d{4}-\d{2}$/.test(key)) return fmtMonth(key, locale);
+  return key; // a year is already its own label in every locale
 }
 
 /** Truncate a label to fit a fixed gutter; the full text always survives in the mark's <title>. */

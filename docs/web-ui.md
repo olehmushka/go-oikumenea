@@ -172,10 +172,12 @@ primitives are hand-rolled on the existing Tailwind classes.
   from both browser and server (documented in `web/README.md`).
 - **Non-admin account provisioning.** The dev `admin` user resolves via the fixed-`sub` bootstrap
   binding; broader login requires provisioned accounts or enabling JIT ([D-JIT](architecture/decisions.md)).
-- **Bespoke module pages.** Six modules — company, vehicle, finance, religion, education,
-  external-org — are still large `"use client"` pages with no ontology-registry entry: they fetch a
-  single page of 100 and drop `nextPageToken`, so they get neither the filter bar nor a dashboard.
-  **M58** gives each a registry entry and routes them through the generic explorer.
+- ~~**Bespoke module pages.**~~ **CLOSED (M58 tickets 2, 3 and 5).** All six — religion and
+  external-org (ticket 2), vehicle and finance (ticket 3), company and education (ticket 5) — now
+  have an ontology-registry entry and route browsing through the generic explorer, with a filter bar
+  and a dashboard. What stays on each module page is EDITING: creation and the panels richer than the
+  generic action runner. Each keeps a bounded one-page table that says so, replacing the old shape
+  that fetched 100 rows and dropped `nextPageToken` — presenting a truncation as a registry.
 - **Sort.** The contract has **no sort param anywhere**, so column sorting stays client-side over the
   current page. Server-side ordering is additive on top of the facet vocabulary, not part of it.
 - **Cross-type dashboards.** Every dashboard is single-type by construction (per-module `/stats`

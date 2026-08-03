@@ -11,17 +11,22 @@
 // returns — but organization carries the ticket's one real design argument, and two tests here exist
 // to pin it rather than leave it as prose.
 //
-// listOrganizations is gated by gateUnits, the SAME app-layer shadow gate the unit list uses. On a
-// unit that gate is real. On an organization it is not: authz_role_assignments.target_unit_id is NOT
-// NULL and REFERENCES tenant_units, so an organization RID matches neither arm of
-// ReadableUnitsForSubjectAmong and the reach set is empty by construction. A shadow organization is
-// therefore visible to an instance admin and to nobody else, and the scoped aggregate arm is a flat
-// `visibility = 'public'` rather than unit's reach predicate.
+// listOrganizations is gated by gateOrgs, a SIBLING of the unit gate rather than the same one: the
+// two ask different questions. Organization reach is DERIVED from unit reach (the M58 ticket-4
+// follow-up, amending D-VisibilityScope) — an organization is visible when it is public, or when any
+// of its live units is in the subject's reach. The scoped aggregate arm folds that same predicate in.
+//
+// It could not be the unit gate copied. authz_role_assignments.target_unit_id is NOT NULL and
+// REFERENCES tenant_units, so an organization RID matches neither arm of ReadableUnitsForSubjectAmong
+// and `id IN (readable_units)` would match nothing here — which is what the org list did, unnoticed,
+// from M40 until ticket 4.
 //
 // That is a load-bearing claim about ANOTHER module's schema, so it is asserted, not assumed:
-// TestOrganizationShadowIsUnreachableForEveryNonAdmin grants the subject assignments that would reach
-// the org's units and shows the org count does not move. It is meant to go RED on the day org
-// reachability is fixed — which is exactly the day this arm must change.
+// TestOrganizationReachIsDerivedFromUnitReach checks BOTH directions from one setup (either alone is
+// satisfiable by a bug — "sees it with reach" passes if the gate stopped gating, "does not see it
+// without" passes if reach went back to empty). It replaced
+// TestOrganizationShadowIsUnreachableForEveryNonAdmin, which pinned the pre-follow-up rule and went
+// red on the day it changed, carrying the message written for that day.
 //
 //	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/tenant/... -run OrganizationStats

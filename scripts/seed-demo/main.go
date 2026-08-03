@@ -113,6 +113,12 @@ func run(ctx context.Context, dsn, configPath string, seed int64, reset bool) er
 			// bar) could only be applied by a full -reset — which is blocked on any dev database
 			// carrying hand-made rows the seeder does not own and must not delete. These passes only
 			// UPDATE rows tagged `seed:demo`, and are deterministic, so re-running changes nothing.
+			// M58 ticket 5 widened this from "re-apply the spreads" to "re-apply the spreads and add
+			// what is missing": seedProfileSpread is create-if-absent by org code, because the company
+			// and institution dashboards need a POPULATION to describe and phase A seeds one of each.
+			if err := s.seedProfileSpread(); err != nil {
+				return fmt.Errorf("refresh profile spread: %w", err)
+			}
 			if err := s.spreadOrgFacets(); err != nil {
 				return fmt.Errorf("refresh org facets: %w", err)
 			}

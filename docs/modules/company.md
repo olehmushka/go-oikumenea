@@ -156,8 +156,19 @@ Registration identifiers are validated against the scheme regex; filling a fille
 Defines/gates `company.read`, `company.manage`, `company.position.manage`, and the instance-scope
 `company.catalog.manage`. Company entities are **instance-global external reference data** — they carry
 **no unit scope of their own**, so the PEP satisfies these **anywhere** (like
-[location](location.md)/[education](education.md)); there is **no shadow gate** and **no RLS** on the
-company tables. Nothing here is ever an authorization input (D-Rank parallel).
+[location](location.md)/[education](education.md)), and there is **no RLS** on the company tables.
+Nothing here is ever an authorization input (D-Rank parallel).
+
+**The COMPANY ROW itself is shadow-gated** (M58 ticket 5). A company IS a `company`-domain tenant
+organization plus a sidecar (M41 / D-UnifiedOrgGraph), so it carries that organization's
+public/shadow bit and is trimmed by the same rule `listOrganizations` applies — organization reach
+DERIVED from unit reach (D-VisibilityScope). This is a correction, not an addition: the gate should
+always have been here and was not, so `listCompanies`, `getCompany` and unified **search** handed
+shadow organizations to any caller holding `company.read` from M21 until M58 ticket 5. All three now
+route through one helper (`gateCompanies` in the transport, `scope.NewOrgScope` for search), and a
+gated-out company is `CompanyNotFound` rather than a permission error, because `shadow` hides
+existence. The dashboard folds the same predicate into SQL rather than trimming the result — trimming
+after the fact is right for a page and wrong for a count.
 
 ## Patterns
 
