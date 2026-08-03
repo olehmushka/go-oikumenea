@@ -59,10 +59,10 @@ var statsAggregateGroups = []struct {
 	{"audit", []struct{ module, query string }{
 		{"audit", "AuditStats"},
 	}},
-	// M58 ticket 4. Organization's two arms differ by ONE line — the scoped CTE ends `AND visibility =
-	// 'public'` — and by nothing else, which is what makes byte-identity the right assertion here even
-	// though the two gates are not the same SHAPE as unit's (an org has no reach to probe, so the
-	// scoped arm carries no subject parameter at all).
+	// M58 ticket 4. Organization's two arms differ only by the scoped CTE's gate clause — `visibility =
+	// 'public' OR <any live unit of this org is in the subject's reach>`, the DERIVED reach the ticket-4
+	// follow-up introduced (D-VisibilityScope). Byte-identity of the aggregate half is what keeps the
+	// two describing one world while their candidate sets legitimately differ.
 	{"organization", []struct{ module, query string }{
 		{"tenant", "OrganizationStats"},
 		{"tenant", "OrganizationStatsForSubject"},
@@ -74,6 +74,22 @@ var statsAggregateGroups = []struct {
 	{"languoid", []struct{ module, query string }{
 		{"language", "LanguoidStats"},
 		{"language", "LanguoidStatsSearch"},
+	}},
+	// M58 ticket 5 — the first FOUR-arm groups outside person, and the first where both axes are in
+	// one module's file: a profile type has a visibility gate (it IS a tenant organization) AND an
+	// R-21 search twin, so the square is {plain, search} × {admin, scoped}. Four adjacent near-copies
+	// are easier to edit three of than two distant ones, which is precisely what byte-identity catches.
+	{"company", []struct{ module, query string }{
+		{"company", "CompanyStats"},
+		{"company", "CompanyStatsSearch"},
+		{"company", "CompanyStatsForSubject"},
+		{"company", "CompanyStatsForSubjectSearch"},
+	}},
+	{"institution", []struct{ module, query string }{
+		{"education", "InstitutionStats"},
+		{"education", "InstitutionStatsSearch"},
+		{"education", "InstitutionStatsForSubject"},
+		{"education", "InstitutionStatsForSubjectSearch"},
 	}},
 }
 

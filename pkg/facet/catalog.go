@@ -21,7 +21,7 @@ func catalog() []ObjectType {
 	return []ObjectType{
 		personType(), unitType(), organizationType(), membershipType(), orderType(), documentType(),
 		auditType(), externalOrgType(), taxonType(), languoidType(), vehicleType(), accountType(),
-		cardType(),
+		cardType(), companyType(), institutionType(),
 	}
 }
 
@@ -1235,6 +1235,192 @@ func cardType() ObjectType {
 			},
 		},
 		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── company ─────────────────────────────────────────────────────────────────
+//
+// The FIRST PROFILE type (M58 ticket 5), and the reason ObjectType.Profile exists. A company is not a
+// row with a `company` RID: it is a `company`-domain tenant ORGANIZATION (4/1/6) plus a
+// company_org_profiles sidecar keyed by that organization's RID (M41 / D-UnifiedOrgGraph). The
+// identity, the stable `code` and the translatable legal name all live on tenant_organizations; the
+// sidecar carries the legal form, ownership axis, country and dates this dashboard is made of.
+//
+// So the token check has to be told what these rows ARE, and `Profile: "organization"` is that: not
+// "this collection has no type" (the Ledger admission — audit's, and still capped at one) but "its
+// token belongs to another table too". catalog_test.go verifies the claim against the migrations
+// rather than believing it: company_org_profiles' primary key must REFERENCE tenant_organizations.
+//
+// VISIBILITY. Because a company IS an organization it carries the organization's public/shadow bit,
+// and the aggregate therefore ships the SAME two arms `organization` does — including the M58
+// ticket-4 amendment deriving organization reach from unit reach. That is not a formality: until this
+// ticket `listCompanies` applied no gate at all, so the scoped arm is the first thing here that had
+// to be built rather than copied.
+func companyType() ObjectType {
+	return ObjectType{
+		Type:          "company",
+		Module:        "company",
+		ListEndpoint:  "CompanyService.listCompanies",
+		StatsEndpoint: "CompanyService.companyStats",
+		Profile:       "organization",
+		Facets: []Facet{
+			{
+				Key:     "legalForm",
+				Kind:    KindRef,
+				Table:   "oikumenea.company_org_profiles",
+				Column:  "legal_form_id",
+				RefType: "legal_form",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "-> oikumenea.company_legal_forms (LLC / JSC / sole trader …). NOT NULL, so no " +
+					"(unknown) bucket. Orthogonal to ownershipCategory — a private LLC and a state-owned " +
+					"JSC differ on both axes independently, which is why both are faceted.",
+			},
+			{
+				Key:     "ownershipCategory",
+				Kind:    KindEnum,
+				Table:   "oikumenea.company_org_profiles",
+				Column:  "ownership_category",
+				Values:  []string{"private", "public", "state_owned", "municipal", "foreign", "mixed"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The second ownership axis. Chart order is the CHECK set's own, which runs from " +
+					"private to mixed rather than by frequency: it reads as a spectrum of public " +
+					"involvement, and a count sort would scramble the only ordering it has.",
+			},
+			{
+				Key:     "countryId",
+				Kind:    KindRef,
+				Table:   "oikumenea.company_org_profiles",
+				Column:  "country_id",
+				RefType: "country",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note:    "-> oikumenea.geo_countries (D-Geo). Nullable — a multinational may have none.",
+			},
+			{
+				Key:     "industryClass",
+				Kind:    KindRef,
+				Table:   "oikumenea.company_industry_assignments",
+				Column:  "industry_class_id",
+				RefType: "industry_class",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "ANOTHER TABLE (still company's), and the one facet here that had to choose a SET. " +
+					"company_industry_assignments is M:N — one primary classification plus secondaries — " +
+					"so grouping it raw would count a diversified company under every NACE code it " +
+					"carries, and would need NonPartitioning. It is instead confined to the PRIMARY " +
+					"assignment (is_primary), of which there is at most one per company, so the " +
+					"distribution PARTITIONS honestly and the exemption is neither taken nor needed. " +
+					"That is exactly ticket 3's registrationCountry reasoning, and the general rule it " +
+					"stated: an exemption being AVAILABLE is not a reason to take it. It is also the " +
+					"question the chart is read for — what is this company's line of business, not every " +
+					"line it has ever touched. Matched as an EXISTS semi-join, never a join. The " +
+					"(unknown) bucket is companies with no primary classification recorded.",
+			},
+			{
+				Key:    "foundedOn",
+				Kind:   KindDateRange,
+				Table:  "oikumenea.company_org_profiles",
+				Column: "founded_on",
+				Buckets: Buckets{
+					Strategy:       StrategyDateTrunc,
+					Grain:          "year",
+					IncludeUnknown: true,
+				},
+				Note: "The FIRST year-grain facet the vocabulary has declared, and it is the grain the " +
+					"data demands rather than a preference: company foundings span more than a century, " +
+					"so a month histogram would be ~1500 buckets of which almost all are zero, where " +
+					"every earlier date facet (issuedOn, effectiveFrom, manufactureDate) covers a live " +
+					"operational window. A calendar DATE column, so the bounds are plain YYYY-MM-DD and " +
+					"the console's bucket inverse needs no RFC-3339 widening. Nullable, so the (unknown) " +
+					"bucket is mandatory and reads as `founding date not recorded`; setting either bound " +
+					"EXCLUDES those rows (SQL three-valued logic).",
+			},
+			{
+				Key:     "state",
+				Kind:    KindEnum,
+				Table:   "oikumenea.company_org_profiles",
+				Column:  "state",
+				Values:  []string{"active", "dissolved", "merged"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The COMPANY's lifecycle, which is not the owning organization's `state` — an " +
+					"organization may be archived while the legal entity it profiles is still trading, " +
+					"and vice versa. Two states on one row is a consequence of the sidecar shape, and " +
+					"the one faceted here is the one this endpoint returns.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "query", Class: ClassSearch, Why: "case-insensitive code/name/short-name substring match", Drives: "SearchCompanies"},
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── institution ─────────────────────────────────────────────────────────────
+//
+// The second PROFILE type, and the same arrangement one domain over: an institution is a
+// `university`-domain tenant ORGANIZATION plus an education_org_profiles sidecar keyed by its RID
+// (M41 / D-UnifiedOrgGraph). See companyType above for why Profile exists and what verifies it.
+//
+// It is the thinner of the two — four facets against six — because the education module's richness
+// lives in the structure tree hanging OFF an institution (units, buildings, programs, courses), and
+// those are separate types reached per institution rather than columns on this row.
+func institutionType() ObjectType {
+	return ObjectType{
+		Type:          "institution",
+		Module:        "education",
+		ListEndpoint:  "EducationService.listInstitutions",
+		StatsEndpoint: "EducationService.institutionStats",
+		Profile:       "organization",
+		Facets: []Facet{
+			{
+				Key:     "kindId",
+				Kind:    KindRef,
+				Table:   "oikumenea.education_org_profiles",
+				Column:  "kind_id",
+				RefType: "institution_kind",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "-> oikumenea.education_institution_kinds (university / college / vocational …). " +
+					"NOT NULL, so no (unknown) bucket.",
+			},
+			{
+				Key:     "countryId",
+				Kind:    KindRef,
+				Table:   "oikumenea.education_org_profiles",
+				Column:  "country_id",
+				RefType: "country",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note:    "-> oikumenea.geo_countries (D-Geo). Nullable — international or online-only.",
+			},
+			{
+				Key:    "foundedOn",
+				Kind:   KindDateRange,
+				Table:  "oikumenea.education_org_profiles",
+				Column: "founded_on",
+				Buckets: Buckets{
+					Strategy:       StrategyDateTrunc,
+					Grain:          "year",
+					IncludeUnknown: true,
+				},
+				Note: "Year grain, for the reason company.foundedOn gives and more so — universities " +
+					"predate companies by centuries. Calendar DATE, nullable.",
+			},
+			{
+				Key:     "state",
+				Kind:    KindEnum,
+				Table:   "oikumenea.education_org_profiles",
+				Column:  "state",
+				Values:  []string{"active", "closed", "merged"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The INSTITUTION's lifecycle, not the owning organization's — see company.state. " +
+					"`closed` where a company is `dissolved`; the two sidecars' CHECK sets differ by that " +
+					"one value and are deliberately not unified, because a closed university and a " +
+					"dissolved legal entity are not the same event.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "query", Class: ClassSearch, Why: "case-insensitive code/name substring match", Drives: "SearchInstitutions"},
 			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
 			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
 		},

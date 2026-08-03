@@ -129,7 +129,8 @@ func (r *Repository) GetCompany(ctx context.Context, id string) (domain.Company,
 		ID: row.ID, Code: row.Code, LegalName: row.LegalName, ShortName: textVal(row.ShortName),
 		LegalFormID: row.LegalFormID, OwnershipCategory: row.OwnershipCategory, CountryID: textVal(row.CountryID),
 		FoundedOn: dateStr(row.FoundedOn), DissolvedOn: dateStr(row.DissolvedOn), State: row.State,
-		CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
+		Visibility: row.Visibility,
+		CreatedAt:  ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
 	}, nil
 }
 
@@ -148,10 +149,24 @@ func (r *Repository) UpdateOrgProfile(ctx context.Context, id string, up domain.
 // ListCompanies returns a keyset page of companies. A non-empty query routes to the dedicated trigram
 // SearchCompanies (review R-21) so the code/name/short_name match stays a set of GIN bitmap scans; the
 // empty case is the plain keyset list. The two queries share the projection, so their rows are convertible.
-func (r *Repository) ListCompanies(ctx context.Context, query, after string, lim int) ([]domain.Company, error) {
+// ListCompanies pages the registry under the facet filter block (M58 ticket 5). The trigram twin is
+// chosen on EXACTLY the condition CompanyStats branches on (companyQuery), so a searched list and its
+// dashboard cannot end up describing different sets.
+func (r *Repository) ListCompanies(ctx context.Context, f domain.CompanyFilter, after string, lim int) ([]domain.Company, error) {
 	var rows []companysql.ListCompaniesRow
-	if q := strings.TrimSpace(query); q != "" {
-		found, err := r.q.SearchCompanies(ctx, companysql.SearchCompaniesParams{Query: pgtype.Text{String: q, Valid: true}, After: after, Lim: int32(lim)})
+	if q := companyQuery(f); q != "" {
+		found, err := r.q.SearchCompanies(ctx, companysql.SearchCompaniesParams{
+			Query:             pgtype.Text{String: q, Valid: true},
+			LegalFormID:       textPtr(f.LegalFormID),
+			OwnershipCategory: textPtr(f.OwnershipCategory),
+			CountryID:         textPtr(f.CountryID),
+			IndustryClassID:   textPtr(f.IndustryClassID),
+			FoundedOnFrom:     datePtr(f.FoundedOnFrom),
+			FoundedOnTo:       datePtr(f.FoundedOnTo),
+			State:             textPtr(f.State),
+			After:             after,
+			Lim:               int32(lim),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -161,7 +176,17 @@ func (r *Repository) ListCompanies(ctx context.Context, query, after string, lim
 		}
 	} else {
 		var err error
-		if rows, err = r.q.ListCompanies(ctx, companysql.ListCompaniesParams{After: after, Lim: int32(lim)}); err != nil {
+		if rows, err = r.q.ListCompanies(ctx, companysql.ListCompaniesParams{
+			LegalFormID:       textPtr(f.LegalFormID),
+			OwnershipCategory: textPtr(f.OwnershipCategory),
+			CountryID:         textPtr(f.CountryID),
+			IndustryClassID:   textPtr(f.IndustryClassID),
+			FoundedOnFrom:     datePtr(f.FoundedOnFrom),
+			FoundedOnTo:       datePtr(f.FoundedOnTo),
+			State:             textPtr(f.State),
+			After:             after,
+			Lim:               int32(lim),
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -171,7 +196,8 @@ func (r *Repository) ListCompanies(ctx context.Context, query, after string, lim
 			ID: row.ID, Code: row.Code, LegalName: row.LegalName, ShortName: textVal(row.ShortName),
 			LegalFormID: row.LegalFormID, OwnershipCategory: row.OwnershipCategory, CountryID: textVal(row.CountryID),
 			FoundedOn: dateStr(row.FoundedOn), DissolvedOn: dateStr(row.DissolvedOn), State: row.State,
-			CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
+			Visibility: row.Visibility,
+			CreatedAt:  ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
 		})
 	}
 	return out, nil

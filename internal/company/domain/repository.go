@@ -5,6 +5,8 @@ package domain
 
 import (
 	"context"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Repository is the company module's persistence port (implemented by adapters over pgx/sqlc). It is
@@ -25,7 +27,11 @@ type Repository interface {
 	InsertOrgProfile(ctx context.Context, companyID string, in CompanyInput) error
 	GetCompany(ctx context.Context, id string) (Company, error)
 	UpdateOrgProfile(ctx context.Context, id string, up CompanyUpdate) error
-	ListCompanies(ctx context.Context, query, after string, lim int) ([]Company, error)
+	ListCompanies(ctx context.Context, f CompanyFilter, after string, lim int) ([]Company, error)
+	// CompanyStats is the dashboard aggregate over the SAME candidate set ListCompanies pages under
+	// the same filter (M58 ticket 5 / D-ObjectFacets). An empty subjectPersonID is the instance-admin
+	// arm; otherwise the organization shadow gate is folded into the count rather than applied after.
+	CompanyStats(ctx context.Context, subjectPersonID string, f CompanyFilter, sel stats.Selection) ([]stats.Group, error)
 	SoftDeleteCompany(ctx context.Context, id string) (int64, error)
 	// CompanyNamesByIDs returns default-locale legal names for a set of company ids (label resolution).
 	CompanyNamesByIDs(ctx context.Context, ids []string) (map[string]string, error)

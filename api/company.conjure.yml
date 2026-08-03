@@ -240,6 +240,45 @@ types:
         fields:
           companies: list<Company>
           nextPageToken: optional<string>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value (`state_owned`), a
+          year (`1998`), or a RID for a `ref` facet — and is exactly what you pass back as the
+          corresponding list filter. Two synthetic keys never name a real value: `(unknown)` is the
+          NULL bucket and `(other)` a top-N facet's collapsed tail; neither is a usable filter value.
+
+          `label` carries the object's display name as a locale → text map (D-i18n) and is present
+          only for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name
+          carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable; for a ref, descending by count
+          with `(other)`/`(unknown)` last; for `foundedOn`, ascending by year.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      CompanyStats:
+        docs: |
+          Facet distributions over the SAME set `listCompanies` returns under the same filters, with
+          the shadow gate folded INTO the count (M58 ticket 5 / D-ObjectFacets).
+
+          A company IS a `company`-domain tenant ORGANIZATION plus a sidecar (M41 /
+          D-UnifiedOrgGraph), so it carries that organization's public/shadow bit and this count
+          applies the organization gate: `public OR reachable`, where reach is DERIVED from unit reach
+          (D-VisibilityScope, amended M58 ticket 4) — an organization is visible when any of its live
+          units is in the subject's reach. Folded into SQL rather than applied to the page, because
+          trimming after the fact is right for a page and wrong for a count. `totalCount` therefore
+          equals the rows exhaustively paging `listCompanies` under these filters would return.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       CompanyPositionPage:
         fields:
           positions: list<CompanyPosition>
@@ -456,11 +495,51 @@ services:
         returns: Company
       listCompanies:
         http: GET /companies
+        docs: |
+          List companies, token-paginated, optionally filtered by the facet vocabulary (M58 ticket 5 /
+          D-ObjectFacets). Shadow-gated: a company IS a `company`-domain tenant organization (M41 /
+          D-UnifiedOrgGraph), so it carries that organization's public/shadow bit and is trimmed by
+          the same rule `listOrganizations` applies. Gated by company.read.
+
+          Every filter arg here is also an arg of `companyStats`, and a chart segment's key is a
+          usable value for the arg it came from — that is what makes a dashboard and a list two
+          renderings of one request state.
         args:
           query:
             type: optional<string>
             param-type: query
-            docs: Optional case-insensitive code/name filter.
+            docs: Optional case-insensitive code / legal-name / short-name filter.
+          legalForm:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — legal-form RID (`oikumenea.company_legal_forms`).
+          ownershipCategory:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `private` | `public` | `state_owned` | `municipal` | `foreign` | `mixed`.
+          countryId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — country RID (D-Geo). Nullable column; setting it excludes companies with no country.
+          industryClass:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — industry-class RID (NACE/ISIC/KVED). Matches the company's PRIMARY
+              classification only, which is the same set the distribution counts, so a chart segment
+              lands on exactly the rows it counted.
+          foundedOnFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on the founding date (YYYY-MM-DD). Excludes companies with no founding date.
+          foundedOnTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on the founding date (YYYY-MM-DD).
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active` | `dissolved` | `merged`. The COMPANY's lifecycle, not the owning organization's.
           pageSize:
             type: optional<integer>
             param-type: query
@@ -468,6 +547,57 @@ services:
             type: optional<string>
             param-type: query
         returns: CompanyPage
+      companyStats:
+        http: GET /stats/companies
+        docs: |
+          Facet distributions over the company registry — the dashboard half of the company facet
+          vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args `listCompanies`
+          takes, minus paging, so a dashboard and a list are two renderings of one request state.
+
+          The path is `/stats/companies` rather than `/companies/stats` because the server's router
+          rejects a literal path segment that is a sibling of `{companyId}` — see the route-conflict
+          guard in `internal/platform/transport`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`legalForm,state`). Omitted or empty =
+              every facet the caller may read; an explicit list of nothing (`facets=,`) returns
+              `totalCount` alone. An undeclared facet key is a Company:Invalid.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listCompanies`.
+          legalForm:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listCompanies`.
+          ownershipCategory:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listCompanies`.
+          countryId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listCompanies`.
+          industryClass:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listCompanies`.
+          foundedOnFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listCompanies`.
+          foundedOnTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listCompanies`.
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listCompanies`.
+        returns: CompanyStats
       getCompany:
         http: GET /companies/{companyId}
         args:

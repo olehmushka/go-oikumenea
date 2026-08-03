@@ -5,6 +5,8 @@ package domain
 
 import (
 	"context"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Repository is the education module's persistence port (implemented by adapters over pgx/sqlc). It is
@@ -22,7 +24,12 @@ type Repository interface {
 	InsertOrgProfile(ctx context.Context, institutionID, kindID string, countryID, foundedOn, closedOn *string) error
 	GetInstitution(ctx context.Context, id string) (Institution, error)
 	UpdateOrgProfile(ctx context.Context, id string, up InstitutionUpdate) error
-	ListInstitutions(ctx context.Context, query, after string, lim int) ([]Institution, error)
+	ListInstitutions(ctx context.Context, f InstitutionFilter, after string, lim int) ([]Institution, error)
+	// InstitutionStats is the dashboard aggregate over the SAME candidate set ListInstitutions pages
+	// under the same filter (M58 ticket 5 / D-ObjectFacets). An empty subjectPersonID is the
+	// instance-admin arm; otherwise the organization shadow gate is folded into the count rather than
+	// applied after.
+	InstitutionStats(ctx context.Context, subjectPersonID string, f InstitutionFilter, sel stats.Selection) ([]stats.Group, error)
 	SoftDeleteInstitution(ctx context.Context, id string) (int64, error)
 
 	// buildings

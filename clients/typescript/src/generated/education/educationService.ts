@@ -22,6 +22,7 @@ import { IInstitution } from "./institution";
 import { IInstitutionKind } from "./institutionKind";
 import { IInstitutionKindList } from "./institutionKindList";
 import { IInstitutionPage } from "./institutionPage";
+import { IInstitutionStats } from "./institutionStats";
 import { IPersonAppointmentList } from "./personAppointmentList";
 import { IPositionPage } from "./positionPage";
 import { IReparentUnitRequest } from "./reparentUnitRequest";
@@ -55,7 +56,30 @@ export interface IEducationService {
     listUnitKinds(): Promise<IUnitKindList>;
     listDegreeLevels(): Promise<IDegreeLevelList>;
     createInstitution(request: ICreateInstitutionRequest): Promise<IInstitution>;
-    listInstitutions(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IInstitutionPage>;
+    /**
+     * List institutions, token-paginated, optionally filtered by the facet vocabulary (M58 ticket
+     * 5 / D-ObjectFacets). Shadow-gated: an institution IS a `university`-domain tenant
+     * organization (M41 / D-UnifiedOrgGraph), so it carries that organization's public/shadow bit
+     * and is trimmed by the same rule `listOrganizations` applies. Gated by education.read.
+     *
+     * Every filter arg here is also an arg of `institutionStats`, and a chart segment's key is a
+     * usable value for the arg it came from — that is what makes a dashboard and a list two
+     * renderings of one request state.
+     *
+     */
+    listInstitutions(query?: string | null, kindId?: string | null, countryId?: string | null, foundedOnFrom?: string | null, foundedOnTo?: string | null, state?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IInstitutionPage>;
+    /**
+     * Facet distributions over the institution registry — the dashboard half of the institution
+     * facet vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args
+     * `listInstitutions` takes, minus paging, so a dashboard and a list are two renderings of one
+     * request state.
+     *
+     * The path is `/stats/institutions` rather than `/institutions/stats` because the server's
+     * router rejects a literal path segment that is a sibling of `{institutionId}` — see the
+     * route-conflict guard in `internal/platform/transport`.
+     *
+     */
+    institutionStats(facets?: string | null, query?: string | null, kindId?: string | null, countryId?: string | null, foundedOnFrom?: string | null, foundedOnTo?: string | null, state?: string | null): Promise<IInstitutionStats>;
     getInstitution(institutionId: string): Promise<IInstitution>;
     updateInstitution(institutionId: string, request: IUpdateInstitutionRequest): Promise<IInstitution>;
     deleteInstitution(institutionId: string): Promise<void>;
@@ -177,7 +201,18 @@ export class EducationService implements IEducationService {
         );
     }
 
-    public listInstitutions(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IInstitutionPage> {
+    /**
+     * List institutions, token-paginated, optionally filtered by the facet vocabulary (M58 ticket
+     * 5 / D-ObjectFacets). Shadow-gated: an institution IS a `university`-domain tenant
+     * organization (M41 / D-UnifiedOrgGraph), so it carries that organization's public/shadow bit
+     * and is trimmed by the same rule `listOrganizations` applies. Gated by education.read.
+     *
+     * Every filter arg here is also an arg of `institutionStats`, and a chart segment's key is a
+     * usable value for the arg it came from — that is what makes a dashboard and a list two
+     * renderings of one request state.
+     *
+     */
+    public listInstitutions(query?: string | null, kindId?: string | null, countryId?: string | null, foundedOnFrom?: string | null, foundedOnTo?: string | null, state?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IInstitutionPage> {
         return this.bridge.call<IInstitutionPage>(
             "EducationService",
             "listInstitutions",
@@ -187,8 +222,47 @@ export class EducationService implements IEducationService {
             __undefined,
             {
                 "query": query,
+                "kindId": kindId,
+                "countryId": countryId,
+                "foundedOnFrom": foundedOnFrom,
+                "foundedOnTo": foundedOnTo,
+                "state": state,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions over the institution registry — the dashboard half of the institution
+     * facet vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args
+     * `listInstitutions` takes, minus paging, so a dashboard and a list are two renderings of one
+     * request state.
+     *
+     * The path is `/stats/institutions` rather than `/institutions/stats` because the server's
+     * router rejects a literal path segment that is a sibling of `{institutionId}` — see the
+     * route-conflict guard in `internal/platform/transport`.
+     *
+     */
+    public institutionStats(facets?: string | null, query?: string | null, kindId?: string | null, countryId?: string | null, foundedOnFrom?: string | null, foundedOnTo?: string | null, state?: string | null): Promise<IInstitutionStats> {
+        return this.bridge.call<IInstitutionStats>(
+            "EducationService",
+            "institutionStats",
+            "GET",
+            "/education/v1/stats/institutions",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "query": query,
+                "kindId": kindId,
+                "countryId": countryId,
+                "foundedOnFrom": foundedOnFrom,
+                "foundedOnTo": foundedOnTo,
+                "state": state,
             },
             __undefined,
             __undefined,

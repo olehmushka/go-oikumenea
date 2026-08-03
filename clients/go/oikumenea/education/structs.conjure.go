@@ -655,6 +655,87 @@ func (o *EnrollmentList) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — an enum value (`closed`), a year
+(`1834`), or a RID for a `ref` facet — and is exactly what you pass back as the
+corresponding list filter. Two synthetic keys never name a real value: `(unknown)` is the
+NULL bucket and `(other)` a top-N facet's collapsed tail; neither is a usable filter value.
+
+`label` carries the object's display name as a locale → text map (D-i18n) and is present
+only for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name
+carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+zero-count buckets included so a chart's shape is stable; for a ref, descending by count
+with `(other)`/`(unknown)` last; for `foundedOn`, ascending by year.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type FillPositionRequest struct {
 	PersonId      string             `json:"personId"`
 	EffectiveFrom *datetime.DateTime `json:"effectiveFrom,omitempty"`
@@ -942,6 +1023,60 @@ func (o InstitutionPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *InstitutionPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listInstitutions` returns under the same filters,
+with the shadow gate folded INTO the count (M58 ticket 5 / D-ObjectFacets).
+
+An institution IS a `university`-domain tenant ORGANIZATION plus a sidecar (M41 /
+D-UnifiedOrgGraph), so it carries that organization's public/shadow bit and this count
+applies the organization gate: `public OR reachable`, where reach is DERIVED from unit reach
+(D-VisibilityScope, amended M58 ticket 4) — an organization is visible when any of its live
+units is in the subject's reach. Folded into SQL rather than applied to the page, because
+trimming after the fact is right for a page and wrong for a count. `totalCount` therefore
+equals the rows exhaustively paging `listInstitutions` under these filters would return.
+*/
+type InstitutionStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o InstitutionStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpInstitutionStats InstitutionStats
+	return safejson.Marshal(_tmpInstitutionStats(o))
+}
+
+func (o *InstitutionStats) UnmarshalJSON(data []byte) error {
+	type _tmpInstitutionStats InstitutionStats
+	var rawInstitutionStats _tmpInstitutionStats
+	if err := safejson.Unmarshal(data, &rawInstitutionStats); err != nil {
+		return err
+	}
+	if rawInstitutionStats.Facets == nil {
+		rawInstitutionStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = InstitutionStats(rawInstitutionStats)
+	return nil
+}
+
+func (o InstitutionStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *InstitutionStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

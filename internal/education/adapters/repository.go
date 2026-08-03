@@ -86,7 +86,8 @@ func (r *Repository) GetInstitution(ctx context.Context, id string) (domain.Inst
 	return domain.Institution{
 		ID: row.ID, Code: row.Code, Name: row.Name, KindID: row.KindID, CountryID: strp(row.CountryID),
 		FoundedOn: dateStr(row.FoundedOn), ClosedOn: dateStr(row.ClosedOn), State: row.State,
-		CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
+		Visibility: row.Visibility,
+		CreatedAt:  ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
 	}, nil
 }
 
@@ -100,13 +101,22 @@ func (r *Repository) UpdateOrgProfile(ctx context.Context, id string, up domain.
 	return notFound(mapErr(err), domain.ErrInstitutionNotFound)
 }
 
-// ListInstitutions returns a keyset page of institutions. A non-empty query routes to the dedicated
-// trigram SearchInstitutions (review R-21) so the code/name match stays a GIN bitmap scan; the empty
-// case is the plain keyset list. The two queries share the projection, so their rows are convertible.
-func (r *Repository) ListInstitutions(ctx context.Context, query, after string, lim int) ([]domain.Institution, error) {
+// ListInstitutions pages the registry under the facet filter block (M58 ticket 5). The trigram twin
+// is chosen on EXACTLY the condition InstitutionStats branches on (institutionQuery), so a searched
+// list and its dashboard cannot end up describing different sets.
+func (r *Repository) ListInstitutions(ctx context.Context, f domain.InstitutionFilter, after string, lim int) ([]domain.Institution, error) {
 	var rows []educationsql.ListInstitutionsRow
-	if q := strings.TrimSpace(query); q != "" {
-		found, err := r.q.SearchInstitutions(ctx, educationsql.SearchInstitutionsParams{Query: pgtype.Text{String: q, Valid: true}, After: after, Lim: int32(lim)})
+	if q := institutionQuery(f); q != "" {
+		found, err := r.q.SearchInstitutions(ctx, educationsql.SearchInstitutionsParams{
+			Query:         pgtype.Text{String: q, Valid: true},
+			KindID:        textPtr(f.KindID),
+			CountryID:     textPtr(f.CountryID),
+			FoundedOnFrom: datePtr(f.FoundedOnFrom),
+			FoundedOnTo:   datePtr(f.FoundedOnTo),
+			State:         textPtr(f.State),
+			After:         after,
+			Lim:           int32(lim),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -116,7 +126,15 @@ func (r *Repository) ListInstitutions(ctx context.Context, query, after string, 
 		}
 	} else {
 		var err error
-		if rows, err = r.q.ListInstitutions(ctx, educationsql.ListInstitutionsParams{After: after, Lim: int32(lim)}); err != nil {
+		if rows, err = r.q.ListInstitutions(ctx, educationsql.ListInstitutionsParams{
+			KindID:        textPtr(f.KindID),
+			CountryID:     textPtr(f.CountryID),
+			FoundedOnFrom: datePtr(f.FoundedOnFrom),
+			FoundedOnTo:   datePtr(f.FoundedOnTo),
+			State:         textPtr(f.State),
+			After:         after,
+			Lim:           int32(lim),
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -125,7 +143,8 @@ func (r *Repository) ListInstitutions(ctx context.Context, query, after string, 
 		out = append(out, domain.Institution{
 			ID: row.ID, Code: row.Code, Name: row.Name, KindID: row.KindID, CountryID: strp(row.CountryID),
 			FoundedOn: dateStr(row.FoundedOn), ClosedOn: dateStr(row.ClosedOn), State: row.State,
-			CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
+			Visibility: row.Visibility,
+			CreatedAt:  ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
 		})
 	}
 	return out, nil

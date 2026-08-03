@@ -25,6 +25,7 @@ import (
 	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
 	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -52,9 +53,16 @@ type Service struct {
 	audit   *auditapp.Service
 	tenant  *tenantapp.Service
 
+	labeler stats.Labeler
+
 	uniMu     sync.Mutex
 	uniDomain string // cached `university` domain RID (seeded at boot, stable)
 }
+
+// SetBucketLabeler injects the dashboard's ref-bucket name resolver (M58 ticket 5 / D-ObjectFacets),
+// wired at the composition root. Institution declares TWO ref facets (kind, country), so without it
+// two of the four charts would be axis-labelled with RID tails.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // NewService wires the service with the pool, repository factory, the audit service, and the tenant
 // service (institution = org, unit = tenant unit — M41).
@@ -215,8 +223,18 @@ func (s *Service) GetInstitution(ctx context.Context, id string) (domain.Institu
 	return s.newRepo(s.pool).GetInstitution(ctx, id)
 }
 
-func (s *Service) ListInstitutions(ctx context.Context, query, after string, pageSize int) ([]domain.Institution, error) {
-	return s.newRepo(s.pool).ListInstitutions(ctx, query, after, clampPageSize(pageSize)+1)
+func (s *Service) ListInstitutions(ctx context.Context, f domain.InstitutionFilter, after string, pageSize int) ([]domain.Institution, error) {
+	return s.newRepo(s.pool).ListInstitutions(ctx, f, after, clampPageSize(pageSize)+1)
+}
+
+// InstitutionStats answers the institution dashboard (M58 ticket 5 / D-ObjectFacets). It takes BOTH
+// the subject and the admin flag rather than deriving one from the other: stats.Compute owns the arm
+// convention, so a machine principal (no subject, not an admin) reads nothing rather than everything.
+func (s *Service) InstitutionStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.InstitutionFilter, sel stats.Selection) (stats.Result, error) {
+	repo := s.newRepo(s.pool)
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
+		return repo.InstitutionStats(ctx, subject, f, sel)
+	})
 }
 
 // UpdateInstitution applies a partial change: the org name via the tenant service (if set) and the

@@ -28,7 +28,28 @@ type EducationServiceClient interface {
 	ListUnitKinds(ctx context.Context, authHeader bearertoken.Token) (UnitKindList, error)
 	ListDegreeLevels(ctx context.Context, authHeader bearertoken.Token) (DegreeLevelList, error)
 	CreateInstitution(ctx context.Context, authHeader bearertoken.Token, requestArg CreateInstitutionRequest) (Institution, error)
-	ListInstitutions(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error)
+	/*
+	   List institutions, token-paginated, optionally filtered by the facet vocabulary (M58 ticket
+	   5 / D-ObjectFacets). Shadow-gated: an institution IS a `university`-domain tenant
+	   organization (M41 / D-UnifiedOrgGraph), so it carries that organization's public/shadow bit
+	   and is trimmed by the same rule `listOrganizations` applies. Gated by education.read.
+
+	   Every filter arg here is also an arg of `institutionStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListInstitutions(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error)
+	/*
+	   Facet distributions over the institution registry — the dashboard half of the institution
+	   facet vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args
+	   `listInstitutions` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/institutions` rather than `/institutions/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{institutionId}` — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	InstitutionStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (InstitutionStats, error)
 	GetInstitution(ctx context.Context, authHeader bearertoken.Token, institutionIdArg string) (Institution, error)
 	UpdateInstitution(ctx context.Context, authHeader bearertoken.Token, institutionIdArg string, requestArg UpdateInstitutionRequest) (Institution, error)
 	DeleteInstitution(ctx context.Context, authHeader bearertoken.Token, institutionIdArg string) error
@@ -164,7 +185,7 @@ func (c *educationServiceClient) CreateInstitution(ctx context.Context, authHead
 	return *returnVal, nil
 }
 
-func (c *educationServiceClient) ListInstitutions(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error) {
+func (c *educationServiceClient) ListInstitutions(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error) {
 	var returnVal *InstitutionPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListInstitutions"))
@@ -173,6 +194,21 @@ func (c *educationServiceClient) ListInstitutions(ctx context.Context, authHeade
 	queryParams := make(url.Values)
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if kindIdArg != nil {
+		queryParams.Set("kindId", fmt.Sprint(*kindIdArg))
+	}
+	if countryIdArg != nil {
+		queryParams.Set("countryId", fmt.Sprint(*countryIdArg))
+	}
+	if foundedOnFromArg != nil {
+		queryParams.Set("foundedOnFrom", fmt.Sprint(*foundedOnFromArg))
+	}
+	if foundedOnToArg != nil {
+		queryParams.Set("foundedOnTo", fmt.Sprint(*foundedOnToArg))
+	}
+	if stateArg != nil {
+		queryParams.Set("state", fmt.Sprint(*stateArg))
 	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
@@ -188,6 +224,46 @@ func (c *educationServiceClient) ListInstitutions(ctx context.Context, authHeade
 	}
 	if returnVal == nil {
 		return *new(InstitutionPage), werror.ErrorWithContextParams(ctx, "listInstitutions response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *educationServiceClient) InstitutionStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (InstitutionStats, error) {
+	var returnVal *InstitutionStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("InstitutionStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/education/v1/stats/institutions"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if kindIdArg != nil {
+		queryParams.Set("kindId", fmt.Sprint(*kindIdArg))
+	}
+	if countryIdArg != nil {
+		queryParams.Set("countryId", fmt.Sprint(*countryIdArg))
+	}
+	if foundedOnFromArg != nil {
+		queryParams.Set("foundedOnFrom", fmt.Sprint(*foundedOnFromArg))
+	}
+	if foundedOnToArg != nil {
+		queryParams.Set("foundedOnTo", fmt.Sprint(*foundedOnToArg))
+	}
+	if stateArg != nil {
+		queryParams.Set("state", fmt.Sprint(*stateArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(InstitutionStats), werror.WrapWithContextParams(ctx, err, "institutionStats failed")
+	}
+	if returnVal == nil {
+		return *new(InstitutionStats), werror.ErrorWithContextParams(ctx, "institutionStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -787,7 +863,28 @@ type EducationServiceClientWithAuth interface {
 	ListUnitKinds(ctx context.Context) (UnitKindList, error)
 	ListDegreeLevels(ctx context.Context) (DegreeLevelList, error)
 	CreateInstitution(ctx context.Context, requestArg CreateInstitutionRequest) (Institution, error)
-	ListInstitutions(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error)
+	/*
+	   List institutions, token-paginated, optionally filtered by the facet vocabulary (M58 ticket
+	   5 / D-ObjectFacets). Shadow-gated: an institution IS a `university`-domain tenant
+	   organization (M41 / D-UnifiedOrgGraph), so it carries that organization's public/shadow bit
+	   and is trimmed by the same rule `listOrganizations` applies. Gated by education.read.
+
+	   Every filter arg here is also an arg of `institutionStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListInstitutions(ctx context.Context, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error)
+	/*
+	   Facet distributions over the institution registry — the dashboard half of the institution
+	   facet vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args
+	   `listInstitutions` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/institutions` rather than `/institutions/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{institutionId}` — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	InstitutionStats(ctx context.Context, facetsArg *string, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (InstitutionStats, error)
 	GetInstitution(ctx context.Context, institutionIdArg string) (Institution, error)
 	UpdateInstitution(ctx context.Context, institutionIdArg string, requestArg UpdateInstitutionRequest) (Institution, error)
 	DeleteInstitution(ctx context.Context, institutionIdArg string) error
@@ -857,8 +954,12 @@ func (c *educationServiceClientWithAuth) CreateInstitution(ctx context.Context, 
 	return c.client.CreateInstitution(ctx, c.authHeader, requestArg)
 }
 
-func (c *educationServiceClientWithAuth) ListInstitutions(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error) {
-	return c.client.ListInstitutions(ctx, c.authHeader, queryArg, pageSizeArg, pageTokenArg)
+func (c *educationServiceClientWithAuth) ListInstitutions(ctx context.Context, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error) {
+	return c.client.ListInstitutions(ctx, c.authHeader, queryArg, kindIdArg, countryIdArg, foundedOnFromArg, foundedOnToArg, stateArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *educationServiceClientWithAuth) InstitutionStats(ctx context.Context, facetsArg *string, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (InstitutionStats, error) {
+	return c.client.InstitutionStats(ctx, c.authHeader, facetsArg, queryArg, kindIdArg, countryIdArg, foundedOnFromArg, foundedOnToArg, stateArg)
 }
 
 func (c *educationServiceClientWithAuth) GetInstitution(ctx context.Context, institutionIdArg string) (Institution, error) {
@@ -1046,12 +1147,20 @@ func (c *educationServiceClientWithTokenProvider) CreateInstitution(ctx context.
 	return c.client.CreateInstitution(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *educationServiceClientWithTokenProvider) ListInstitutions(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error) {
+func (c *educationServiceClientWithTokenProvider) ListInstitutions(ctx context.Context, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(InstitutionPage), err
 	}
-	return c.client.ListInstitutions(ctx, bearertoken.Token(token), queryArg, pageSizeArg, pageTokenArg)
+	return c.client.ListInstitutions(ctx, bearertoken.Token(token), queryArg, kindIdArg, countryIdArg, foundedOnFromArg, foundedOnToArg, stateArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *educationServiceClientWithTokenProvider) InstitutionStats(ctx context.Context, facetsArg *string, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (InstitutionStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(InstitutionStats), err
+	}
+	return c.client.InstitutionStats(ctx, bearertoken.Token(token), facetsArg, queryArg, kindIdArg, countryIdArg, foundedOnFromArg, foundedOnToArg, stateArg)
 }
 
 func (c *educationServiceClientWithTokenProvider) GetInstitution(ctx context.Context, institutionIdArg string) (Institution, error) {

@@ -1,9 +1,18 @@
 "use client";
 
-// Company workspace (M21 / D-Companies). Browse/create legal entities and drill into one to see its
+// Company workspace (M21 / D-Companies). Create legal entities and drill into one to see its
 // registrations, industries, locations, positions, and the ownership/affiliation graph (shareholders,
-// holdings/subsidiaries, beneficial owners, founders, successions, branches). Per-object views live at
-// /o/<id>; a person's company affiliations are managed from the person object view.
+// holdings/subsidiaries, beneficial owners, founders, successions, branches). A person's company
+// affiliations are managed from the person object view.
+//
+// M58 ticket 5 moved BROWSING out. /explore/company is the registry's real reader: six facet filters,
+// keyset paging that does not drop its token, and a dashboard over the same filter set. What stays
+// here is EDITING — creation, and the per-company registration / industry / location / ownership
+// panels, which are richer than the generic action runner.
+//
+// The table below is therefore a bounded EDIT surface, not a listing: it shows one page and says so.
+// That is the difference from the pre-M58 page, which fetched 100 rows, offered no filters and
+// silently dropped the next-page token — presenting a truncation as a registry.
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -37,14 +46,27 @@ type Graph = {
 const C = "/company/v1";
 const OWNERSHIP = ["private", "public", "state_owned", "municipal", "foreign", "mixed"];
 
+// The edit surface's page size. Small on purpose: this is a working set to act on, not a listing —
+// the listing is /explore/company.
+const EDIT_PAGE = 50;
+
 export default function CompaniesPage() {
   const [legalForms, setLegalForms] = useState<Catalog[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selected, setSelected] = useState<Company | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const [err, setErr] = useState<unknown>(null);
 
+  // One page, and the next-page token is READ rather than discarded — its presence is what the notice
+  // below reports. Filtering is deliberately not offered here; it is the explorer's job now.
   function reload() {
-    api.company.listCompanies(undefined, 100).then((r) => setCompanies((r.companies ?? []) as unknown as Company[])).catch(setErr);
+    api.company
+      .listCompanies(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, EDIT_PAGE)
+      .then((r) => {
+        setCompanies((r.companies ?? []) as unknown as Company[]);
+        setTruncated(Boolean(r.nextPageToken));
+      })
+      .catch(setErr);
   }
   useEffect(() => {
     api.company.listLegalForms().then((r) => setLegalForms((r.legalForms ?? []) as unknown as Catalog[])).catch(() => {});
@@ -60,7 +82,7 @@ export default function CompaniesPage() {
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <CreateCompany legalForms={legalForms} onCreated={reload} />
-        <CompanyList companies={companies} selected={selected} onSelect={setSelected} />
+        <CompanyList companies={companies} selected={selected} onSelect={setSelected} truncated={truncated} />
       </div>
       {selected ? (
         <div className="mt-6 space-y-6">
@@ -142,7 +164,7 @@ function CreateCompany({ legalForms, onCreated }: { legalForms: Catalog[]; onCre
   );
 }
 
-function CompanyList({ companies, selected, onSelect }: { companies: Company[]; selected: Company | null; onSelect: (c: Company) => void }) {
+function CompanyList({ companies, selected, onSelect, truncated }: { companies: Company[]; selected: Company | null; onSelect: (c: Company) => void; truncated: boolean }) {
   const tr = useTg();
   const [q, setQ] = useState("");
   const shown = companies.filter((c) => {
@@ -152,9 +174,22 @@ function CompanyList({ companies, selected, onSelect }: { companies: Company[]; 
   });
   return (
     <Card>
+      <div className="mb-2 flex items-center gap-3">
+        <h2 className="text-sm font-semibold text-slate-700"><T>Edit</T></h2>
+        <Link href="/explore/company" className="ml-auto text-xs text-indigo-600 hover:underline">
+          <T>Browse, filter and chart the whole registry →</T>
+        </Link>
+      </div>
+      <p className="mb-3 text-xs text-slate-500">
+        {truncated
+          ? tr("The first page only — there are more. Use the explorer to find a specific company; this table is here to edit the ones in front of you.")
+          : tr("Every company in the registry. Use the explorer to filter or chart them.")}
+      </p>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-700"><T>Companies</T></h2>
-        <input className="input w-48" placeholder={tr("filter…")} value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="text-xs text-slate-500">
+          {shown.length} <T>of</T> {companies.length} <T>on this page</T>
+        </span>
+        <input className="input w-48" placeholder={tr("Filter rows on this page…")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {shown.length === 0 ? (
         <p className="text-sm text-slate-400"><T>No companies.</T></p>

@@ -37,7 +37,10 @@ export type EntityKind =
   | "brand"
   | "color"
   | "accountType"
-  | "cardNetwork";
+  | "cardNetwork"
+  | "legalForm"
+  | "industryClass"
+  | "institutionKind";
 
 type Option = { id: string; label: string; hint?: string };
 
@@ -244,6 +247,38 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
       id: str(t.id) ?? "",
       label: pickLabel(map(t.name), locale) || str(t.code) || str(t.id) || "",
       hint: str(t.code),
+    }),
+  },
+  // M58 ticket 5 — the ref-facet pickers for the company and institution dashboards. All three are
+  // small closed catalogs served whole in one page, like the ticket-3 set above. `institution` is
+  // already registered further up as an object picker; what is added here is its KIND catalog.
+  legalForm: {
+    path: "/company/v1/legal-forms",
+    pick: (d) => (d as { legalForms?: unknown[] })?.legalForms ?? [],
+    toOption: (f, locale) => ({
+      id: str(f.id) ?? "",
+      label: pickLabel(map(f.name), locale) || str(f.code) || str(f.id) || "",
+      hint: str(f.abbreviation) || str(f.code),
+    }),
+  },
+  industryClass: {
+    path: "/company/v1/industry-classes",
+    pick: (d) => (d as { industryClasses?: unknown[] })?.industryClasses ?? [],
+    toOption: (c, locale) => ({
+      id: str(c.id) ?? "",
+      label: pickLabel(map(c.name), locale) || str(c.code) || str(c.id) || "",
+      // The classification SYSTEM (NACE / ISIC / KVED) is the disambiguator here: two systems can
+      // carry the same code for different activities.
+      hint: [str(c.system), str(c.code)].filter(Boolean).join(" "),
+    }),
+  },
+  institutionKind: {
+    path: "/education/v1/institution-kinds",
+    pick: (d) => (d as { institutionKinds?: unknown[] })?.institutionKinds ?? [],
+    toOption: (k, locale) => ({
+      id: str(k.id) ?? "",
+      label: pickLabel(map(k.name), locale) || str(k.code) || str(k.id) || "",
+      hint: str(k.code),
     }),
   },
   cardNetwork: {

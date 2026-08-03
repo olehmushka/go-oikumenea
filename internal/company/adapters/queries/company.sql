@@ -58,7 +58,11 @@ VALUES (@company_id, sqlc.narg('short_name'), @legal_form_id,
 RETURNING *;
 
 -- name: GetCompany :one
-SELECT o.id, o.code, o.name AS legal_name,
+-- o.visibility is projected for the SHADOW GATE, not for the wire: a company IS a tenant organization
+-- (M41), so it carries the organization's public/shadow bit and the transport must apply the same gate
+-- listOrganizations does (D-VisibilityScope). It is deliberately absent from the API Company type —
+-- the organization facet vocabulary already exposes the attribute where it belongs.
+SELECT o.id, o.code, o.name AS legal_name, o.visibility,
   p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
   p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.company_org_profiles p
@@ -80,12 +84,28 @@ RETURNING *;
 -- name: ListCompanies :many
 -- Active companies, keyset-paginated by org RID. A text query routes to SearchCompanies (review R-21):
 -- a `(@query = '' OR …)` guard would defeat the trigram GIN indexes.
-SELECT o.id, o.code, o.name AS legal_name,
+-- o.visibility feeds the transport's shadow gate — see GetCompany.
+--
+-- THE FACET FILTER BLOCK below is written identically into SearchCompanies and all four aggregate
+-- arms (M58 ticket 5 / D-ObjectFacets). Six copies is six chances to drift, and the drift would be
+-- silent: a chart describing a set its own list does not return. pkg/facet/sqlparity_test.go asserts
+-- every facet's narg appears in every one of them.
+SELECT o.id, o.code, o.name AS legal_name, o.visibility,
   p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
   p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.company_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
+  AND (sqlc.narg('legal_form_id')::uuid IS NULL OR p.legal_form_id = sqlc.narg('legal_form_id')::uuid)
+  AND (sqlc.narg('ownership_category')::text IS NULL OR p.ownership_category = sqlc.narg('ownership_category')::text)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('industry_class_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = sqlc.narg('industry_class_id')::uuid))
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
   AND (@after = '' OR o.id::text > @after)
 ORDER BY o.id
 LIMIT @lim;
@@ -96,7 +116,7 @@ LIMIT @lim;
 -- rather than an OR across the join: an OR spanning both tables can't BitmapOr, whereas each UNION arm
 -- stays a GIN bitmap scan (the person names+variants pattern, D-PersonSearch). Same projection and keyset
 -- as ListCompanies so the two rows are convertible in the repository.
-SELECT o.id, o.code, o.name AS legal_name,
+SELECT o.id, o.code, o.name AS legal_name, o.visibility,
   p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
   p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.company_org_profiles p
@@ -109,9 +129,344 @@ WHERE p.deleted_at IS NULL
     UNION
     SELECT cp.company_id FROM oikumenea.company_org_profiles cp
       WHERE cp.deleted_at IS NULL AND cp.short_name ILIKE '%' || @query || '%')
+  AND (sqlc.narg('legal_form_id')::uuid IS NULL OR p.legal_form_id = sqlc.narg('legal_form_id')::uuid)
+  AND (sqlc.narg('ownership_category')::text IS NULL OR p.ownership_category = sqlc.narg('ownership_category')::text)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('industry_class_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = sqlc.narg('industry_class_id')::uuid))
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
   AND (@after = '' OR o.id::text > @after)
 ORDER BY o.id
 LIMIT @lim;
+
+-- ============================ company dashboards (M58 ticket 5 / D-ObjectFacets) ============================
+-- FOUR arms, the person shape rather than the organization one, because a company has BOTH a
+-- visibility gate and an R-21 search twin: {plain, search} × {instance-admin, visibility-scoped}.
+-- They cannot be collapsed. A nullable trigram predicate is not indexable (R-21), and the admin arm
+-- must carry NO visibility predicate whatsoever — both are plan-shape decisions, not style ones.
+--
+-- What that costs is four copies of the same 45 lines of GROUP BY, and what pays for it is
+-- pkg/facet/statsparity_test.go: the AGGREGATE half must be byte-identical across the four, or an
+-- admin and a scoped caller would be shown different distributions of the same world.
+--
+-- The candidate CTE projects the PRIMARY industry classification as a scalar subquery rather than
+-- joining company_industry_assignments: the join is one-to-many (one primary + secondaries), and
+-- grouping it raw would count a diversified company once per NACE code it carries. Confined to the
+-- primary — of which company_industry_assignments_one_primary_active guarantees at most one — the
+-- distribution PARTITIONS, so no NonPartitioning exemption is taken and none is needed.
+
+-- name: CompanyStats :many
+-- The INSTANCE-ADMIN arm: no visibility predicate at all, which is why it is a separate query rather
+-- than the scoped one with a flag.
+WITH cand AS MATERIALIZED (
+  SELECT p.company_id AS id, p.legal_form_id, p.ownership_category, p.country_id,
+         p.founded_on, p.state,
+         (SELECT ia.industry_class_id
+            FROM oikumenea.company_industry_assignments ia
+            WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+            LIMIT 1) AS industry_class_id
+  FROM oikumenea.company_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (sqlc.narg('legal_form_id')::uuid IS NULL OR p.legal_form_id = sqlc.narg('legal_form_id')::uuid)
+  AND (sqlc.narg('ownership_category')::text IS NULL OR p.ownership_category = sqlc.narg('ownership_category')::text)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('industry_class_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = sqlc.narg('industry_class_id')::uuid))
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'legalForm'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.legal_form_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_legal_form')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'ownershipCategory'::text, c.ownership_category::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_ownership_category')::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'industryClass'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.industry_class_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_industry_class')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_founded_on')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
+
+-- name: CompanyStatsSearch :many
+-- The admin arm's trigram twin. Identical but for the id-set predicate, which is the same UNION
+-- SearchCompanies uses so the two surfaces search the same haystack.
+WITH cand AS MATERIALIZED (
+  SELECT p.company_id AS id, p.legal_form_id, p.ownership_category, p.country_id,
+         p.founded_on, p.state,
+         (SELECT ia.industry_class_id
+            FROM oikumenea.company_industry_assignments ia
+            WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+            LIMIT 1) AS industry_class_id
+  FROM oikumenea.company_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND o.id IN (
+    SELECT org.id FROM oikumenea.tenant_organizations org
+      WHERE org.deleted_at IS NULL
+        AND org.search_text ILIKE '%' || @query || '%'
+    UNION
+    SELECT cp.company_id FROM oikumenea.company_org_profiles cp
+      WHERE cp.deleted_at IS NULL AND cp.short_name ILIKE '%' || @query || '%')
+  AND (sqlc.narg('legal_form_id')::uuid IS NULL OR p.legal_form_id = sqlc.narg('legal_form_id')::uuid)
+  AND (sqlc.narg('ownership_category')::text IS NULL OR p.ownership_category = sqlc.narg('ownership_category')::text)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('industry_class_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = sqlc.narg('industry_class_id')::uuid))
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'legalForm'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.legal_form_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_legal_form')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'ownershipCategory'::text, c.ownership_category::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_ownership_category')::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'industryClass'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.industry_class_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_industry_class')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_founded_on')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
+
+-- name: CompanyStatsForSubject :many
+-- The visibility-scoped arm. A company IS a `company`-domain tenant ORGANIZATION (M41 /
+-- D-UnifiedOrgGraph), so the gate is the ORGANIZATION's, and organization reach is DERIVED from unit
+-- reach (M58 ticket 4 follow-up, amending D-VisibilityScope): an organization is visible when any of
+-- its live units is in the subject's reach.
+--
+-- Copying unit's own predicate (`id IN (authz_readable_units(...))`) would compile and match NOTHING:
+-- authz_role_assignments.target_unit_id is NOT NULL REFERENCES tenant_units, so an organization RID
+-- can never appear in a readable-unit set. Copying a flat `visibility = 'public'` would match what
+-- this list left before ticket 4 and be wrong the day a subject reaches a shadow company.
+--
+-- Folded into the CANDIDATE SET rather than applied after: on the list gateCompanies trims the page
+-- once it is cut, which is right for a page and wrong for a count (D-ObjectFacets rule 3).
+WITH cand AS MATERIALIZED (
+  SELECT p.company_id AS id, p.legal_form_id, p.ownership_category, p.country_id,
+         p.founded_on, p.state,
+         (SELECT ia.industry_class_id
+            FROM oikumenea.company_industry_assignments ia
+            WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+            LIMIT 1) AS industry_class_id
+  FROM oikumenea.company_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (o.visibility = 'public'
+       OR o.id IN (SELECT u.org_id
+                   FROM oikumenea.tenant_units u
+                   WHERE u.deleted_at IS NULL
+                     AND u.id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))))
+  AND (sqlc.narg('legal_form_id')::uuid IS NULL OR p.legal_form_id = sqlc.narg('legal_form_id')::uuid)
+  AND (sqlc.narg('ownership_category')::text IS NULL OR p.ownership_category = sqlc.narg('ownership_category')::text)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('industry_class_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = sqlc.narg('industry_class_id')::uuid))
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'legalForm'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.legal_form_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_legal_form')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'ownershipCategory'::text, c.ownership_category::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_ownership_category')::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'industryClass'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.industry_class_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_industry_class')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_founded_on')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
+
+-- name: CompanyStatsForSubjectSearch :many
+-- The scoped arm's trigram twin — the fourth corner of the same square.
+WITH cand AS MATERIALIZED (
+  SELECT p.company_id AS id, p.legal_form_id, p.ownership_category, p.country_id,
+         p.founded_on, p.state,
+         (SELECT ia.industry_class_id
+            FROM oikumenea.company_industry_assignments ia
+            WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+            LIMIT 1) AS industry_class_id
+  FROM oikumenea.company_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (o.visibility = 'public'
+       OR o.id IN (SELECT u.org_id
+                   FROM oikumenea.tenant_units u
+                   WHERE u.deleted_at IS NULL
+                     AND u.id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))))
+  AND o.id IN (
+    SELECT org.id FROM oikumenea.tenant_organizations org
+      WHERE org.deleted_at IS NULL
+        AND org.search_text ILIKE '%' || @query || '%'
+    UNION
+    SELECT cp.company_id FROM oikumenea.company_org_profiles cp
+      WHERE cp.deleted_at IS NULL AND cp.short_name ILIKE '%' || @query || '%')
+  AND (sqlc.narg('legal_form_id')::uuid IS NULL OR p.legal_form_id = sqlc.narg('legal_form_id')::uuid)
+  AND (sqlc.narg('ownership_category')::text IS NULL OR p.ownership_category = sqlc.narg('ownership_category')::text)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('industry_class_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = sqlc.narg('industry_class_id')::uuid))
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'legalForm'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.legal_form_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_legal_form')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'ownershipCategory'::text, c.ownership_category::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_ownership_category')::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'industryClass'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.industry_class_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_industry_class')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_founded_on')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
 
 -- name: SoftDeleteCompany :execrows
 UPDATE oikumenea.company_org_profiles SET deleted_at = now() WHERE company_id = @id AND deleted_at IS NULL;

@@ -9,6 +9,7 @@ import { ICompanyLocationList } from "./companyLocationList";
 import { ICompanyPage } from "./companyPage";
 import { ICompanyPosition } from "./companyPosition";
 import { ICompanyPositionPage } from "./companyPositionPage";
+import { ICompanyStats } from "./companyStats";
 import { ICreateCompanyRequest } from "./createCompanyRequest";
 import { ICreatePositionRequest } from "./createPositionRequest";
 import { IEndAppointmentRequest } from "./endAppointmentRequest";
@@ -60,7 +61,29 @@ export interface ICompanyService {
     listIndustryClasses(): Promise<IIndustryClassList>;
     upsertIndustryClass(request: IUpsertIndustryClassRequest): Promise<IIndustryClass>;
     createCompany(request: ICreateCompanyRequest): Promise<ICompany>;
-    listCompanies(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ICompanyPage>;
+    /**
+     * List companies, token-paginated, optionally filtered by the facet vocabulary (M58 ticket 5 /
+     * D-ObjectFacets). Shadow-gated: a company IS a `company`-domain tenant organization (M41 /
+     * D-UnifiedOrgGraph), so it carries that organization's public/shadow bit and is trimmed by
+     * the same rule `listOrganizations` applies. Gated by company.read.
+     *
+     * Every filter arg here is also an arg of `companyStats`, and a chart segment's key is a
+     * usable value for the arg it came from — that is what makes a dashboard and a list two
+     * renderings of one request state.
+     *
+     */
+    listCompanies(query?: string | null, legalForm?: string | null, ownershipCategory?: string | null, countryId?: string | null, industryClass?: string | null, foundedOnFrom?: string | null, foundedOnTo?: string | null, state?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ICompanyPage>;
+    /**
+     * Facet distributions over the company registry — the dashboard half of the company facet
+     * vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args `listCompanies`
+     * takes, minus paging, so a dashboard and a list are two renderings of one request state.
+     *
+     * The path is `/stats/companies` rather than `/companies/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{companyId}` — see the route-conflict
+     * guard in `internal/platform/transport`.
+     *
+     */
+    companyStats(facets?: string | null, query?: string | null, legalForm?: string | null, ownershipCategory?: string | null, countryId?: string | null, industryClass?: string | null, foundedOnFrom?: string | null, foundedOnTo?: string | null, state?: string | null): Promise<ICompanyStats>;
     getCompany(companyId: string): Promise<ICompany>;
     updateCompany(companyId: string, request: IUpdateCompanyRequest): Promise<ICompany>;
     deleteCompany(companyId: string): Promise<void>;
@@ -206,7 +229,18 @@ export class CompanyService implements ICompanyService {
         );
     }
 
-    public listCompanies(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ICompanyPage> {
+    /**
+     * List companies, token-paginated, optionally filtered by the facet vocabulary (M58 ticket 5 /
+     * D-ObjectFacets). Shadow-gated: a company IS a `company`-domain tenant organization (M41 /
+     * D-UnifiedOrgGraph), so it carries that organization's public/shadow bit and is trimmed by
+     * the same rule `listOrganizations` applies. Gated by company.read.
+     *
+     * Every filter arg here is also an arg of `companyStats`, and a chart segment's key is a
+     * usable value for the arg it came from — that is what makes a dashboard and a list two
+     * renderings of one request state.
+     *
+     */
+    public listCompanies(query?: string | null, legalForm?: string | null, ownershipCategory?: string | null, countryId?: string | null, industryClass?: string | null, foundedOnFrom?: string | null, foundedOnTo?: string | null, state?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ICompanyPage> {
         return this.bridge.call<ICompanyPage>(
             "CompanyService",
             "listCompanies",
@@ -216,8 +250,50 @@ export class CompanyService implements ICompanyService {
             __undefined,
             {
                 "query": query,
+                "legalForm": legalForm,
+                "ownershipCategory": ownershipCategory,
+                "countryId": countryId,
+                "industryClass": industryClass,
+                "foundedOnFrom": foundedOnFrom,
+                "foundedOnTo": foundedOnTo,
+                "state": state,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions over the company registry — the dashboard half of the company facet
+     * vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args `listCompanies`
+     * takes, minus paging, so a dashboard and a list are two renderings of one request state.
+     *
+     * The path is `/stats/companies` rather than `/companies/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{companyId}` — see the route-conflict
+     * guard in `internal/platform/transport`.
+     *
+     */
+    public companyStats(facets?: string | null, query?: string | null, legalForm?: string | null, ownershipCategory?: string | null, countryId?: string | null, industryClass?: string | null, foundedOnFrom?: string | null, foundedOnTo?: string | null, state?: string | null): Promise<ICompanyStats> {
+        return this.bridge.call<ICompanyStats>(
+            "CompanyService",
+            "companyStats",
+            "GET",
+            "/company/v1/stats/companies",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "query": query,
+                "legalForm": legalForm,
+                "ownershipCategory": ownershipCategory,
+                "countryId": countryId,
+                "industryClass": industryClass,
+                "foundedOnFrom": foundedOnFrom,
+                "foundedOnTo": foundedOnTo,
+                "state": state,
             },
             __undefined,
             __undefined,

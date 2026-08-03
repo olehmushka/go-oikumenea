@@ -78,12 +78,11 @@ type TenantServiceClient interface {
 	   Unlike `unitStats` there is no `org` arg: the organization registry is the instance's
 	   whole realm catalog, not a per-org tree.
 
-	   The shadow gate is folded into SQL: on the list `gateUnits` trims the page once it is cut,
-	   which is right for a page and wrong for a count. For an organization that gate reduces to
-	   `visibility = 'public'` for every non-instance-admin caller — a role assignment's
-	   `target_unit_id` FKs `tenant_units` and can never name an organization, so there is no
-	   reachable shadow org for the two surfaces to disagree about. `totalCount` therefore equals
-	   the rows exhaustively paging `listOrganizations` under these filters would return.
+	   The shadow gate is folded into SQL: on the list `gateOrgs` trims the page once it is cut,
+	   which is right for a page and wrong for a count. Organization reach is DERIVED from unit
+	   reach (M58 ticket 4 follow-up): an organization is visible when it is public, or when any
+	   of its live units is in the subject's reach. `totalCount` therefore equals the rows
+	   exhaustively paging `listOrganizations` under these filters would return.
 
 	   The path is `/stats/organizations` rather than `/organizations/stats` because the server's
 	   router rejects a literal path segment that is a sibling of `{orgId}` — see the
@@ -961,12 +960,11 @@ type TenantServiceClientWithAuth interface {
 	   Unlike `unitStats` there is no `org` arg: the organization registry is the instance's
 	   whole realm catalog, not a per-org tree.
 
-	   The shadow gate is folded into SQL: on the list `gateUnits` trims the page once it is cut,
-	   which is right for a page and wrong for a count. For an organization that gate reduces to
-	   `visibility = 'public'` for every non-instance-admin caller — a role assignment's
-	   `target_unit_id` FKs `tenant_units` and can never name an organization, so there is no
-	   reachable shadow org for the two surfaces to disagree about. `totalCount` therefore equals
-	   the rows exhaustively paging `listOrganizations` under these filters would return.
+	   The shadow gate is folded into SQL: on the list `gateOrgs` trims the page once it is cut,
+	   which is right for a page and wrong for a count. Organization reach is DERIVED from unit
+	   reach (M58 ticket 4 follow-up): an organization is visible when it is public, or when any
+	   of its live units is in the subject's reach. `totalCount` therefore equals the rows
+	   exhaustively paging `listOrganizations` under these filters would return.
 
 	   The path is `/stats/organizations` rather than `/organizations/stats` because the server's
 	   router rejects a literal path segment that is a sibling of `{orgId}` — see the

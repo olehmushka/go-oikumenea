@@ -96,6 +96,38 @@ buckets*, never between a bucket and its own filter. Two build-time guards keep 
 the listed table — a row has one value in its own column, so a facet grouping one *cannot* overlap,
 and an exemption there would be imitation rather than need.
 
+### The second escape from the token check (M58 ticket 5)
+
+Every declared type names a `pkg/rid` registry **token**, so the facet vocabulary, the ontology
+registry and the console all name types identically. There are now **two** admissions that a
+collection's rows do not carry a token of their own, and they are siblings rather than variants:
+
+| Field | What it says | Held by |
+|---|---|---|
+| `Ledger` | These rows have **no** token — an audit entry's RID belongs to the service that produced the action. Registering one would make `rid.TokenOf` describe identifiers that are never minted | a reason string ≥ 40 chars, and a **cap of one** (a second ledger is an argument, not a copy) |
+| `Profile` | These rows are keyed by **another** type's token — a sidecar whose primary key IS the parent's RID | a **structural** check against the migrations: the profile table's primary key must `REFERENCES` the profiled token's table |
+
+`Profile` is **uncapped** where `Ledger` is capped, and the asymmetry is the point. A ledger is an
+exception to D-Ontology's kind rule and should stay rare enough to notice. A sidecar-on-organization
+is a *pattern* — `company_org_profiles` and `education_org_profiles` are the same shape by design
+(M41 / D-UnifiedOrgGraph) — so repetition there is the model working. What replaces the cap is that
+the claim is **checkable**: a ledger's "these rows have no token" is not written down anywhere and
+must be argued, while a profile's "these rows are keyed by that token" is a fact the DDL records, so
+the guard reads it instead of believing it. A companion guard pins that every profile type hangs off
+the *same* parent today, so a profile of something else (e.g. `religion_org_profiles`, which is the
+same shape keyed to `tenant_units`) is a review moment rather than a copy.
+
+Two shapes were rejected for company/institution before `Profile` was added:
+
+- **a domain-discriminated `organization` type** whose facets differ per domain. The facets would
+  bind to `listOrganizations`, which selects no sidecar column — so `listCompanies` and
+  `listInstitutions`, the endpoints that actually serve these rows, would stay unfilterable and their
+  console pages would stay bespoke.
+- **new RID types for the profiles.** Cleanest routing (a company RID would resolve to the company
+  view), and by far the most invasive: a migration re-keying both sidecars and every table that
+  references `institution_id` as an org RID, against D-UnifiedOrgGraph's "a company IS a tenant
+  organization".
+
 The closure facet has one further requirement that is easy to miss and was found by the differential
 test rather than by reading: **its buckets must be confined to the current candidate set.** Once a
 caller has filtered to X's subtree, X's own ancestors are still ancestors of every remaining row, so
@@ -241,10 +273,10 @@ Facets and components in brief; each is expanded to the table form above when it
 | Type | Facets | Components |
 |---|---|---|
 | ~~**organization**~~ | — | **BUILT (M58 ticket 4)** — see below |
-| **company** (`company_org_profiles`) | `legalForm`, `ownershipCategory`, `countryId`, `industryClass`, `foundedOn`(range), `state` | Legal-form bar · ownership donut · industry (NACE) top-15 bar · foundings-per-year histogram · country bar |
+| ~~**company**~~ | — | **BUILT (M58 ticket 5)** — see below |
 | ~~**vehicle**~~ | — | **BUILT (M58 ticket 3)** — see below |
 | ~~**finance-account**~~ / ~~**finance-card**~~ | — | **BUILT (M58 ticket 3)** as `account` and `card` — see below |
-| **institution** (`education_org_profiles`) | `kindId`, `countryId`, `foundedOn`(range), `state` | Kind mix bar · country bar · state tiles |
+| ~~**institution**~~ | — | **BUILT (M58 ticket 5)** — see below |
 | **enrollment** (`person_education_enrollments`) | `institutionId`, `degreeLevelId`, `status`, `effectiveFrom`(range) | Enrollments per intake histogram · degree-level bar (ISCED-ordered, **not** count-ordered) · status tiles. ⚠️ **Defect (M58 ticket-2 survey):** `programId` and `startedOn` name columns that do not exist — the nearest are `field_of_study` (free TEXT, so a `code` facet at best) and `effective_from`. Corrected above. Also has **no top-level list**: only `GET /education/v1/persons/{personId}/enrollments` |
 
 
@@ -537,6 +569,78 @@ person) and the **first** with a composite code facet.
 > as an unremarked stretch. Neither is a facet on purpose: an exact-parent dimension partitions
 > honestly and then dead-ends after one click, which is `taxon.subtree`'s argument in reverse.
 
+#### `company` — [company](../modules/company.md) · `company_org_profiles` — **BUILT (M58 ticket 5)**
+
+The **first PROFILE type**, and the reason `Profile` exists. A company is not a row with a `company`
+RID: it is a `company`-domain tenant **organization** (4/1/6) plus a `company_org_profiles` sidecar
+keyed by that organization's RID (M41 / D-UnifiedOrgGraph). Identity, the stable `code` and the
+translatable legal name live on `tenant_organizations`; the sidecar carries what this dashboard is
+made of.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `legalForm` | ref | `legal_form_id` → `company_legal_forms` | NOT NULL, so no `(unknown)`. Orthogonal to `ownershipCategory` — a private LLC and a state-owned JSC differ on both axes independently |
+| `ownershipCategory` | enum | `ownership_category` | `private`/`public`/`state_owned`/`municipal`/`foreign`/`mixed`. Chart order is the CHECK set's own — it reads as a spectrum of public involvement, and a frequency sort would scramble the only ordering it has |
+| `countryId` | ref | `country_id` → `geo_countries` | nullable (a multinational may have none) |
+| `industryClass` | ref | `company_industry_assignments.industry_class_id`, **`is_primary` only** | ANOTHER table, and the one facet here that had to choose a set — see below |
+| `foundedOn` | date-range | `founded_on` | **year** grain — the first in the vocabulary. Nullable |
+| `state` | enum | `state` | `active`/`dissolved`/`merged`. The COMPANY's lifecycle, which is **not** the owning organization's `state`: an org may be archived while the legal entity it profiles still trades |
+
+**Components.** ① **Lifecycle** tiles. ② **Legal forms** top-15 bar. ③ **Ownership** donut.
+④ **Industries** top-15 bar (primary classification, so each company is counted once). ⑤ **By
+country** bar. ⑥ **Foundings by year** histogram.
+
+> **`industryClass` could have taken `NonPartitioning` and does not.** `company_industry_assignments`
+> is M:N — one primary plus secondaries — so grouping it raw would count a diversified company once
+> per NACE code it carries, and the exemption would be both available and legitimately earned (the
+> facet's table is not the listed table, so the guard would allow it). Confining the facet to the
+> **primary** assignment — of which `company_industry_assignments_one_primary_active` guarantees at
+> most one — partitions honestly AND answers the question the chart is read for: what is this
+> company's line of business, not every line it has ever touched. That is ticket 3's
+> `registrationCountry` reasoning and the general rule it stated: **an exemption being available is
+> not a reason to take it.**
+
+> **`foundedOn` is the first YEAR-grain facet**, and the grain is what the data demands rather than a
+> preference: company foundings span more than a century, so a month histogram would be ~1500 buckets
+> of which almost all are zero — where every earlier date facet (`issuedOn`, `effectiveFrom`,
+> `manufactureDate`) covers a live operational window. The console gained `yearSpan` + a `yearPatch`
+> bucket inverse; the inverse ships the datetime-widening branch its month sibling lacked for two
+> tickets, because that omission is exactly the bug ticket 2 found (every month segment of a datetime
+> facet linked to a 400).
+
+> **FOUR aggregate arms**, the `person` shape rather than `organization`'s two: a profile type has
+> BOTH a visibility gate (it IS a tenant organization) and an R-21 search twin, so the square is
+> `{plain, search} × {instance-admin, visibility-scoped}`. The scoped arms carry the **derived** org
+> reach — `public OR any live unit in the subject's reach` — never unit's own
+> `id IN (readable_units)`, which would compile and match nothing.
+
+#### `institution` — [education](../modules/education.md) · `education_org_profiles` — **BUILT (M58 ticket 5)**
+
+The second profile type, the same arrangement one domain over: a `university`-domain tenant
+organization plus an `education_org_profiles` sidecar keyed by its RID.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `kindId` | ref | `kind_id` → `education_institution_kinds` | NOT NULL, so no `(unknown)` |
+| `countryId` | ref | `country_id` → `geo_countries` | nullable (international / online-only) |
+| `foundedOn` | date-range | `founded_on` | **year** grain, for company's reason and more so — universities predate companies by centuries |
+| `state` | enum | `state` | `active`/`closed`/`merged`. `closed` where a company is `dissolved`; the two CHECK sets differ by that one value and are deliberately not unified, because a closed university and a dissolved legal entity are not the same event |
+
+**Components.** ① **Lifecycle** tiles. ② **Kind mix** bar. ③ **By country** bar. ④ **Foundings by
+year** histogram.
+
+It is the thinner of the two — four facets against six — because the education module's richness
+lives in the structure tree hanging *off* an institution (units, buildings, programs, courses), and
+those are separate types reached per institution rather than columns on this row.
+
+> **Both types were shadow-leaking until this ticket.** `listCompanies` and `listInstitutions` joined
+> `tenant_organizations` and never looked at `visibility`, so a caller holding `company.read` /
+> `education.read` was handed shadow organizations that `listOrganizations` trims — from M21 and M20
+> respectively. The point reads leaked the same rows one at a time, and unified **search** was a third
+> door (both types were registered under the catalog scope, which trims nothing). All three now run
+> the one organization gate; a gated-out row is `NotFound`, never a 403, because `shadow` hides
+> existence.
+
 ### The raw-pgx arm of the parity guards (M58 ticket 2)
 
 `sqlparity_test.go` and `statsparity_test.go` prove a type's list and its dashboard see one world by
@@ -711,17 +815,23 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
   that had been fixed by an `ALTER` in the same file since M42, and the correction cost ticket 3 a
   round of re-deciding. Nothing structural to fix — but **grep the column, not the table**, and prefer
   the live schema to the DDL when both are available.
-- **Two M58 types have no RID token of their own.** `company` (`company_org_profiles`) and
-  `institution` (`education_org_profiles`) are **sidecar tables on `tenant_organizations`**
-  (M41 / D-UnifiedOrgGraph): their primary keys FK to `tenant_organizations(id)`, whose RID is
-  `organization` (4/1/6). `facet.Register` refuses a `Type` that is not a registered `pkg/rid` token,
-  and the `Ledger` escape cannot absorb them — it is capped at ONE by a guard and `audit` holds it,
-  correctly, since these tables are not ledgers and their rows *do* have a type token; it just is not
-  theirs alone. So both are **blocked** on a catalog decision, in the same register as the four
-  assumptions ticket 1 surfaced. Three shapes are on the table, none yet argued: a declared
-  "profile of an existing token" arm; a `domain`-discriminated `organization` type whose facets differ
-  per domain; or new RID types for the profiles, which is a schema change and the most invasive.
-  **Decide before starting either type's ticket, not during it.**
+- ~~**Two M58 types have no RID token of their own.**~~ **CLOSED (M58 ticket 5): the `Profile` arm.**
+  `company` and `institution` are sidecars on `tenant_organizations` (M41 / D-UnifiedOrgGraph), so
+  their rows' token is `organization` (4/1/6) and `facet.Register` refused them. Of the three shapes
+  the seam recorded, the **declared "profile of an existing token" arm** was taken — see
+  [the second escape from the token check](#the-second-escape-from-the-token-check-m58-ticket-5) for
+  what holds it honest and why the other two were rejected.
+- **A profile's object view is its parent's.** `/o/<rid>` resolves a type by decoding the RID, and a
+  company's RID decodes to `organization` — so clicking a company row lands on the organization view,
+  which shows the org's code, name, visibility and state and none of the sidecar's columns. The
+  registry entry's `get`/`properties` are reachable only from its own list. This is **pre-existing**
+  (the `institution` entry has behaved this way since M20) and is the honest consequence of the
+  `Profile` choice rather than a regression: the RID cannot say which domain it belongs to, so
+  routing correctly would need a lookup before the page renders. Two ways out if it becomes worth
+  fixing: give the organization view a domain-conditional profile panel (one extra fetch, degrades to
+  nothing for a plain org), or take the rejected "new RID types" shape and pay the migration. What is
+  NOT affected is the thing the ticket delivers — the list and the dashboard are both keyed by type,
+  not by RID.
 - **A per-module action catalog whose `targetType` is the module, not the object type.** The object
   view sources its inline actions by matching `ActionType.targetType` to the registry type, so
   `taxon`'s actions do not surface there: `religion.taxon.update` and friends declare

@@ -1,8 +1,16 @@
 "use client";
 
-// Education workspace (M20 / D-Education). Browse/create external reference institutions and drill into
-// one to see its structure tree (units, with closure depth) + positions, and add a unit. Per-object
-// views live at /o/<id>; person enrollments/dorm stays are managed from the person object view.
+// Education workspace (M20 / D-Education). Create external reference institutions and drill into one
+// to see its structure tree (units, with closure depth) + positions, and add a unit. Person
+// enrollments/dorm stays are managed from the person object view.
+//
+// M58 ticket 5 moved BROWSING out. /explore/institution is the registry's real reader: four facet
+// filters, keyset paging that does not drop its token, and a dashboard over the same filter set. What
+// stays here is EDITING — creation, the structure tree, and the reference panel.
+//
+// The table below is therefore a bounded EDIT surface, not a listing: it shows one page and says so.
+// That is the difference from the pre-M58 page, which fetched 100 rows, offered no filters and
+// silently dropped the next-page token — presenting a truncation as a registry.
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -20,16 +28,27 @@ type Institution = { id: string; code: string; name: LocaleMap; state: string };
 type Unit = { id: string; code: string; name: LocaleMap; parentId?: string; status: string; depth?: number };
 type Position = { id: string; code: string; title: LocaleMap; status: string; holder?: { personId: string } };
 
+// The edit surface's page size. Small on purpose: this is a working set to act on, not a listing —
+// the listing is /explore/institution.
+const EDIT_PAGE = 50;
+
 export default function EducationPage() {
   const [institutionKinds, setInstitutionKinds] = useState<Kind[]>([]);
   const [unitKinds, setUnitKinds] = useState<Kind[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [selected, setSelected] = useState<Institution | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const [err, setErr] = useState<unknown>(null);
 
+  // One page, and the next-page token is READ rather than discarded — its presence is what the notice
+  // below reports. Filtering is deliberately not offered here; it is the explorer's job now.
   function reload() {
-    api.education.listInstitutions(undefined, 100)
-      .then((r) => setInstitutions(r.institutions ?? []))
+    api.education
+      .listInstitutions(undefined, undefined, undefined, undefined, undefined, undefined, EDIT_PAGE)
+      .then((r) => {
+        setInstitutions(r.institutions ?? []);
+        setTruncated(Boolean(r.nextPageToken));
+      })
       .catch(setErr);
   }
 
@@ -48,7 +67,7 @@ export default function EducationPage() {
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <CreateInstitution kinds={institutionKinds} onCreated={reload} />
-        <InstitutionList institutions={institutions} selected={selected} onSelect={setSelected} />
+        <InstitutionList institutions={institutions} selected={selected} onSelect={setSelected} truncated={truncated} />
       </div>
       {selected ? (
         <div className="mt-6 space-y-6">
@@ -203,10 +222,21 @@ function CreateInstitution({ kinds, onCreated }: { kinds: Kind[]; onCreated: () 
   );
 }
 
-function InstitutionList({ institutions, selected, onSelect }: { institutions: Institution[]; selected: Institution | null; onSelect: (i: Institution) => void }) {
+function InstitutionList({ institutions, selected, onSelect, truncated }: { institutions: Institution[]; selected: Institution | null; onSelect: (i: Institution) => void; truncated: boolean }) {
+  const tr = useTg();
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Institutions</T></h2>
+      <div className="mb-2 flex items-center gap-3">
+        <h2 className="text-sm font-semibold text-slate-700"><T>Edit</T></h2>
+        <Link href="/explore/institution" className="ml-auto text-xs text-indigo-600 hover:underline">
+          <T>Browse, filter and chart the whole registry →</T>
+        </Link>
+      </div>
+      <p className="mb-3 text-xs text-slate-500">
+        {truncated
+          ? tr("The first page only — there are more. Use the explorer to find a specific institution; this table is here to edit the ones in front of you.")
+          : tr("Every institution in the registry. Use the explorer to filter or chart them.")}
+      </p>
       {institutions.length === 0 ? (
         <p className="text-sm text-slate-400"><T>No institutions yet.</T></p>
       ) : (

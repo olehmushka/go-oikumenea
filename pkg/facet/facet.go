@@ -300,6 +300,34 @@ type ObjectType struct {
 	// Register still refuses a Ledger token that IS an RID token, so the field cannot smuggle a real
 	// type past the check it exempts.
 	Ledger string
+	// Profile is the RID type token this collection's rows are KEYED BY, and empty for every ordinary
+	// collection whose Type is its own token. It is the second escape from the token check, and the
+	// sibling of Ledger rather than a variant of it: a ledger's rows have no token at all, a profile's
+	// rows have one that is not THEIRS ALONE (M58 ticket 5).
+	//
+	// The real case is the sidecar-on-organization shape (M41 / D-UnifiedOrgGraph). A company IS a
+	// `company`-domain tenant organization plus a company_org_profiles row keyed by that organization's
+	// RID; an institution is the same arrangement in the `university` domain. The row's identity, its
+	// code and its translatable name all live on tenant_organizations, so the RID a caller holds for a
+	// company decodes to `organization` — and registering a `company` token would make rid.TokenOf
+	// describe identifiers that are never minted.
+	//
+	// Why the type is still declared separately rather than folded into `organization`: the facets bind
+	// to a LIST ENDPOINT, and listCompanies / listInstitutions are the endpoints that actually serve
+	// these rows with their sidecar columns. Folding them into the organization block would bind the
+	// company facets to listOrganizations, which cannot filter on a legal form it does not select.
+	//
+	// Unlike Ledger, Profile is deliberately UNCAPPED: the shape already has three members in the
+	// schema — company_org_profiles and education_org_profiles keyed to tenant_organizations, and
+	// religion_org_profiles keyed to tenant_UNITS — so repetition here is the pattern rather than
+	// erosion of it. What holds it honest instead is a STRUCTURAL guard —
+	// a profile type's own table must be primary-key-FK'd to the profiled token's table, checked
+	// against the migrations in catalog_test.go, so the claim is verified and not merely asserted.
+	//
+	// Register refuses a Profile on a type that HAS a token (that would be a way around the check
+	// rather than an admission), refuses a Profile that is not itself a registered object token, and
+	// refuses a declaration claiming both escapes at once.
+	Profile string
 }
 
 // Registry holds the registered object types plus the deliberate exemptions. The zero value is not
@@ -357,12 +385,26 @@ func (r *Registry) Register(o ObjectType) error {
 	switch {
 	case o.Type == "":
 		return errors.New("facet: object type has no Type")
-	case o.Ledger == "" && !listableTypeTokens()[o.Type]:
+	case o.Ledger != "" && o.Profile != "":
+		return fmt.Errorf("facet: %q claims both Ledger and Profile — they are different admissions "+
+			"(no token at all vs. a token that is not its own) and a type is at most one of them", o.Type)
+	case o.Ledger == "" && o.Profile == "" && !listableTypeTokens()[o.Type]:
 		return fmt.Errorf("facet: %q is not a registered object or link type token (pkg/rid) — "+
-			"a collection whose rows carry no type of their own must say so via Ledger", o.Type)
+			"a collection whose rows carry no type of their own must say so via Ledger, and one whose "+
+			"rows are keyed by ANOTHER type's token via Profile", o.Type)
 	case o.Ledger != "" && listableTypeTokens()[o.Type]:
 		return fmt.Errorf("facet: %q is a registered type token, so it must not claim Ledger — "+
 			"the escape is for collections that have NO token, not a way around the check", o.Type)
+	case o.Profile != "" && listableTypeTokens()[o.Type]:
+		return fmt.Errorf("facet: %q is a registered type token, so it must not claim Profile — "+
+			"the escape is for collections keyed by ANOTHER type's token, not a way around the check", o.Type)
+	case o.Profile != "" && o.Profile == o.Type:
+		return fmt.Errorf("facet: %q profiles itself — Profile names the OTHER token its rows are "+
+			"keyed by", o.Type)
+	case o.Profile != "" && !objectTypeTokens()[o.Profile]:
+		return fmt.Errorf("facet: %s profiles %q, which is not a registered object type token "+
+			"(pkg/rid) — a profile's rows are keyed by a real object's RID or they are keyed by "+
+			"nothing", o.Type, o.Profile)
 	case o.Module == "":
 		return fmt.Errorf("facet: object type %q has no Module", o.Type)
 	case o.ListEndpoint == "":

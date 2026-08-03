@@ -24,6 +24,7 @@ import (
 	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
 	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -48,9 +49,17 @@ type Service struct {
 	audit   *auditapp.Service
 	tenant  *tenantapp.Service
 
+	labeler stats.Labeler
+
 	domMu sync.Mutex
 	domID string // cached `company` domain RID (seeded at boot, stable)
 }
+
+// SetBucketLabeler injects the dashboard's ref-bucket name resolver (M58 ticket 5 / D-ObjectFacets),
+// wired at the composition root. Company declares THREE ref facets (legal form, country, industry
+// class), so unlike languoid's this labeler is load-bearing: without it every bar on three of the six
+// charts would be axis-labelled with RID tails.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // NewService wires the service with the pool, repository factory, the audit service, and the tenant
 // service (a company = a `company`-domain org — M41).
@@ -170,8 +179,18 @@ func (s *Service) GetCompany(ctx context.Context, id string) (domain.Company, er
 	return s.newRepo(s.pool).GetCompany(ctx, id)
 }
 
-func (s *Service) ListCompanies(ctx context.Context, query, after string, pageSize int) ([]domain.Company, error) {
-	return s.newRepo(s.pool).ListCompanies(ctx, query, after, clampPageSize(pageSize)+1)
+func (s *Service) ListCompanies(ctx context.Context, f domain.CompanyFilter, after string, pageSize int) ([]domain.Company, error) {
+	return s.newRepo(s.pool).ListCompanies(ctx, f, after, clampPageSize(pageSize)+1)
+}
+
+// CompanyStats answers the company dashboard (M58 ticket 5 / D-ObjectFacets). It takes BOTH the
+// subject and the admin flag rather than deriving one from the other: stats.Compute owns the arm
+// convention, so a machine principal (no subject, not an admin) reads nothing rather than everything.
+func (s *Service) CompanyStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.CompanyFilter, sel stats.Selection) (stats.Result, error) {
+	repo := s.newRepo(s.pool)
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
+		return repo.CompanyStats(ctx, subject, f, sel)
+	})
 }
 
 // UpdateCompany applies a partial change: the org name (registered name) via the tenant service (if set)

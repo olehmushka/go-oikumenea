@@ -2221,6 +2221,21 @@ organization RID be passed to the unit probe unnoticed. `internal/tenant/transpo
 pins which helper each shadow-bearing handler uses, and names an org handler calling `gateUnits` as
 the original bug rather than a style slip.
 
+**Extension (M58 ticket 5) — the organization gate covers the SIDECAR PROFILES, on all three read
+surfaces.** A company and an institution ARE tenant organizations (M41 / D-UnifiedOrgGraph), so they
+carry the organization's public/shadow bit — and their modules applied no gate at all, from M21 and
+M20 respectively. `listCompanies` and `listInstitutions` joined `tenant_organizations` and never
+looked at `visibility`; the point reads leaked the same rows one at a time; and unified **search**
+was a third door, both types registered under the catalog (identity) scope.
+
+All three now route through one helper per module over the same `FilterVisibleOrgs`, plus
+`scope.NewOrgScope` for search. Two consequences worth stating because they are easy to get wrong:
+a gated-out row is **NotFound, never 403** (`shadow` hides existence; a permission error confirms the
+RID names something real), and the dashboard's scoped arm folds the predicate into **SQL** rather than
+trimming the result — trimming after the fact is right for a page and wrong for a count. Each module
+carries its own copy of the structural `shadowgate_test.go`, because the gate is applied per handler
+in the transport and nothing outside that package can observe its absence.
+
 ---
 
 ### D-UnifiedSearch — One cross-type SearchService as a fan-in over the per-module trigram queries
@@ -2710,6 +2725,24 @@ implementation and recorded so the remaining tickets do not re-litigate them:
   never exist. `ObjectType.Ledger` is therefore a one-field escape from the token check that carries
   its own REASON, is refused for a token that is registered, and is held to at most one type by a
   guard — a second ledger is an argument to have here, not a precedent to follow (M58 ticket 1).
+- **A PROFILE may be faceted, and it is the SECOND admission that a collection's rows carry no token
+  of their own.** A company and an institution are sidecar rows keyed by a `company`- or
+  `university`-domain tenant ORGANIZATION's RID (M41 / D-UnifiedOrgGraph), so their token is
+  `organization` and it is not theirs alone. `ObjectType.Profile` names the token the rows are keyed
+  BY. It is refused on a type that HAS a token, refused for a parent that is not a registered
+  kind=object token, and refused alongside `Ledger` — they are different admissions and a type is at
+  most one of them.
+  Unlike `Ledger` it is **uncapped**, because the sidecar-on-organization shape is a pattern rather
+  than an exception; what replaces the cap is that the claim is **checkable**. A ledger's "these rows
+  have no token" is written down nowhere and must be argued; a profile's "these rows are keyed by
+  that token" is a fact the DDL records, so the guard reads the migrations and asserts the profile
+  table's primary key `REFERENCES` the profiled token's table. A companion guard pins that every
+  profile hangs off the same parent today, so a profile of something else is a review moment
+  (M58 ticket 5).
+  Rejected: a `domain`-discriminated `organization` type (the facets would bind to
+  `listOrganizations`, leaving the endpoints that actually serve these rows unfilterable), and new RID
+  types for the profiles (a migration re-keying two sidecars and every table referencing
+  `institution_id` as an org RID, against D-UnifiedOrgGraph's "a company IS a tenant organization").
 - **A facet may name an OPEN value set (`KindCode`).** `audit.action` has a registry behind it
   (`pkg/action`, R-29) but no CHECK constraint, and `target_type` has neither. A `code` facet is
   ranked top-N like a ref and carries NO labels, because its key is its own label — which is also why

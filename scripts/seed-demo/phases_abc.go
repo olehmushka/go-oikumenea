@@ -224,7 +224,151 @@ func (s *seeder) phaseADirectory() error {
 	if err := s.exec("rel_profile", `INSERT INTO oikumenea.religion_org_profiles (unit_id) VALUES ($1)`, chUnit); err != nil {
 		return err
 	}
+	if err := s.seedProfileSpread(); err != nil {
+		return err
+	}
 	return s.spreadOrgFacets()
+}
+
+// seedProfileSpread gives the COMPANY and INSTITUTION dashboards something to draw (M58 ticket 5).
+//
+// It is ticket 4's problem one level down. Phase A creates exactly one company (`privatbank`, there
+// for finance) and one university (`khnu`, there for the education tree), so every company facet and
+// every institution facet would be a single bar — and worse than a single bar, because five of the
+// ten charts are REF facets whose one bucket would be `(unknown)`: the two profiles are inserted with
+// only their mandatory FK, leaving country, founding date and primary industry null. That is exactly
+// the ticket-3 finding ("the click-through they exist for cannot be exercised at all") in the module
+// that inherited it.
+//
+// Unlike spreadOrgFacets this one INSERTS, so it is create-if-absent by `code` rather than an UPDATE
+// — the pinax autoseeder's shape (D-Pinax), and idempotent for the same reason. That widens what the
+// refresh path does, from "re-apply the spreads" to "re-apply the spreads and add anything a later
+// ticket needs that is missing". Both are deterministic and both touch only rows tagged seed:demo,
+// which is the property that actually matters: re-running must not shuffle the charts under someone
+// reading them, and -reset must not be the only way to get a fixture a new dashboard needs.
+//
+// The spread is chosen so every declared facet has something to say AND the nulls are real rather
+// than accidental: `mriya-agro` has no country and no primary industry (the (unknown) buckets), the
+// founding years span 1804–2019 (so the year-grain histogram covers a range no month grain could),
+// and the legal forms and ownership categories each cover several values without covering all of
+// them — an identity-bucket enum must still render its empty tiles.
+func (s *seeder) seedProfileSpread() error {
+	// Resolve the two domains here rather than relying on phaseADirectory having run: the REFRESH path
+	// calls this on an already-seeded database and skips phase A entirely, so `dir` is empty there.
+	// Cheap, and it makes the function callable from either entry point without a hidden precondition.
+	var err error
+	if dir.companyDomain, err = s.domainID("company"); err != nil {
+		return err
+	}
+	if dir.universityDomain, err = s.domainID("university"); err != nil {
+		return err
+	}
+	companies := []struct {
+		code, name, shortName, legalForm, ownership, country, founded, state, industry string
+	}{
+		// privatbank (phase A, the bank finance needs) is left alone: it is referenced by seeded
+		// accounts, and re-stating it here would be two places to keep in step.
+		{"ukrtelecom", "Ukrtelecom PJSC", "Ukrtelecom", "ua-pat", "mixed", "UA", "1993-01-01", "active", "nace-j"},
+		{"naftogaz", "Naftogaz of Ukraine", "Naftogaz", "state-enterprise", "state_owned", "UA", "1998-05-25", "active", "nace-c"},
+		{"kyivmiskbud", "Kyivmiskbud", "KMB", "ua-tov", "municipal", "UA", "1955-03-01", "active", "nace-f"},
+		{"softserve", "SoftServe", "SoftServe", "llc", "private", "UA", "1993-11-02", "active", "nace-j"},
+		{"epicentr", "Epicentr K", "Epicentr", "ua-tov", "private", "UA", "2003-04-15", "active", "nace-g"},
+		{"siemens-ua", "Siemens Ukraine", "Siemens", "gmbh", "foreign", "DE", "1997-06-01", "active", "nace-c"},
+		{"medlab", "MedLab Diagnostics", "MedLab", "llc", "private", "PL", "2019-02-11", "active", "nace-q"},
+		// No country, no primary industry, and dissolved — the (unknown) buckets and the second
+		// lifecycle tile, all on one row so the fixture stays small.
+		{"mriya-agro", "Mriya Agro Holding", "Mriya", "jsc", "private", "", "2007-08-20", "dissolved", ""},
+		{"donbas-coal", "Donbas Coal Enterprise", "", "state-enterprise", "state_owned", "UA", "1961-10-01", "merged", "nace-c"},
+	}
+	for _, c := range companies {
+		orgID, err := s.upsertProfileOrg(c.code, c.name, dir.companyDomain)
+		if err != nil {
+			return err
+		}
+		if orgID == "" {
+			continue // already present with its profile
+		}
+		var legalForm string
+		if err := s.scalar(&legalForm, `SELECT id::text FROM oikumenea.company_legal_forms WHERE code=$1 AND deleted_at IS NULL LIMIT 1`, c.legalForm); err != nil || legalForm == "" {
+			continue // catalog not seeded in this deployment; skip rather than fail the whole seed
+		}
+		if err := s.exec("co_profile", `
+			INSERT INTO oikumenea.company_org_profiles
+				(company_id, short_name, legal_form_id, ownership_category, country_id, founded_on, state)
+			VALUES ($1, NULLIF($2,''), $3, $4,
+				(SELECT id FROM oikumenea.geo_countries WHERE code = NULLIF($5,'') LIMIT 1),
+				$6::date, $7)`,
+			orgID, c.shortName, legalForm, c.ownership, c.country, c.founded, c.state); err != nil {
+			return err
+		}
+		if c.industry == "" {
+			continue
+		}
+		if err := s.exec("co_industry", `
+			INSERT INTO oikumenea.company_industry_assignments (company_id, industry_class_id, is_primary)
+			SELECT $1, id, true FROM oikumenea.company_industry_classes WHERE code=$2 AND deleted_at IS NULL`,
+			orgID, c.industry); err != nil {
+			return err
+		}
+	}
+
+	institutions := []struct{ code, name, kind, country, founded, state string }{
+		// khnu (phase A, the education tree) is left alone for the reason privatbank is.
+		{"lnu", "Ivan Franko National University of Lviv", "university", "UA", "1661-01-20", "active"},
+		{"kpi", "Kyiv Polytechnic Institute", "institute", "UA", "1898-08-31", "active"},
+		{"nau", "National Aviation University", "university", "UA", "1933-05-25", "active"},
+		{"kharkiv-lyceum-27", "Kharkiv Lyceum No. 27", "lyceum", "UA", "1964-09-01", "active"},
+		{"medical-college-1", "Kyiv Medical College", "college", "UA", "1936-09-01", "active"},
+		// No country (an online institution) — the (unknown) bucket — and one closed, for the second
+		// lifecycle tile.
+		{"open-academy", "Open Digital Academy", "college", "", "2016-01-11", "active"},
+		{"donetsk-institute", "Donetsk Institute of Economics", "institute", "UA", "1972-09-01", "closed"},
+	}
+	for _, in := range institutions {
+		orgID, err := s.upsertProfileOrg(in.code, in.name, dir.universityDomain)
+		if err != nil {
+			return err
+		}
+		if orgID == "" {
+			continue
+		}
+		var kind string
+		if err := s.scalar(&kind, `SELECT id::text FROM oikumenea.education_institution_kinds WHERE code=$1 AND deleted_at IS NULL LIMIT 1`, in.kind); err != nil || kind == "" {
+			continue
+		}
+		if err := s.exec("edu_profile", `
+			INSERT INTO oikumenea.education_org_profiles (institution_id, kind_id, country_id, founded_on, state)
+			VALUES ($1, $2,
+				(SELECT id FROM oikumenea.geo_countries WHERE code = NULLIF($3,'') LIMIT 1),
+				$4::date, $5)`,
+			orgID, kind, in.country, in.founded, in.state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// upsertProfileOrg creates the tenant organization a sidecar profile hangs off, or returns "" when it
+// already exists — create-if-absent by the org's stable `code` (D-Code), which is what makes
+// seedProfileSpread safe to re-run from the refresh path.
+//
+// Each gets ONE unit, and it is not decoration: organization reach is DERIVED from unit reach (M58
+// ticket 4 follow-up), so an org with no live unit is unreachable by construction and a shadow one
+// could never be shown to any non-admin — the visibility differential this ticket verifies would have
+// nothing to demonstrate.
+func (s *seeder) upsertProfileOrg(code, name, domainID string) (string, error) {
+	var existing string
+	if err := s.scalar(&existing, `SELECT id::text FROM oikumenea.tenant_organizations WHERE code=$1 LIMIT 1`, code); err == nil && existing != "" {
+		return "", nil
+	}
+	orgID, _, err := s.createOrg(code, name, domainID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.createUnit(orgID, domainID, "", name); err != nil {
+		return "", err
+	}
+	return orgID, nil
 }
 
 // spreadOrgFacets gives the organization dashboard something to draw (M58 ticket 4). createOrg
@@ -239,24 +383,38 @@ func (s *seeder) phaseADirectory() error {
 // blocked on some dev databases by hand-made rows the seeder does not own and must not delete.
 // Deterministic by `code`, so a re-run does not shuffle the charts under someone reading them.
 //
-// The target with five demo orgs across four domains: 3 public / 2 shadow, and 4 active / 1
-// suspended. `archived` stays empty on purpose — `state` is an identity-bucket enum, so the third
-// tile still renders and correctly reads zero, which is exactly the property identity buckets exist
-// to give a chart (a stable shape that does not depend on the data).
+// `archived` stays empty on purpose — `state` is an identity-bucket enum, so the third tile still
+// renders and correctly reads zero, which is exactly the property identity buckets exist to give a
+// chart (a stable shape that does not depend on the data).
+//
+// M58 ticket 5 replaced the original POSITIONAL rule ("shadow from the 4th code onward, ordered by
+// code") with the explicit lists below. The positional form was right for five orgs and became wrong
+// the moment this ticket seeded sixteen more: it would have marked nineteen of twenty-one shadow,
+// silently, with nothing failing. A rule whose meaning depends on how many rows happen to exist is
+// not deterministic in the sense that matters.
+//
+// The chosen set keeps `privatbank` shadow (M58 ticket 4 verified an insider reaching exactly it) and
+// adds one shadow row to EACH of the two new dashboards' populations, which is what makes their
+// visibility differential demonstrable at all: a company registry with no shadow company shows the
+// same numbers to an admin and an outsider, and proves nothing about the gate this ticket closed.
 func (s *seeder) spreadOrgFacets() error {
 	const demo = `metadata->>'seed'='demo' AND deleted_at IS NULL`
+	shadow := []string{
+		"privatbank",        // company — the bank finance uses; shadow since ticket 4
+		"upc-parish",        // church  — shadow since ticket 4
+		"donetsk-institute", // institution — so the institution dashboard has a shadow row too
+	}
 	if err := s.exec("org_visibility", `
-		UPDATE oikumenea.tenant_organizations SET visibility='shadow'
-		WHERE `+demo+` AND code IN (
-			SELECT code FROM oikumenea.tenant_organizations
-			WHERE `+demo+` ORDER BY code OFFSET 3)`); err != nil {
+		UPDATE oikumenea.tenant_organizations SET visibility = CASE WHEN code = ANY($1::text[]) THEN 'shadow' ELSE 'public' END
+		WHERE `+demo, shadow); err != nil {
 		return err
 	}
+	// One suspended organization, and it is a COMPANY: `state` here is the organization's lifecycle,
+	// which is not the company profile's own `state` — the two are separate columns on separate
+	// tables, and having them disagree on one row is the cheapest way to keep that visible.
 	return s.exec("org_state", `
-		UPDATE oikumenea.tenant_organizations SET state='suspended'
-		WHERE `+demo+` AND code = (
-			SELECT code FROM oikumenea.tenant_organizations
-			WHERE `+demo+` ORDER BY code DESC LIMIT 1)`)
+		UPDATE oikumenea.tenant_organizations SET state = CASE WHEN code = $1 THEN 'suspended' ELSE 'active' END
+		WHERE `+demo, "mriya-agro")
 }
 
 func (s *seeder) buildBrigade(orgID, cmd, bgName string) error {
