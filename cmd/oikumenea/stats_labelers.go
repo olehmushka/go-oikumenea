@@ -59,6 +59,12 @@ func refLabelSources() []struct{ typ, table, col, entity string } {
 		{"color", "platform_colors", "name", "color"},
 		{"account_type", "finance_account_types", "name", "account_type"},
 		{"card_network", "finance_card_networks", "name", "card_network"},
+		// M58 ticket 5 — the company and institution dashboards. `country` is already above and is
+		// REUSED by both: a company's country and an institution's are the same D-Geo catalog, named by
+		// the same resolver that names it everywhere else.
+		{"legal_form", "company_legal_forms", "name", "company_legal_form"},
+		{"industry_class", "company_industry_classes", "name", "company_industry_class"},
+		{"institution_kind", "education_institution_kinds", "name", "education_institution_kind"},
 	}
 }
 

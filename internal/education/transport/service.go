@@ -161,12 +161,13 @@ func (s EducationService) CreateInstitution(ctx context.Context, token bearertok
 	return s.toAPIInstitution(ctx, created)
 }
 
-func (s EducationService) ListInstitutions(ctx context.Context, token bearertoken.Token, query *string, pageSize *int, pageToken *string) (educationapi.InstitutionPage, error) {
+func (s EducationService) ListInstitutions(ctx context.Context, token bearertoken.Token, query *string, kindId *string, countryId *string, foundedOnFrom *string, foundedOnTo *string, state *string, pageSize *int, pageToken *string) (educationapi.InstitutionPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return educationapi.InstitutionPage{}, err
 	}
 	limit := pageSizeOr(pageSize)
-	rows, err := s.app.ListInstitutions(ctx, strOr(query), decodeToken(pageToken), limit)
+	filter := institutionFilterFrom(query, kindId, countryId, foundedOnFrom, foundedOnTo, state)
+	rows, err := s.app.ListInstitutions(ctx, filter, decodeToken(pageToken), limit)
 	if err != nil {
 		return educationapi.InstitutionPage{}, s.mapError(ctx, err)
 	}
@@ -174,6 +175,11 @@ func (s EducationService) ListInstitutions(ctx context.Context, token bearertoke
 	if len(rows) > limit {
 		rows = rows[:limit]
 		next = encodeToken(rows[len(rows)-1].ID)
+	}
+	// The shadow gate, AFTER the page is cut and the token taken from the last row read — the same
+	// order listOrganizations uses, so paging stays stable when the gate trims a row (D-VisibilityScope).
+	if rows, err = gateInstitutions(ctx, s.pep, rows); err != nil {
+		return educationapi.InstitutionPage{}, s.mapError(ctx, err)
 	}
 	defaults := make(map[string]string, len(rows))
 	for _, r := range rows {
@@ -202,7 +208,55 @@ func (s EducationService) GetInstitution(ctx context.Context, token bearertoken.
 	if err != nil {
 		return educationapi.Institution{}, s.mapError(ctx, err)
 	}
-	return s.toAPIInstitution(ctx, inst)
+	// The point read runs the SAME gate as the list, through the same helper. Before M58 ticket 5 it
+	// ran none at all, so a caller holding education.read could fetch a shadow institution by RID that
+	// the list refused to name — the getOrganization leak, in the module that inherited its rows.
+	visible, err := gateInstitutions(ctx, s.pep, []domain.Institution{inst})
+	if err != nil {
+		return educationapi.Institution{}, s.mapError(ctx, err)
+	}
+	if len(visible) == 0 {
+		// NOT a permission error: `shadow` hides EXISTENCE, and a 403 would confirm the RID names a
+		// real institution — exactly what the list refuses to say by omitting the row.
+		return educationapi.Institution{}, s.mapError(ctx, domain.ErrInstitutionNotFound)
+	}
+	return s.toAPIInstitution(ctx, visible[0])
+}
+
+// gateInstitutions applies the organization shadow gate to institution rows (M58 ticket 5). An
+// institution IS a `university`-domain tenant organization (M41 / D-UnifiedOrgGraph), so it carries
+// that organization's public/shadow bit and must be trimmed by exactly the rule listOrganizations
+// applies — including the M58 ticket-4 amendment that DERIVES organization reach from unit reach.
+//
+// It is a sibling of tenant's gateOrgs rather than a call into it: the reach decision itself lives in
+// one place (pep.FilterVisibleOrgs → authz), and what is repeated here is only the shape of the
+// candidate list. Every shadow-bearing read in this module routes through this one helper, which is
+// what transport/shadowgate_test.go asserts structurally.
+func gateInstitutions(ctx context.Context, enf *pep.Enforcer, items []domain.Institution) ([]domain.Institution, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+	ids := make([]string, len(items))
+	shadow := make(map[string]bool, len(items))
+	for i, inst := range items {
+		ids[i] = inst.ID
+		shadow[inst.ID] = inst.Visibility == domain.VisibilityShadow
+	}
+	visible, err := enf.FilterVisibleOrgs(ctx, ids, shadow)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]struct{}, len(visible))
+	for _, id := range visible {
+		allowed[id] = struct{}{}
+	}
+	out := make([]domain.Institution, 0, len(items))
+	for _, inst := range items {
+		if _, ok := allowed[inst.ID]; ok {
+			out = append(out, inst)
+		}
+	}
+	return out, nil
 }
 
 func (s EducationService) UpdateInstitution(ctx context.Context, token bearertoken.Token, id string, req educationapi.UpdateInstitutionRequest) (educationapi.Institution, error) {

@@ -32,7 +32,11 @@ VALUES (@institution_id, @kind_id, sqlc.narg('country_id'), sqlc.narg('founded_o
 RETURNING *;
 
 -- name: GetInstitution :one
-SELECT o.id, o.code, o.name,
+-- o.visibility is projected for the SHADOW GATE, not for the wire: an institution IS a tenant
+-- organization (M41), so it carries the organization's public/shadow bit and the transport must apply
+-- the same gate listOrganizations does (D-VisibilityScope). Deliberately absent from the API
+-- Institution type — the organization facet vocabulary already exposes the attribute where it belongs.
+SELECT o.id, o.code, o.name, o.visibility,
   p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.education_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
@@ -51,11 +55,17 @@ RETURNING *;
 -- name: ListInstitutions :many
 -- Active institutions (orgs with an education profile), keyset-paginated by org RID. A text query routes
 -- to SearchInstitutions instead (review R-21): a `(@query = '' OR …)` guard would defeat the trigram GIN.
-SELECT o.id, o.code, o.name,
+-- o.visibility feeds the transport's shadow gate — see GetInstitution.
+SELECT o.id, o.code, o.name, o.visibility,
   p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.education_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR p.kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
   AND (@after = '' OR o.id::text > @after)
 ORDER BY o.id
 LIMIT @lim;
@@ -64,15 +74,219 @@ LIMIT @lim;
 -- The trigram-served twin of ListInstitutions (review R-21): an unconditional case-insensitive match over
 -- the tenant_organizations STORED search_text haystack, served by the tenant_organizations_search_trgm
 -- GIN. Same projection and keyset as ListInstitutions so the two rows are convertible in the repository.
-SELECT o.id, o.code, o.name,
+SELECT o.id, o.code, o.name, o.visibility,
   p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.education_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
   AND o.search_text ILIKE '%' || @query || '%'
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR p.kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
   AND (@after = '' OR o.id::text > @after)
 ORDER BY o.id
 LIMIT @lim;
+
+-- ============================ institution dashboards (M58 ticket 5 / D-ObjectFacets) ============================
+-- FOUR arms, for the reason company's are four: an institution has BOTH a visibility gate and an R-21
+-- search twin, so the square is {plain, search} × {instance-admin, visibility-scoped}. The aggregate
+-- half must be byte-identical across all four (pkg/facet/statsparity_test.go), or an admin and a
+-- scoped caller would be shown different distributions of the same world.
+
+-- name: InstitutionStats :many
+-- The INSTANCE-ADMIN arm: no visibility predicate at all.
+WITH cand AS MATERIALIZED (
+  SELECT p.institution_id AS id, p.kind_id, p.country_id, p.founded_on, p.state
+  FROM oikumenea.education_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR p.kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'kindId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.kind_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_kind_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_founded_on')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
+
+-- name: InstitutionStatsSearch :many
+-- The admin arm's trigram twin, over the same tenant_organizations search_text haystack
+-- SearchInstitutions uses.
+WITH cand AS MATERIALIZED (
+  SELECT p.institution_id AS id, p.kind_id, p.country_id, p.founded_on, p.state
+  FROM oikumenea.education_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND o.search_text ILIKE '%' || @query || '%'
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR p.kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'kindId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.kind_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_kind_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_founded_on')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
+
+-- name: InstitutionStatsForSubject :many
+-- The visibility-scoped arm. An institution IS a `university`-domain tenant ORGANIZATION (M41 /
+-- D-UnifiedOrgGraph), so the gate is the ORGANIZATION's, and organization reach is DERIVED from unit
+-- reach (M58 ticket 4 follow-up, amending D-VisibilityScope): visible when any of its live units is
+-- in the subject's reach. Copying unit's own `id IN (authz_readable_units(...))` would compile and
+-- match nothing — an organization RID can never appear in a readable-UNIT set.
+WITH cand AS MATERIALIZED (
+  SELECT p.institution_id AS id, p.kind_id, p.country_id, p.founded_on, p.state
+  FROM oikumenea.education_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (o.visibility = 'public'
+       OR o.id IN (SELECT u.org_id
+                   FROM oikumenea.tenant_units u
+                   WHERE u.deleted_at IS NULL
+                     AND u.id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))))
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR p.kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'kindId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.kind_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_kind_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_founded_on')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
+
+-- name: InstitutionStatsForSubjectSearch :many
+-- The scoped arm's trigram twin — the fourth corner of the same square.
+WITH cand AS MATERIALIZED (
+  SELECT p.institution_id AS id, p.kind_id, p.country_id, p.founded_on, p.state
+  FROM oikumenea.education_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (o.visibility = 'public'
+       OR o.id IN (SELECT u.org_id
+                   FROM oikumenea.tenant_units u
+                   WHERE u.deleted_at IS NULL
+                     AND u.id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))))
+  AND o.search_text ILIKE '%' || @query || '%'
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR p.kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('country_id')::uuid IS NULL OR p.country_id = sqlc.narg('country_id')::uuid)
+  AND (sqlc.narg('founded_on_from')::date IS NULL OR p.founded_on >= sqlc.narg('founded_on_from')::date)
+  AND (sqlc.narg('founded_on_to')::date IS NULL OR p.founded_on <= sqlc.narg('founded_on_to')::date)
+  AND (sqlc.narg('state')::text IS NULL OR p.state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'kindId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.kind_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_kind_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_founded_on')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
 
 -- name: SoftDeleteInstitution :execrows
 UPDATE oikumenea.education_org_profiles SET deleted_at = now()

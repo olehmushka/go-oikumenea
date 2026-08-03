@@ -31,7 +31,28 @@ type EducationService interface {
 	ListUnitKinds(ctx context.Context, authHeader bearertoken.Token) (UnitKindList, error)
 	ListDegreeLevels(ctx context.Context, authHeader bearertoken.Token) (DegreeLevelList, error)
 	CreateInstitution(ctx context.Context, authHeader bearertoken.Token, requestArg CreateInstitutionRequest) (Institution, error)
-	ListInstitutions(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error)
+	/*
+	   List institutions, token-paginated, optionally filtered by the facet vocabulary (M58 ticket
+	   5 / D-ObjectFacets). Shadow-gated: an institution IS a `university`-domain tenant
+	   organization (M41 / D-UnifiedOrgGraph), so it carries that organization's public/shadow bit
+	   and is trimmed by the same rule `listOrganizations` applies. Gated by education.read.
+
+	   Every filter arg here is also an arg of `institutionStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListInstitutions(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (InstitutionPage, error)
+	/*
+	   Facet distributions over the institution registry — the dashboard half of the institution
+	   facet vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args
+	   `listInstitutions` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/institutions` rather than `/institutions/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{institutionId}` — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	InstitutionStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, kindIdArg *string, countryIdArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (InstitutionStats, error)
 	GetInstitution(ctx context.Context, authHeader bearertoken.Token, institutionIdArg string) (Institution, error)
 	UpdateInstitution(ctx context.Context, authHeader bearertoken.Token, institutionIdArg string, requestArg UpdateInstitutionRequest) (Institution, error)
 	DeleteInstitution(ctx context.Context, authHeader bearertoken.Token, institutionIdArg string) error
@@ -96,6 +117,9 @@ func RegisterRoutesEducationService(router wrouter.Router, impl EducationService
 	}
 	if err := resource.Get("ListInstitutions", "/education/v1/institutions", httpserver.NewJSONHandler(handler.HandleListInstitutions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listInstitutions route")
+	}
+	if err := resource.Get("InstitutionStats", "/education/v1/stats/institutions", httpserver.NewJSONHandler(handler.HandleInstitutionStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add institutionStats route")
 	}
 	if err := resource.Get("GetInstitution", "/education/v1/institutions/{institutionId}", httpserver.NewJSONHandler(handler.HandleGetInstitution, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getInstitution route")
@@ -289,6 +313,31 @@ func (e *educationServiceHandler) HandleListInstitutions(rw http.ResponseWriter,
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
+	var kindIdArg *string
+	if kindIdArgStr := req.URL.Query().Get("kindId"); kindIdArgStr != "" {
+		kindIdArgInternal := kindIdArgStr
+		kindIdArg = &kindIdArgInternal
+	}
+	var countryIdArg *string
+	if countryIdArgStr := req.URL.Query().Get("countryId"); countryIdArgStr != "" {
+		countryIdArgInternal := countryIdArgStr
+		countryIdArg = &countryIdArgInternal
+	}
+	var foundedOnFromArg *string
+	if foundedOnFromArgStr := req.URL.Query().Get("foundedOnFrom"); foundedOnFromArgStr != "" {
+		foundedOnFromArgInternal := foundedOnFromArgStr
+		foundedOnFromArg = &foundedOnFromArgInternal
+	}
+	var foundedOnToArg *string
+	if foundedOnToArgStr := req.URL.Query().Get("foundedOnTo"); foundedOnToArgStr != "" {
+		foundedOnToArgInternal := foundedOnToArgStr
+		foundedOnToArg = &foundedOnToArgInternal
+	}
+	var stateArg *string
+	if stateArgStr := req.URL.Query().Get("state"); stateArgStr != "" {
+		stateArgInternal := stateArgStr
+		stateArg = &stateArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -302,7 +351,55 @@ func (e *educationServiceHandler) HandleListInstitutions(rw http.ResponseWriter,
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := e.impl.ListInstitutions(req.Context(), bearertoken.Token(authHeader), queryArg, pageSizeArg, pageTokenArg)
+	respArg, err := e.impl.ListInstitutions(req.Context(), bearertoken.Token(authHeader), queryArg, kindIdArg, countryIdArg, foundedOnFromArg, foundedOnToArg, stateArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (e *educationServiceHandler) HandleInstitutionStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	var kindIdArg *string
+	if kindIdArgStr := req.URL.Query().Get("kindId"); kindIdArgStr != "" {
+		kindIdArgInternal := kindIdArgStr
+		kindIdArg = &kindIdArgInternal
+	}
+	var countryIdArg *string
+	if countryIdArgStr := req.URL.Query().Get("countryId"); countryIdArgStr != "" {
+		countryIdArgInternal := countryIdArgStr
+		countryIdArg = &countryIdArgInternal
+	}
+	var foundedOnFromArg *string
+	if foundedOnFromArgStr := req.URL.Query().Get("foundedOnFrom"); foundedOnFromArgStr != "" {
+		foundedOnFromArgInternal := foundedOnFromArgStr
+		foundedOnFromArg = &foundedOnFromArgInternal
+	}
+	var foundedOnToArg *string
+	if foundedOnToArgStr := req.URL.Query().Get("foundedOnTo"); foundedOnToArgStr != "" {
+		foundedOnToArgInternal := foundedOnToArgStr
+		foundedOnToArg = &foundedOnToArgInternal
+	}
+	var stateArg *string
+	if stateArgStr := req.URL.Query().Get("state"); stateArgStr != "" {
+		stateArgInternal := stateArgStr
+		stateArg = &stateArgInternal
+	}
+	respArg, err := e.impl.InstitutionStats(req.Context(), bearertoken.Token(authHeader), facetsArg, queryArg, kindIdArg, countryIdArg, foundedOnFromArg, foundedOnToArg, stateArg)
 	if err != nil {
 		return err
 	}

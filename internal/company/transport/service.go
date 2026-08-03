@@ -184,12 +184,13 @@ func (s CompanyService) CreateCompany(ctx context.Context, token bearertoken.Tok
 	return s.toAPICompany(ctx, created)
 }
 
-func (s CompanyService) ListCompanies(ctx context.Context, token bearertoken.Token, query *string, pageSize *int, pageToken *string) (companyapi.CompanyPage, error) {
+func (s CompanyService) ListCompanies(ctx context.Context, token bearertoken.Token, query *string, legalForm *string, ownershipCategory *string, countryId *string, industryClass *string, foundedOnFrom *string, foundedOnTo *string, state *string, pageSize *int, pageToken *string) (companyapi.CompanyPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return companyapi.CompanyPage{}, err
 	}
 	limit := pageSizeOr(pageSize)
-	rows, err := s.app.ListCompanies(ctx, strOr(query), decodeToken(pageToken), limit)
+	filter := companyFilterFrom(query, legalForm, ownershipCategory, countryId, industryClass, foundedOnFrom, foundedOnTo, state)
+	rows, err := s.app.ListCompanies(ctx, filter, decodeToken(pageToken), limit)
 	if err != nil {
 		return companyapi.CompanyPage{}, s.mapError(ctx, err)
 	}
@@ -197,6 +198,11 @@ func (s CompanyService) ListCompanies(ctx context.Context, token bearertoken.Tok
 	if len(rows) > limit {
 		rows = rows[:limit]
 		next = encodeToken(rows[len(rows)-1].ID)
+	}
+	// The shadow gate, AFTER the page is cut and the token taken from the last row read — the same
+	// order listOrganizations uses, so paging stays stable when the gate trims a row (D-VisibilityScope).
+	if rows, err = gateCompanies(ctx, s.pep, rows); err != nil {
+		return companyapi.CompanyPage{}, s.mapError(ctx, err)
 	}
 	defaults := make(map[string]string, len(rows))
 	for _, r := range rows {
@@ -225,7 +231,55 @@ func (s CompanyService) GetCompany(ctx context.Context, token bearertoken.Token,
 	if err != nil {
 		return companyapi.Company{}, s.mapError(ctx, err)
 	}
-	return s.toAPICompany(ctx, c)
+	// The point read runs the SAME gate as the list, through the same helper. Before M58 ticket 5 it
+	// ran none at all, so a caller holding company.read could fetch a shadow company by RID that the
+	// list refused to name — the getOrganization leak, in the module that inherited its rows.
+	visible, err := gateCompanies(ctx, s.pep, []domain.Company{c})
+	if err != nil {
+		return companyapi.Company{}, s.mapError(ctx, err)
+	}
+	if len(visible) == 0 {
+		// NOT a permission error: `shadow` hides EXISTENCE, and a 403 would confirm the RID names a
+		// real company — exactly what the list refuses to say by omitting the row.
+		return companyapi.Company{}, s.mapError(ctx, domain.ErrCompanyNotFound)
+	}
+	return s.toAPICompany(ctx, visible[0])
+}
+
+// gateCompanies applies the organization shadow gate to company rows (M58 ticket 5). A company IS a
+// `company`-domain tenant organization (M41 / D-UnifiedOrgGraph), so it carries that organization's
+// public/shadow bit and must be trimmed by exactly the rule listOrganizations applies — including the
+// M58 ticket-4 amendment that DERIVES organization reach from unit reach.
+//
+// It is a sibling of tenant's gateOrgs rather than a call into it: the reach decision itself lives in
+// one place (pep.FilterVisibleOrgs → authz), and what is repeated here is only the shape of the
+// candidate list. Every shadow-bearing read in this module routes through this one helper, which is
+// what transport/shadowgate_test.go asserts structurally.
+func gateCompanies(ctx context.Context, enf *pep.Enforcer, items []domain.Company) ([]domain.Company, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+	ids := make([]string, len(items))
+	shadow := make(map[string]bool, len(items))
+	for i, c := range items {
+		ids[i] = c.ID
+		shadow[c.ID] = c.Visibility == domain.VisibilityShadow
+	}
+	visible, err := enf.FilterVisibleOrgs(ctx, ids, shadow)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]struct{}, len(visible))
+	for _, id := range visible {
+		allowed[id] = struct{}{}
+	}
+	out := make([]domain.Company, 0, len(items))
+	for _, c := range items {
+		if _, ok := allowed[c.ID]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 func (s CompanyService) UpdateCompany(ctx context.Context, token bearertoken.Token, id string, req companyapi.UpdateCompanyRequest) (companyapi.Company, error) {

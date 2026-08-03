@@ -74,6 +74,575 @@ func (q *Queries) CompanyNamesByIDs(ctx context.Context, ids []string) ([]Compan
 	return items, nil
 }
 
+const companyStats = `-- name: CompanyStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT p.company_id AS id, p.legal_form_id, p.ownership_category, p.country_id,
+         p.founded_on, p.state,
+         (SELECT ia.industry_class_id
+            FROM oikumenea.company_industry_assignments ia
+            WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+            LIMIT 1) AS industry_class_id
+  FROM oikumenea.company_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR p.legal_form_id = $1::uuid)
+  AND ($2::text IS NULL OR p.ownership_category = $2::text)
+  AND ($3::uuid IS NULL OR p.country_id = $3::uuid)
+  AND ($4::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = $4::uuid))
+  AND ($5::date IS NULL OR p.founded_on >= $5::date)
+  AND ($6::date IS NULL OR p.founded_on <= $6::date)
+  AND ($7::text IS NULL OR p.state = $7::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'legalForm'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.legal_form_id::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'ownershipCategory'::text, c.ownership_category::text, count(*)::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $11::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'industryClass'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.industry_class_id::text AS k, count(*) AS n
+            FROM cand c WHERE $12::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $14::boolean GROUP BY 2
+`
+
+type CompanyStatsParams struct {
+	LegalFormID           pgtype.Text
+	OwnershipCategory     pgtype.Text
+	CountryID             pgtype.Text
+	IndustryClassID       pgtype.Text
+	FoundedOnFrom         pgtype.Date
+	FoundedOnTo           pgtype.Date
+	State                 pgtype.Text
+	TopN                  int32
+	WantLegalForm         bool
+	WantOwnershipCategory bool
+	WantCountryID         bool
+	WantIndustryClass     bool
+	WantFoundedOn         bool
+	WantState             bool
+}
+
+type CompanyStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// ============================ company dashboards (M58 ticket 5 / D-ObjectFacets) ============================
+// FOUR arms, the person shape rather than the organization one, because a company has BOTH a
+// visibility gate and an R-21 search twin: {plain, search} × {instance-admin, visibility-scoped}.
+// They cannot be collapsed. A nullable trigram predicate is not indexable (R-21), and the admin arm
+// must carry NO visibility predicate whatsoever — both are plan-shape decisions, not style ones.
+//
+// What that costs is four copies of the same 45 lines of GROUP BY, and what pays for it is
+// pkg/facet/statsparity_test.go: the AGGREGATE half must be byte-identical across the four, or an
+// admin and a scoped caller would be shown different distributions of the same world.
+//
+// The candidate CTE projects the PRIMARY industry classification as a scalar subquery rather than
+// joining company_industry_assignments: the join is one-to-many (one primary + secondaries), and
+// grouping it raw would count a diversified company once per NACE code it carries. Confined to the
+// primary — of which company_industry_assignments_one_primary_active guarantees at most one — the
+// distribution PARTITIONS, so no NonPartitioning exemption is taken and none is needed.
+// The INSTANCE-ADMIN arm: no visibility predicate at all, which is why it is a separate query rather
+// than the scoped one with a flag.
+func (q *Queries) CompanyStats(ctx context.Context, arg CompanyStatsParams) ([]CompanyStatsRow, error) {
+	rows, err := q.db.Query(ctx, companyStats,
+		arg.LegalFormID,
+		arg.OwnershipCategory,
+		arg.CountryID,
+		arg.IndustryClassID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.TopN,
+		arg.WantLegalForm,
+		arg.WantOwnershipCategory,
+		arg.WantCountryID,
+		arg.WantIndustryClass,
+		arg.WantFoundedOn,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CompanyStatsRow
+	for rows.Next() {
+		var i CompanyStatsRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const companyStatsForSubject = `-- name: CompanyStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT p.company_id AS id, p.legal_form_id, p.ownership_category, p.country_id,
+         p.founded_on, p.state,
+         (SELECT ia.industry_class_id
+            FROM oikumenea.company_industry_assignments ia
+            WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+            LIMIT 1) AS industry_class_id
+  FROM oikumenea.company_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (o.visibility = 'public'
+       OR o.id IN (SELECT u.org_id
+                   FROM oikumenea.tenant_units u
+                   WHERE u.deleted_at IS NULL
+                     AND u.id IN (SELECT oikumenea.authz_readable_units($1))))
+  AND ($2::uuid IS NULL OR p.legal_form_id = $2::uuid)
+  AND ($3::text IS NULL OR p.ownership_category = $3::text)
+  AND ($4::uuid IS NULL OR p.country_id = $4::uuid)
+  AND ($5::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = $5::uuid))
+  AND ($6::date IS NULL OR p.founded_on >= $6::date)
+  AND ($7::date IS NULL OR p.founded_on <= $7::date)
+  AND ($8::text IS NULL OR p.state = $8::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'legalForm'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.legal_form_id::text AS k, count(*) AS n
+            FROM cand c WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'ownershipCategory'::text, c.ownership_category::text, count(*)::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $12::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'industryClass'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.industry_class_id::text AS k, count(*) AS n
+            FROM cand c WHERE $13::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE $14::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $15::boolean GROUP BY 2
+`
+
+type CompanyStatsForSubjectParams struct {
+	SubjectPersonID       string
+	LegalFormID           pgtype.Text
+	OwnershipCategory     pgtype.Text
+	CountryID             pgtype.Text
+	IndustryClassID       pgtype.Text
+	FoundedOnFrom         pgtype.Date
+	FoundedOnTo           pgtype.Date
+	State                 pgtype.Text
+	TopN                  int32
+	WantLegalForm         bool
+	WantOwnershipCategory bool
+	WantCountryID         bool
+	WantIndustryClass     bool
+	WantFoundedOn         bool
+	WantState             bool
+}
+
+type CompanyStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The visibility-scoped arm. A company IS a `company`-domain tenant ORGANIZATION (M41 /
+// D-UnifiedOrgGraph), so the gate is the ORGANIZATION's, and organization reach is DERIVED from unit
+// reach (M58 ticket 4 follow-up, amending D-VisibilityScope): an organization is visible when any of
+// its live units is in the subject's reach.
+//
+// Copying unit's own predicate (`id IN (authz_readable_units(...))`) would compile and match NOTHING:
+// authz_role_assignments.target_unit_id is NOT NULL REFERENCES tenant_units, so an organization RID
+// can never appear in a readable-unit set. Copying a flat `visibility = 'public'` would match what
+// this list left before ticket 4 and be wrong the day a subject reaches a shadow company.
+//
+// Folded into the CANDIDATE SET rather than applied after: on the list gateCompanies trims the page
+// once it is cut, which is right for a page and wrong for a count (D-ObjectFacets rule 3).
+func (q *Queries) CompanyStatsForSubject(ctx context.Context, arg CompanyStatsForSubjectParams) ([]CompanyStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, companyStatsForSubject,
+		arg.SubjectPersonID,
+		arg.LegalFormID,
+		arg.OwnershipCategory,
+		arg.CountryID,
+		arg.IndustryClassID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.TopN,
+		arg.WantLegalForm,
+		arg.WantOwnershipCategory,
+		arg.WantCountryID,
+		arg.WantIndustryClass,
+		arg.WantFoundedOn,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CompanyStatsForSubjectRow
+	for rows.Next() {
+		var i CompanyStatsForSubjectRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const companyStatsForSubjectSearch = `-- name: CompanyStatsForSubjectSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT p.company_id AS id, p.legal_form_id, p.ownership_category, p.country_id,
+         p.founded_on, p.state,
+         (SELECT ia.industry_class_id
+            FROM oikumenea.company_industry_assignments ia
+            WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+            LIMIT 1) AS industry_class_id
+  FROM oikumenea.company_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (o.visibility = 'public'
+       OR o.id IN (SELECT u.org_id
+                   FROM oikumenea.tenant_units u
+                   WHERE u.deleted_at IS NULL
+                     AND u.id IN (SELECT oikumenea.authz_readable_units($1))))
+  AND o.id IN (
+    SELECT org.id FROM oikumenea.tenant_organizations org
+      WHERE org.deleted_at IS NULL
+        AND org.search_text ILIKE '%' || $2 || '%'
+    UNION
+    SELECT cp.company_id FROM oikumenea.company_org_profiles cp
+      WHERE cp.deleted_at IS NULL AND cp.short_name ILIKE '%' || $2 || '%')
+  AND ($3::uuid IS NULL OR p.legal_form_id = $3::uuid)
+  AND ($4::text IS NULL OR p.ownership_category = $4::text)
+  AND ($5::uuid IS NULL OR p.country_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = $6::uuid))
+  AND ($7::date IS NULL OR p.founded_on >= $7::date)
+  AND ($8::date IS NULL OR p.founded_on <= $8::date)
+  AND ($9::text IS NULL OR p.state = $9::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'legalForm'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $10::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.legal_form_id::text AS k, count(*) AS n
+            FROM cand c WHERE $11::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'ownershipCategory'::text, c.ownership_category::text, count(*)::bigint
+FROM cand c WHERE $12::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $10::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $13::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'industryClass'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $10::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.industry_class_id::text AS k, count(*) AS n
+            FROM cand c WHERE $14::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE $15::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $16::boolean GROUP BY 2
+`
+
+type CompanyStatsForSubjectSearchParams struct {
+	SubjectPersonID       string
+	Query                 pgtype.Text
+	LegalFormID           pgtype.Text
+	OwnershipCategory     pgtype.Text
+	CountryID             pgtype.Text
+	IndustryClassID       pgtype.Text
+	FoundedOnFrom         pgtype.Date
+	FoundedOnTo           pgtype.Date
+	State                 pgtype.Text
+	TopN                  int32
+	WantLegalForm         bool
+	WantOwnershipCategory bool
+	WantCountryID         bool
+	WantIndustryClass     bool
+	WantFoundedOn         bool
+	WantState             bool
+}
+
+type CompanyStatsForSubjectSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The scoped arm's trigram twin — the fourth corner of the same square.
+func (q *Queries) CompanyStatsForSubjectSearch(ctx context.Context, arg CompanyStatsForSubjectSearchParams) ([]CompanyStatsForSubjectSearchRow, error) {
+	rows, err := q.db.Query(ctx, companyStatsForSubjectSearch,
+		arg.SubjectPersonID,
+		arg.Query,
+		arg.LegalFormID,
+		arg.OwnershipCategory,
+		arg.CountryID,
+		arg.IndustryClassID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.TopN,
+		arg.WantLegalForm,
+		arg.WantOwnershipCategory,
+		arg.WantCountryID,
+		arg.WantIndustryClass,
+		arg.WantFoundedOn,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CompanyStatsForSubjectSearchRow
+	for rows.Next() {
+		var i CompanyStatsForSubjectSearchRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const companyStatsSearch = `-- name: CompanyStatsSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT p.company_id AS id, p.legal_form_id, p.ownership_category, p.country_id,
+         p.founded_on, p.state,
+         (SELECT ia.industry_class_id
+            FROM oikumenea.company_industry_assignments ia
+            WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+            LIMIT 1) AS industry_class_id
+  FROM oikumenea.company_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND o.id IN (
+    SELECT org.id FROM oikumenea.tenant_organizations org
+      WHERE org.deleted_at IS NULL
+        AND org.search_text ILIKE '%' || $1 || '%'
+    UNION
+    SELECT cp.company_id FROM oikumenea.company_org_profiles cp
+      WHERE cp.deleted_at IS NULL AND cp.short_name ILIKE '%' || $1 || '%')
+  AND ($2::uuid IS NULL OR p.legal_form_id = $2::uuid)
+  AND ($3::text IS NULL OR p.ownership_category = $3::text)
+  AND ($4::uuid IS NULL OR p.country_id = $4::uuid)
+  AND ($5::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = $5::uuid))
+  AND ($6::date IS NULL OR p.founded_on >= $6::date)
+  AND ($7::date IS NULL OR p.founded_on <= $7::date)
+  AND ($8::text IS NULL OR p.state = $8::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'legalForm'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.legal_form_id::text AS k, count(*) AS n
+            FROM cand c WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'ownershipCategory'::text, c.ownership_category::text, count(*)::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $12::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'industryClass'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.industry_class_id::text AS k, count(*) AS n
+            FROM cand c WHERE $13::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE $14::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $15::boolean GROUP BY 2
+`
+
+type CompanyStatsSearchParams struct {
+	Query                 pgtype.Text
+	LegalFormID           pgtype.Text
+	OwnershipCategory     pgtype.Text
+	CountryID             pgtype.Text
+	IndustryClassID       pgtype.Text
+	FoundedOnFrom         pgtype.Date
+	FoundedOnTo           pgtype.Date
+	State                 pgtype.Text
+	TopN                  int32
+	WantLegalForm         bool
+	WantOwnershipCategory bool
+	WantCountryID         bool
+	WantIndustryClass     bool
+	WantFoundedOn         bool
+	WantState             bool
+}
+
+type CompanyStatsSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The admin arm's trigram twin. Identical but for the id-set predicate, which is the same UNION
+// SearchCompanies uses so the two surfaces search the same haystack.
+func (q *Queries) CompanyStatsSearch(ctx context.Context, arg CompanyStatsSearchParams) ([]CompanyStatsSearchRow, error) {
+	rows, err := q.db.Query(ctx, companyStatsSearch,
+		arg.Query,
+		arg.LegalFormID,
+		arg.OwnershipCategory,
+		arg.CountryID,
+		arg.IndustryClassID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.TopN,
+		arg.WantLegalForm,
+		arg.WantOwnershipCategory,
+		arg.WantCountryID,
+		arg.WantIndustryClass,
+		arg.WantFoundedOn,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CompanyStatsSearchRow
+	for rows.Next() {
+		var i CompanyStatsSearchRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const endAppointment = `-- name: EndAppointment :one
 UPDATE oikumenea.company_appointments
 SET status = 'ended', effective_to = COALESCE($1, now())
@@ -189,7 +758,7 @@ func (q *Queries) GetBranch(ctx context.Context, id string) (OikumeneaCompanyBra
 }
 
 const getCompany = `-- name: GetCompany :one
-SELECT o.id, o.code, o.name AS legal_name,
+SELECT o.id, o.code, o.name AS legal_name, o.visibility,
   p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
   p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.company_org_profiles p
@@ -201,6 +770,7 @@ type GetCompanyRow struct {
 	ID                string
 	Code              string
 	LegalName         string
+	Visibility        string
 	ShortName         pgtype.Text
 	LegalFormID       string
 	OwnershipCategory string
@@ -212,6 +782,10 @@ type GetCompanyRow struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
+// o.visibility is projected for the SHADOW GATE, not for the wire: a company IS a tenant organization
+// (M41), so it carries the organization's public/shadow bit and the transport must apply the same gate
+// listOrganizations does (D-VisibilityScope). It is deliberately absent from the API Company type —
+// the organization facet vocabulary already exposes the attribute where it belongs.
 func (q *Queries) GetCompany(ctx context.Context, id string) (GetCompanyRow, error) {
 	row := q.db.QueryRow(ctx, getCompany, id)
 	var i GetCompanyRow
@@ -219,6 +793,7 @@ func (q *Queries) GetCompany(ctx context.Context, id string) (GetCompanyRow, err
 		&i.ID,
 		&i.Code,
 		&i.LegalName,
+		&i.Visibility,
 		&i.ShortName,
 		&i.LegalFormID,
 		&i.OwnershipCategory,
@@ -920,26 +1495,44 @@ func (q *Queries) ListBranchesByParent(ctx context.Context, parentID string) ([]
 }
 
 const listCompanies = `-- name: ListCompanies :many
-SELECT o.id, o.code, o.name AS legal_name,
+SELECT o.id, o.code, o.name AS legal_name, o.visibility,
   p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
   p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.company_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
-  AND ($1 = '' OR o.id::text > $1)
+  AND ($1::uuid IS NULL OR p.legal_form_id = $1::uuid)
+  AND ($2::text IS NULL OR p.ownership_category = $2::text)
+  AND ($3::uuid IS NULL OR p.country_id = $3::uuid)
+  AND ($4::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = $4::uuid))
+  AND ($5::date IS NULL OR p.founded_on >= $5::date)
+  AND ($6::date IS NULL OR p.founded_on <= $6::date)
+  AND ($7::text IS NULL OR p.state = $7::text)
+  AND ($8 = '' OR o.id::text > $8)
 ORDER BY o.id
-LIMIT $2
+LIMIT $9
 `
 
 type ListCompaniesParams struct {
-	After interface{}
-	Lim   int32
+	LegalFormID       pgtype.Text
+	OwnershipCategory pgtype.Text
+	CountryID         pgtype.Text
+	IndustryClassID   pgtype.Text
+	FoundedOnFrom     pgtype.Date
+	FoundedOnTo       pgtype.Date
+	State             pgtype.Text
+	After             interface{}
+	Lim               int32
 }
 
 type ListCompaniesRow struct {
 	ID                string
 	Code              string
 	LegalName         string
+	Visibility        string
 	ShortName         pgtype.Text
 	LegalFormID       string
 	OwnershipCategory string
@@ -953,8 +1546,24 @@ type ListCompaniesRow struct {
 
 // Active companies, keyset-paginated by org RID. A text query routes to SearchCompanies (review R-21):
 // a `(@query = ” OR …)` guard would defeat the trigram GIN indexes.
+// o.visibility feeds the transport's shadow gate — see GetCompany.
+//
+// THE FACET FILTER BLOCK below is written identically into SearchCompanies and all four aggregate
+// arms (M58 ticket 5 / D-ObjectFacets). Six copies is six chances to drift, and the drift would be
+// silent: a chart describing a set its own list does not return. pkg/facet/sqlparity_test.go asserts
+// every facet's narg appears in every one of them.
 func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error) {
-	rows, err := q.db.Query(ctx, listCompanies, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listCompanies,
+		arg.LegalFormID,
+		arg.OwnershipCategory,
+		arg.CountryID,
+		arg.IndustryClassID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.After,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -966,6 +1575,7 @@ func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([
 			&i.ID,
 			&i.Code,
 			&i.LegalName,
+			&i.Visibility,
 			&i.ShortName,
 			&i.LegalFormID,
 			&i.OwnershipCategory,
@@ -1477,7 +2087,7 @@ func (q *Queries) ListSuccessionsByCompany(ctx context.Context, companyID string
 }
 
 const searchCompanies = `-- name: SearchCompanies :many
-SELECT o.id, o.code, o.name AS legal_name,
+SELECT o.id, o.code, o.name AS legal_name, o.visibility,
   p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
   p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.company_org_profiles p
@@ -1490,21 +2100,39 @@ WHERE p.deleted_at IS NULL
     UNION
     SELECT cp.company_id FROM oikumenea.company_org_profiles cp
       WHERE cp.deleted_at IS NULL AND cp.short_name ILIKE '%' || $1 || '%')
-  AND ($2 = '' OR o.id::text > $2)
+  AND ($2::uuid IS NULL OR p.legal_form_id = $2::uuid)
+  AND ($3::text IS NULL OR p.ownership_category = $3::text)
+  AND ($4::uuid IS NULL OR p.country_id = $4::uuid)
+  AND ($5::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.company_industry_assignments ia
+        WHERE ia.company_id = p.company_id AND ia.is_primary AND ia.deleted_at IS NULL
+          AND ia.industry_class_id = $5::uuid))
+  AND ($6::date IS NULL OR p.founded_on >= $6::date)
+  AND ($7::date IS NULL OR p.founded_on <= $7::date)
+  AND ($8::text IS NULL OR p.state = $8::text)
+  AND ($9 = '' OR o.id::text > $9)
 ORDER BY o.id
-LIMIT $3
+LIMIT $10
 `
 
 type SearchCompaniesParams struct {
-	Query pgtype.Text
-	After interface{}
-	Lim   int32
+	Query             pgtype.Text
+	LegalFormID       pgtype.Text
+	OwnershipCategory pgtype.Text
+	CountryID         pgtype.Text
+	IndustryClassID   pgtype.Text
+	FoundedOnFrom     pgtype.Date
+	FoundedOnTo       pgtype.Date
+	State             pgtype.Text
+	After             interface{}
+	Lim               int32
 }
 
 type SearchCompaniesRow struct {
 	ID                string
 	Code              string
 	LegalName         string
+	Visibility        string
 	ShortName         pgtype.Text
 	LegalFormID       string
 	OwnershipCategory string
@@ -1522,7 +2150,18 @@ type SearchCompaniesRow struct {
 // stays a GIN bitmap scan (the person names+variants pattern, D-PersonSearch). Same projection and keyset
 // as ListCompanies so the two rows are convertible in the repository.
 func (q *Queries) SearchCompanies(ctx context.Context, arg SearchCompaniesParams) ([]SearchCompaniesRow, error) {
-	rows, err := q.db.Query(ctx, searchCompanies, arg.Query, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, searchCompanies,
+		arg.Query,
+		arg.LegalFormID,
+		arg.OwnershipCategory,
+		arg.CountryID,
+		arg.IndustryClassID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.After,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1534,6 +2173,7 @@ func (q *Queries) SearchCompanies(ctx context.Context, arg SearchCompaniesParams
 			&i.ID,
 			&i.Code,
 			&i.LegalName,
+			&i.Visibility,
 			&i.ShortName,
 			&i.LegalFormID,
 			&i.OwnershipCategory,

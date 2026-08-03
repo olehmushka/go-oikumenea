@@ -213,7 +213,7 @@ func (q *Queries) GetGroup(ctx context.Context, id string) (OikumeneaEducationGr
 }
 
 const getInstitution = `-- name: GetInstitution :one
-SELECT o.id, o.code, o.name,
+SELECT o.id, o.code, o.name, o.visibility,
   p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.education_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
@@ -221,18 +221,23 @@ WHERE p.institution_id = $1 AND p.deleted_at IS NULL
 `
 
 type GetInstitutionRow struct {
-	ID        string
-	Code      string
-	Name      string
-	KindID    string
-	CountryID pgtype.Text
-	FoundedOn pgtype.Date
-	ClosedOn  pgtype.Date
-	State     string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID         string
+	Code       string
+	Name       string
+	Visibility string
+	KindID     string
+	CountryID  pgtype.Text
+	FoundedOn  pgtype.Date
+	ClosedOn   pgtype.Date
+	State      string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
+// o.visibility is projected for the SHADOW GATE, not for the wire: an institution IS a tenant
+// organization (M41), so it carries the organization's public/shadow bit and the transport must apply
+// the same gate listOrganizations does (D-VisibilityScope). Deliberately absent from the API
+// Institution type — the organization facet vocabulary already exposes the attribute where it belongs.
 func (q *Queries) GetInstitution(ctx context.Context, id string) (GetInstitutionRow, error) {
 	row := q.db.QueryRow(ctx, getInstitution, id)
 	var i GetInstitutionRow
@@ -240,6 +245,7 @@ func (q *Queries) GetInstitution(ctx context.Context, id string) (GetInstitution
 		&i.ID,
 		&i.Code,
 		&i.Name,
+		&i.Visibility,
 		&i.KindID,
 		&i.CountryID,
 		&i.FoundedOn,
@@ -575,6 +581,417 @@ func (q *Queries) InsertPosition(ctx context.Context, arg InsertPositionParams) 
 		&i.DeletedAt,
 	)
 	return i, err
+}
+
+const institutionStats = `-- name: InstitutionStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT p.institution_id AS id, p.kind_id, p.country_id, p.founded_on, p.state
+  FROM oikumenea.education_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR p.kind_id = $1::uuid)
+  AND ($2::uuid IS NULL OR p.country_id = $2::uuid)
+  AND ($3::date IS NULL OR p.founded_on >= $3::date)
+  AND ($4::date IS NULL OR p.founded_on <= $4::date)
+  AND ($5::text IS NULL OR p.state = $5::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'kindId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.kind_id::text AS k, count(*) AS n
+            FROM cand c WHERE $7::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE $9::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+`
+
+type InstitutionStatsParams struct {
+	KindID        pgtype.Text
+	CountryID     pgtype.Text
+	FoundedOnFrom pgtype.Date
+	FoundedOnTo   pgtype.Date
+	State         pgtype.Text
+	TopN          int32
+	WantKindID    bool
+	WantCountryID bool
+	WantFoundedOn bool
+	WantState     bool
+}
+
+type InstitutionStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// ============================ institution dashboards (M58 ticket 5 / D-ObjectFacets) ============================
+// FOUR arms, for the reason company's are four: an institution has BOTH a visibility gate and an R-21
+// search twin, so the square is {plain, search} × {instance-admin, visibility-scoped}. The aggregate
+// half must be byte-identical across all four (pkg/facet/statsparity_test.go), or an admin and a
+// scoped caller would be shown different distributions of the same world.
+// The INSTANCE-ADMIN arm: no visibility predicate at all.
+func (q *Queries) InstitutionStats(ctx context.Context, arg InstitutionStatsParams) ([]InstitutionStatsRow, error) {
+	rows, err := q.db.Query(ctx, institutionStats,
+		arg.KindID,
+		arg.CountryID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.TopN,
+		arg.WantKindID,
+		arg.WantCountryID,
+		arg.WantFoundedOn,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InstitutionStatsRow
+	for rows.Next() {
+		var i InstitutionStatsRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const institutionStatsForSubject = `-- name: InstitutionStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT p.institution_id AS id, p.kind_id, p.country_id, p.founded_on, p.state
+  FROM oikumenea.education_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (o.visibility = 'public'
+       OR o.id IN (SELECT u.org_id
+                   FROM oikumenea.tenant_units u
+                   WHERE u.deleted_at IS NULL
+                     AND u.id IN (SELECT oikumenea.authz_readable_units($1))))
+  AND ($2::uuid IS NULL OR p.kind_id = $2::uuid)
+  AND ($3::uuid IS NULL OR p.country_id = $3::uuid)
+  AND ($4::date IS NULL OR p.founded_on >= $4::date)
+  AND ($5::date IS NULL OR p.founded_on <= $5::date)
+  AND ($6::text IS NULL OR p.state = $6::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'kindId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.kind_id::text AS k, count(*) AS n
+            FROM cand c WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+`
+
+type InstitutionStatsForSubjectParams struct {
+	SubjectPersonID string
+	KindID          pgtype.Text
+	CountryID       pgtype.Text
+	FoundedOnFrom   pgtype.Date
+	FoundedOnTo     pgtype.Date
+	State           pgtype.Text
+	TopN            int32
+	WantKindID      bool
+	WantCountryID   bool
+	WantFoundedOn   bool
+	WantState       bool
+}
+
+type InstitutionStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The visibility-scoped arm. An institution IS a `university`-domain tenant ORGANIZATION (M41 /
+// D-UnifiedOrgGraph), so the gate is the ORGANIZATION's, and organization reach is DERIVED from unit
+// reach (M58 ticket 4 follow-up, amending D-VisibilityScope): visible when any of its live units is
+// in the subject's reach. Copying unit's own `id IN (authz_readable_units(...))` would compile and
+// match nothing — an organization RID can never appear in a readable-UNIT set.
+func (q *Queries) InstitutionStatsForSubject(ctx context.Context, arg InstitutionStatsForSubjectParams) ([]InstitutionStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, institutionStatsForSubject,
+		arg.SubjectPersonID,
+		arg.KindID,
+		arg.CountryID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.TopN,
+		arg.WantKindID,
+		arg.WantCountryID,
+		arg.WantFoundedOn,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InstitutionStatsForSubjectRow
+	for rows.Next() {
+		var i InstitutionStatsForSubjectRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const institutionStatsForSubjectSearch = `-- name: InstitutionStatsForSubjectSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT p.institution_id AS id, p.kind_id, p.country_id, p.founded_on, p.state
+  FROM oikumenea.education_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND (o.visibility = 'public'
+       OR o.id IN (SELECT u.org_id
+                   FROM oikumenea.tenant_units u
+                   WHERE u.deleted_at IS NULL
+                     AND u.id IN (SELECT oikumenea.authz_readable_units($1))))
+  AND o.search_text ILIKE '%' || $2 || '%'
+  AND ($3::uuid IS NULL OR p.kind_id = $3::uuid)
+  AND ($4::uuid IS NULL OR p.country_id = $4::uuid)
+  AND ($5::date IS NULL OR p.founded_on >= $5::date)
+  AND ($6::date IS NULL OR p.founded_on <= $6::date)
+  AND ($7::text IS NULL OR p.state = $7::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'kindId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.kind_id::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $12::boolean GROUP BY 2
+`
+
+type InstitutionStatsForSubjectSearchParams struct {
+	SubjectPersonID string
+	Query           pgtype.Text
+	KindID          pgtype.Text
+	CountryID       pgtype.Text
+	FoundedOnFrom   pgtype.Date
+	FoundedOnTo     pgtype.Date
+	State           pgtype.Text
+	TopN            int32
+	WantKindID      bool
+	WantCountryID   bool
+	WantFoundedOn   bool
+	WantState       bool
+}
+
+type InstitutionStatsForSubjectSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The scoped arm's trigram twin — the fourth corner of the same square.
+func (q *Queries) InstitutionStatsForSubjectSearch(ctx context.Context, arg InstitutionStatsForSubjectSearchParams) ([]InstitutionStatsForSubjectSearchRow, error) {
+	rows, err := q.db.Query(ctx, institutionStatsForSubjectSearch,
+		arg.SubjectPersonID,
+		arg.Query,
+		arg.KindID,
+		arg.CountryID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.TopN,
+		arg.WantKindID,
+		arg.WantCountryID,
+		arg.WantFoundedOn,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InstitutionStatsForSubjectSearchRow
+	for rows.Next() {
+		var i InstitutionStatsForSubjectSearchRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const institutionStatsSearch = `-- name: InstitutionStatsSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT p.institution_id AS id, p.kind_id, p.country_id, p.founded_on, p.state
+  FROM oikumenea.education_org_profiles p
+  JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+  AND o.search_text ILIKE '%' || $1 || '%'
+  AND ($2::uuid IS NULL OR p.kind_id = $2::uuid)
+  AND ($3::uuid IS NULL OR p.country_id = $3::uuid)
+  AND ($4::date IS NULL OR p.founded_on >= $4::date)
+  AND ($5::date IS NULL OR p.founded_on <= $5::date)
+  AND ($6::text IS NULL OR p.state = $6::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'kindId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.kind_id::text AS k, count(*) AS n
+            FROM cand c WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'foundedOn'::text, to_char(date_trunc('year', c.founded_on), 'YYYY'), count(*)::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+`
+
+type InstitutionStatsSearchParams struct {
+	Query         pgtype.Text
+	KindID        pgtype.Text
+	CountryID     pgtype.Text
+	FoundedOnFrom pgtype.Date
+	FoundedOnTo   pgtype.Date
+	State         pgtype.Text
+	TopN          int32
+	WantKindID    bool
+	WantCountryID bool
+	WantFoundedOn bool
+	WantState     bool
+}
+
+type InstitutionStatsSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The admin arm's trigram twin, over the same tenant_organizations search_text haystack
+// SearchInstitutions uses.
+func (q *Queries) InstitutionStatsSearch(ctx context.Context, arg InstitutionStatsSearchParams) ([]InstitutionStatsSearchRow, error) {
+	rows, err := q.db.Query(ctx, institutionStatsSearch,
+		arg.Query,
+		arg.KindID,
+		arg.CountryID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.TopN,
+		arg.WantKindID,
+		arg.WantCountryID,
+		arg.WantFoundedOn,
+		arg.WantState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InstitutionStatsSearchRow
+	for rows.Next() {
+		var i InstitutionStatsSearchRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAppointmentsByPerson = `-- name: ListAppointmentsByPerson :many
@@ -914,38 +1331,58 @@ func (q *Queries) ListInstitutionKinds(ctx context.Context) ([]OikumeneaEducatio
 }
 
 const listInstitutions = `-- name: ListInstitutions :many
-SELECT o.id, o.code, o.name,
+SELECT o.id, o.code, o.name, o.visibility,
   p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.education_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
-  AND ($1 = '' OR o.id::text > $1)
+  AND ($1::uuid IS NULL OR p.kind_id = $1::uuid)
+  AND ($2::uuid IS NULL OR p.country_id = $2::uuid)
+  AND ($3::date IS NULL OR p.founded_on >= $3::date)
+  AND ($4::date IS NULL OR p.founded_on <= $4::date)
+  AND ($5::text IS NULL OR p.state = $5::text)
+  AND ($6 = '' OR o.id::text > $6)
 ORDER BY o.id
-LIMIT $2
+LIMIT $7
 `
 
 type ListInstitutionsParams struct {
-	After interface{}
-	Lim   int32
+	KindID        pgtype.Text
+	CountryID     pgtype.Text
+	FoundedOnFrom pgtype.Date
+	FoundedOnTo   pgtype.Date
+	State         pgtype.Text
+	After         interface{}
+	Lim           int32
 }
 
 type ListInstitutionsRow struct {
-	ID        string
-	Code      string
-	Name      string
-	KindID    string
-	CountryID pgtype.Text
-	FoundedOn pgtype.Date
-	ClosedOn  pgtype.Date
-	State     string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID         string
+	Code       string
+	Name       string
+	Visibility string
+	KindID     string
+	CountryID  pgtype.Text
+	FoundedOn  pgtype.Date
+	ClosedOn   pgtype.Date
+	State      string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 // Active institutions (orgs with an education profile), keyset-paginated by org RID. A text query routes
 // to SearchInstitutions instead (review R-21): a `(@query = ” OR …)` guard would defeat the trigram GIN.
+// o.visibility feeds the transport's shadow gate — see GetInstitution.
 func (q *Queries) ListInstitutions(ctx context.Context, arg ListInstitutionsParams) ([]ListInstitutionsRow, error) {
-	rows, err := q.db.Query(ctx, listInstitutions, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listInstitutions,
+		arg.KindID,
+		arg.CountryID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.After,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -957,6 +1394,7 @@ func (q *Queries) ListInstitutions(ctx context.Context, arg ListInstitutionsPara
 			&i.ID,
 			&i.Code,
 			&i.Name,
+			&i.Visibility,
 			&i.KindID,
 			&i.CountryID,
 			&i.FoundedOn,
@@ -1070,41 +1508,61 @@ func (q *Queries) ListVacantPositionsByInstitution(ctx context.Context, arg List
 }
 
 const searchInstitutions = `-- name: SearchInstitutions :many
-SELECT o.id, o.code, o.name,
+SELECT o.id, o.code, o.name, o.visibility,
   p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.education_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
   AND o.search_text ILIKE '%' || $1 || '%'
-  AND ($2 = '' OR o.id::text > $2)
+  AND ($2::uuid IS NULL OR p.kind_id = $2::uuid)
+  AND ($3::uuid IS NULL OR p.country_id = $3::uuid)
+  AND ($4::date IS NULL OR p.founded_on >= $4::date)
+  AND ($5::date IS NULL OR p.founded_on <= $5::date)
+  AND ($6::text IS NULL OR p.state = $6::text)
+  AND ($7 = '' OR o.id::text > $7)
 ORDER BY o.id
-LIMIT $3
+LIMIT $8
 `
 
 type SearchInstitutionsParams struct {
-	Query pgtype.Text
-	After interface{}
-	Lim   int32
+	Query         pgtype.Text
+	KindID        pgtype.Text
+	CountryID     pgtype.Text
+	FoundedOnFrom pgtype.Date
+	FoundedOnTo   pgtype.Date
+	State         pgtype.Text
+	After         interface{}
+	Lim           int32
 }
 
 type SearchInstitutionsRow struct {
-	ID        string
-	Code      string
-	Name      string
-	KindID    string
-	CountryID pgtype.Text
-	FoundedOn pgtype.Date
-	ClosedOn  pgtype.Date
-	State     string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID         string
+	Code       string
+	Name       string
+	Visibility string
+	KindID     string
+	CountryID  pgtype.Text
+	FoundedOn  pgtype.Date
+	ClosedOn   pgtype.Date
+	State      string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 // The trigram-served twin of ListInstitutions (review R-21): an unconditional case-insensitive match over
 // the tenant_organizations STORED search_text haystack, served by the tenant_organizations_search_trgm
 // GIN. Same projection and keyset as ListInstitutions so the two rows are convertible in the repository.
 func (q *Queries) SearchInstitutions(ctx context.Context, arg SearchInstitutionsParams) ([]SearchInstitutionsRow, error) {
-	rows, err := q.db.Query(ctx, searchInstitutions, arg.Query, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, searchInstitutions,
+		arg.Query,
+		arg.KindID,
+		arg.CountryID,
+		arg.FoundedOnFrom,
+		arg.FoundedOnTo,
+		arg.State,
+		arg.After,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1116,6 +1574,7 @@ func (q *Queries) SearchInstitutions(ctx context.Context, arg SearchInstitutions
 			&i.ID,
 			&i.Code,
 			&i.Name,
+			&i.Visibility,
 			&i.KindID,
 			&i.CountryID,
 			&i.FoundedOn,

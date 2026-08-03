@@ -576,7 +576,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		cleanup()
 		return nil, err
 	}
-	if err := registerSearchProviders(searchSvc, personSvc, membershipSvc, languageSvc, geoSvc, educationSvc, companySvc); err != nil {
+	if err := registerSearchProviders(searchSvc, personSvc, membershipSvc, languageSvc, geoSvc, educationSvc, companySvc, authzSvc, pool); err != nil {
 		cleanup()
 		return nil, werror.Wrap(err, "composition root: search provider registration")
 	}
@@ -629,6 +629,11 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	if financeSvc != nil {
 		financeSvc.SetBucketLabeler(statsLabeler)
 	}
+	// The two sidecar PROFILE types (M58 ticket 5). Unlike languoid's these are load-bearing: company
+	// declares three ref facets and institution two, so without a labeler five of their ten charts
+	// would be axis-labelled with RID tails.
+	companySvc.SetBucketLabeler(statsLabeler)
+	educationSvc.SetBucketLabeler(statsLabeler)
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.

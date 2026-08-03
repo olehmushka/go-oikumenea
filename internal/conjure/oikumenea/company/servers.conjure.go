@@ -31,7 +31,27 @@ type CompanyService interface {
 	ListIndustryClasses(ctx context.Context, authHeader bearertoken.Token) (IndustryClassList, error)
 	UpsertIndustryClass(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertIndustryClassRequest) (IndustryClass, error)
 	CreateCompany(ctx context.Context, authHeader bearertoken.Token, requestArg CreateCompanyRequest) (Company, error)
-	ListCompanies(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error)
+	/*
+	   List companies, token-paginated, optionally filtered by the facet vocabulary (M58 ticket 5 /
+	   D-ObjectFacets). Shadow-gated: a company IS a `company`-domain tenant organization (M41 /
+	   D-UnifiedOrgGraph), so it carries that organization's public/shadow bit and is trimmed by
+	   the same rule `listOrganizations` applies. Gated by company.read.
+
+	   Every filter arg here is also an arg of `companyStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListCompanies(ctx context.Context, authHeader bearertoken.Token, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error)
+	/*
+	   Facet distributions over the company registry — the dashboard half of the company facet
+	   vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args `listCompanies`
+	   takes, minus paging, so a dashboard and a list are two renderings of one request state.
+
+	   The path is `/stats/companies` rather than `/companies/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{companyId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	CompanyStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (CompanyStats, error)
 	GetCompany(ctx context.Context, authHeader bearertoken.Token, companyIdArg string) (Company, error)
 	UpdateCompany(ctx context.Context, authHeader bearertoken.Token, companyIdArg string, requestArg UpdateCompanyRequest) (Company, error)
 	DeleteCompany(ctx context.Context, authHeader bearertoken.Token, companyIdArg string) error
@@ -98,6 +118,9 @@ func RegisterRoutesCompanyService(router wrouter.Router, impl CompanyService, ro
 	}
 	if err := resource.Get("ListCompanies", "/company/v1/companies", httpserver.NewJSONHandler(handler.HandleListCompanies, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listCompanies route")
+	}
+	if err := resource.Get("CompanyStats", "/company/v1/stats/companies", httpserver.NewJSONHandler(handler.HandleCompanyStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add companyStats route")
 	}
 	if err := resource.Get("GetCompany", "/company/v1/companies/{companyId}", httpserver.NewJSONHandler(handler.HandleGetCompany, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getCompany route")
@@ -319,6 +342,41 @@ func (c *companyServiceHandler) HandleListCompanies(rw http.ResponseWriter, req 
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
+	var legalFormArg *string
+	if legalFormArgStr := req.URL.Query().Get("legalForm"); legalFormArgStr != "" {
+		legalFormArgInternal := legalFormArgStr
+		legalFormArg = &legalFormArgInternal
+	}
+	var ownershipCategoryArg *string
+	if ownershipCategoryArgStr := req.URL.Query().Get("ownershipCategory"); ownershipCategoryArgStr != "" {
+		ownershipCategoryArgInternal := ownershipCategoryArgStr
+		ownershipCategoryArg = &ownershipCategoryArgInternal
+	}
+	var countryIdArg *string
+	if countryIdArgStr := req.URL.Query().Get("countryId"); countryIdArgStr != "" {
+		countryIdArgInternal := countryIdArgStr
+		countryIdArg = &countryIdArgInternal
+	}
+	var industryClassArg *string
+	if industryClassArgStr := req.URL.Query().Get("industryClass"); industryClassArgStr != "" {
+		industryClassArgInternal := industryClassArgStr
+		industryClassArg = &industryClassArgInternal
+	}
+	var foundedOnFromArg *string
+	if foundedOnFromArgStr := req.URL.Query().Get("foundedOnFrom"); foundedOnFromArgStr != "" {
+		foundedOnFromArgInternal := foundedOnFromArgStr
+		foundedOnFromArg = &foundedOnFromArgInternal
+	}
+	var foundedOnToArg *string
+	if foundedOnToArgStr := req.URL.Query().Get("foundedOnTo"); foundedOnToArgStr != "" {
+		foundedOnToArgInternal := foundedOnToArgStr
+		foundedOnToArg = &foundedOnToArgInternal
+	}
+	var stateArg *string
+	if stateArgStr := req.URL.Query().Get("state"); stateArgStr != "" {
+		stateArgInternal := stateArgStr
+		stateArg = &stateArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -332,7 +390,65 @@ func (c *companyServiceHandler) HandleListCompanies(rw http.ResponseWriter, req 
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := c.impl.ListCompanies(req.Context(), bearertoken.Token(authHeader), queryArg, pageSizeArg, pageTokenArg)
+	respArg, err := c.impl.ListCompanies(req.Context(), bearertoken.Token(authHeader), queryArg, legalFormArg, ownershipCategoryArg, countryIdArg, industryClassArg, foundedOnFromArg, foundedOnToArg, stateArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (c *companyServiceHandler) HandleCompanyStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	var legalFormArg *string
+	if legalFormArgStr := req.URL.Query().Get("legalForm"); legalFormArgStr != "" {
+		legalFormArgInternal := legalFormArgStr
+		legalFormArg = &legalFormArgInternal
+	}
+	var ownershipCategoryArg *string
+	if ownershipCategoryArgStr := req.URL.Query().Get("ownershipCategory"); ownershipCategoryArgStr != "" {
+		ownershipCategoryArgInternal := ownershipCategoryArgStr
+		ownershipCategoryArg = &ownershipCategoryArgInternal
+	}
+	var countryIdArg *string
+	if countryIdArgStr := req.URL.Query().Get("countryId"); countryIdArgStr != "" {
+		countryIdArgInternal := countryIdArgStr
+		countryIdArg = &countryIdArgInternal
+	}
+	var industryClassArg *string
+	if industryClassArgStr := req.URL.Query().Get("industryClass"); industryClassArgStr != "" {
+		industryClassArgInternal := industryClassArgStr
+		industryClassArg = &industryClassArgInternal
+	}
+	var foundedOnFromArg *string
+	if foundedOnFromArgStr := req.URL.Query().Get("foundedOnFrom"); foundedOnFromArgStr != "" {
+		foundedOnFromArgInternal := foundedOnFromArgStr
+		foundedOnFromArg = &foundedOnFromArgInternal
+	}
+	var foundedOnToArg *string
+	if foundedOnToArgStr := req.URL.Query().Get("foundedOnTo"); foundedOnToArgStr != "" {
+		foundedOnToArgInternal := foundedOnToArgStr
+		foundedOnToArg = &foundedOnToArgInternal
+	}
+	var stateArg *string
+	if stateArgStr := req.URL.Query().Get("state"); stateArgStr != "" {
+		stateArgInternal := stateArgStr
+		stateArg = &stateArgInternal
+	}
+	respArg, err := c.impl.CompanyStats(req.Context(), bearertoken.Token(authHeader), facetsArg, queryArg, legalFormArg, ownershipCategoryArg, countryIdArg, industryClassArg, foundedOnFromArg, foundedOnToArg, stateArg)
 	if err != nil {
 		return err
 	}

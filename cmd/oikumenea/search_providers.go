@@ -15,12 +15,17 @@ package main
 
 import (
 	"context"
-	"fmt"
 
+	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	authzapp "github.com/olegamysk/go-oikumenea/internal/authorization/application"
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/scope"
 	companyapp "github.com/olegamysk/go-oikumenea/internal/company/application"
+	companydomain "github.com/olegamysk/go-oikumenea/internal/company/domain"
 	educationapp "github.com/olegamysk/go-oikumenea/internal/education/application"
+	educationdomain "github.com/olegamysk/go-oikumenea/internal/education/domain"
 	geoapp "github.com/olegamysk/go-oikumenea/internal/geo/application"
 	geodomain "github.com/olegamysk/go-oikumenea/internal/geo/domain"
 	languageapp "github.com/olegamysk/go-oikumenea/internal/language/application"
@@ -40,9 +45,40 @@ func registerSearchProviders(
 	geoSvc *geoapp.Service,
 	educationSvc *educationapp.Service,
 	companySvc *companyapp.Service,
+	authzSvc *authzapp.Service,
+	pool *pgxpool.Pool,
 ) error {
 	catalog := scope.NewCatalogScope()
 	personScope := scope.NewPersonScope(membershipSvc.SubjectReadablePersonsAmong)
+	// Organization scope for the two sidecar PROFILE types (M58 ticket 5). A company and an
+	// institution ARE tenant organizations (M41 / D-UnifiedOrgGraph), so their search hits carry the
+	// organization's public/shadow bit — and were registered under the CATALOG scope, which trims
+	// nothing. Search was the third door on the leak this ticket closed at the list and the point
+	// read, and the one that would have kept it open: a shadow company omitted from /companies but
+	// returned by /search is the same disclosure through a longer path.
+	//
+	// Shadow flags are read straight from tenant_organizations, the shape link_descriptors.go uses for
+	// units. An id with no row (deleted or absent) carries no flag and is DROPPED — fail closed.
+	orgs := scope.NewOrgScope(
+		func(ctx context.Context, ids []string) (map[string]bool, error) {
+			shadow := make(map[string]bool, len(ids))
+			rows, err := pool.Query(ctx,
+				`SELECT id::text, visibility FROM oikumenea.tenant_organizations WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`, ids)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var id, vis string
+				if err := rows.Scan(&id, &vis); err != nil {
+					return nil, err
+				}
+				shadow[id] = vis == "shadow"
+			}
+			return shadow, rows.Err()
+		},
+		authzSvc.FilterVisibleOrgs,
+	)
 
 	type reg struct {
 		p   searchdomain.Provider
@@ -115,7 +151,7 @@ func registerSearchProviders(
 			ObjectType:     "institution",
 			ReadPermission: string(authzdomain.PermEducationRead),
 			Search: func(ctx context.Context, _ string, _ bool, q, after string, limit int) ([]searchdomain.RawHit, string, error) {
-				rows, err := educationSvc.ListInstitutions(ctx, q, after, limit)
+				rows, err := educationSvc.ListInstitutions(ctx, educationdomain.InstitutionFilter{Query: q}, after, limit)
 				if err != nil {
 					return nil, "", err
 				}
@@ -126,13 +162,13 @@ func registerSearchProviders(
 				}
 				return hits, next, nil
 			},
-		}, vis: catalog},
+		}, vis: orgs},
 
 		{p: searchdomain.Provider{
 			ObjectType:     "company",
 			ReadPermission: string(authzdomain.PermCompanyRead),
 			Search: func(ctx context.Context, _ string, _ bool, q, after string, limit int) ([]searchdomain.RawHit, string, error) {
-				rows, err := companySvc.ListCompanies(ctx, q, after, limit)
+				rows, err := companySvc.ListCompanies(ctx, companydomain.CompanyFilter{Query: q}, after, limit)
 				if err != nil {
 					return nil, "", err
 				}
@@ -147,7 +183,7 @@ func registerSearchProviders(
 				}
 				return hits, next, nil
 			},
-		}, vis: catalog},
+		}, vis: orgs},
 
 		{p: searchdomain.Provider{
 			ObjectType:     "publication",

@@ -28,7 +28,27 @@ type CompanyServiceClient interface {
 	ListIndustryClasses(ctx context.Context, authHeader bearertoken.Token) (IndustryClassList, error)
 	UpsertIndustryClass(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertIndustryClassRequest) (IndustryClass, error)
 	CreateCompany(ctx context.Context, authHeader bearertoken.Token, requestArg CreateCompanyRequest) (Company, error)
-	ListCompanies(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error)
+	/*
+	   List companies, token-paginated, optionally filtered by the facet vocabulary (M58 ticket 5 /
+	   D-ObjectFacets). Shadow-gated: a company IS a `company`-domain tenant organization (M41 /
+	   D-UnifiedOrgGraph), so it carries that organization's public/shadow bit and is trimmed by
+	   the same rule `listOrganizations` applies. Gated by company.read.
+
+	   Every filter arg here is also an arg of `companyStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListCompanies(ctx context.Context, authHeader bearertoken.Token, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error)
+	/*
+	   Facet distributions over the company registry — the dashboard half of the company facet
+	   vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args `listCompanies`
+	   takes, minus paging, so a dashboard and a list are two renderings of one request state.
+
+	   The path is `/stats/companies` rather than `/companies/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{companyId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	CompanyStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (CompanyStats, error)
 	GetCompany(ctx context.Context, authHeader bearertoken.Token, companyIdArg string) (Company, error)
 	UpdateCompany(ctx context.Context, authHeader bearertoken.Token, companyIdArg string, requestArg UpdateCompanyRequest) (Company, error)
 	DeleteCompany(ctx context.Context, authHeader bearertoken.Token, companyIdArg string) error
@@ -196,7 +216,7 @@ func (c *companyServiceClient) CreateCompany(ctx context.Context, authHeader bea
 	return *returnVal, nil
 }
 
-func (c *companyServiceClient) ListCompanies(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error) {
+func (c *companyServiceClient) ListCompanies(ctx context.Context, authHeader bearertoken.Token, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error) {
 	var returnVal *CompanyPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListCompanies"))
@@ -205,6 +225,27 @@ func (c *companyServiceClient) ListCompanies(ctx context.Context, authHeader bea
 	queryParams := make(url.Values)
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if legalFormArg != nil {
+		queryParams.Set("legalForm", fmt.Sprint(*legalFormArg))
+	}
+	if ownershipCategoryArg != nil {
+		queryParams.Set("ownershipCategory", fmt.Sprint(*ownershipCategoryArg))
+	}
+	if countryIdArg != nil {
+		queryParams.Set("countryId", fmt.Sprint(*countryIdArg))
+	}
+	if industryClassArg != nil {
+		queryParams.Set("industryClass", fmt.Sprint(*industryClassArg))
+	}
+	if foundedOnFromArg != nil {
+		queryParams.Set("foundedOnFrom", fmt.Sprint(*foundedOnFromArg))
+	}
+	if foundedOnToArg != nil {
+		queryParams.Set("foundedOnTo", fmt.Sprint(*foundedOnToArg))
+	}
+	if stateArg != nil {
+		queryParams.Set("state", fmt.Sprint(*stateArg))
 	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
@@ -220,6 +261,52 @@ func (c *companyServiceClient) ListCompanies(ctx context.Context, authHeader bea
 	}
 	if returnVal == nil {
 		return *new(CompanyPage), werror.ErrorWithContextParams(ctx, "listCompanies response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *companyServiceClient) CompanyStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (CompanyStats, error) {
+	var returnVal *CompanyStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CompanyStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/company/v1/stats/companies"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if legalFormArg != nil {
+		queryParams.Set("legalForm", fmt.Sprint(*legalFormArg))
+	}
+	if ownershipCategoryArg != nil {
+		queryParams.Set("ownershipCategory", fmt.Sprint(*ownershipCategoryArg))
+	}
+	if countryIdArg != nil {
+		queryParams.Set("countryId", fmt.Sprint(*countryIdArg))
+	}
+	if industryClassArg != nil {
+		queryParams.Set("industryClass", fmt.Sprint(*industryClassArg))
+	}
+	if foundedOnFromArg != nil {
+		queryParams.Set("foundedOnFrom", fmt.Sprint(*foundedOnFromArg))
+	}
+	if foundedOnToArg != nil {
+		queryParams.Set("foundedOnTo", fmt.Sprint(*foundedOnToArg))
+	}
+	if stateArg != nil {
+		queryParams.Set("state", fmt.Sprint(*stateArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(CompanyStats), werror.WrapWithContextParams(ctx, err, "companyStats failed")
+	}
+	if returnVal == nil {
+		return *new(CompanyStats), werror.ErrorWithContextParams(ctx, "companyStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -763,7 +850,27 @@ type CompanyServiceClientWithAuth interface {
 	ListIndustryClasses(ctx context.Context) (IndustryClassList, error)
 	UpsertIndustryClass(ctx context.Context, requestArg UpsertIndustryClassRequest) (IndustryClass, error)
 	CreateCompany(ctx context.Context, requestArg CreateCompanyRequest) (Company, error)
-	ListCompanies(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error)
+	/*
+	   List companies, token-paginated, optionally filtered by the facet vocabulary (M58 ticket 5 /
+	   D-ObjectFacets). Shadow-gated: a company IS a `company`-domain tenant organization (M41 /
+	   D-UnifiedOrgGraph), so it carries that organization's public/shadow bit and is trimmed by
+	   the same rule `listOrganizations` applies. Gated by company.read.
+
+	   Every filter arg here is also an arg of `companyStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListCompanies(ctx context.Context, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error)
+	/*
+	   Facet distributions over the company registry — the dashboard half of the company facet
+	   vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args `listCompanies`
+	   takes, minus paging, so a dashboard and a list are two renderings of one request state.
+
+	   The path is `/stats/companies` rather than `/companies/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{companyId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	CompanyStats(ctx context.Context, facetsArg *string, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (CompanyStats, error)
 	GetCompany(ctx context.Context, companyIdArg string) (Company, error)
 	UpdateCompany(ctx context.Context, companyIdArg string, requestArg UpdateCompanyRequest) (Company, error)
 	DeleteCompany(ctx context.Context, companyIdArg string) error
@@ -837,8 +944,12 @@ func (c *companyServiceClientWithAuth) CreateCompany(ctx context.Context, reques
 	return c.client.CreateCompany(ctx, c.authHeader, requestArg)
 }
 
-func (c *companyServiceClientWithAuth) ListCompanies(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error) {
-	return c.client.ListCompanies(ctx, c.authHeader, queryArg, pageSizeArg, pageTokenArg)
+func (c *companyServiceClientWithAuth) ListCompanies(ctx context.Context, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error) {
+	return c.client.ListCompanies(ctx, c.authHeader, queryArg, legalFormArg, ownershipCategoryArg, countryIdArg, industryClassArg, foundedOnFromArg, foundedOnToArg, stateArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *companyServiceClientWithAuth) CompanyStats(ctx context.Context, facetsArg *string, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (CompanyStats, error) {
+	return c.client.CompanyStats(ctx, c.authHeader, facetsArg, queryArg, legalFormArg, ownershipCategoryArg, countryIdArg, industryClassArg, foundedOnFromArg, foundedOnToArg, stateArg)
 }
 
 func (c *companyServiceClientWithAuth) GetCompany(ctx context.Context, companyIdArg string) (Company, error) {
@@ -1034,12 +1145,20 @@ func (c *companyServiceClientWithTokenProvider) CreateCompany(ctx context.Contex
 	return c.client.CreateCompany(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *companyServiceClientWithTokenProvider) ListCompanies(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error) {
+func (c *companyServiceClientWithTokenProvider) ListCompanies(ctx context.Context, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (CompanyPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(CompanyPage), err
 	}
-	return c.client.ListCompanies(ctx, bearertoken.Token(token), queryArg, pageSizeArg, pageTokenArg)
+	return c.client.ListCompanies(ctx, bearertoken.Token(token), queryArg, legalFormArg, ownershipCategoryArg, countryIdArg, industryClassArg, foundedOnFromArg, foundedOnToArg, stateArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *companyServiceClientWithTokenProvider) CompanyStats(ctx context.Context, facetsArg *string, queryArg *string, legalFormArg *string, ownershipCategoryArg *string, countryIdArg *string, industryClassArg *string, foundedOnFromArg *string, foundedOnToArg *string, stateArg *string) (CompanyStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(CompanyStats), err
+	}
+	return c.client.CompanyStats(ctx, bearertoken.Token(token), facetsArg, queryArg, legalFormArg, ownershipCategoryArg, countryIdArg, industryClassArg, foundedOnFromArg, foundedOnToArg, stateArg)
 }
 
 func (c *companyServiceClientWithTokenProvider) GetCompany(ctx context.Context, companyIdArg string) (Company, error) {

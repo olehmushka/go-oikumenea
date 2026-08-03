@@ -4,6 +4,9 @@
 package facet
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -24,9 +27,13 @@ func TestDefaultRegistryBuilds(t *testing.T) {
 	// `organization` — the LAST type with an app-layer visibility predicate, and the tenant module's
 	// second — and `languoid`, the second type with an R-21 search twin and the first with a COMPOSITE
 	// (set-valued, semicolon-joined) code facet.
+	// Ticket 5 added `company` and `institution`, the first two PROFILE types: sidecar rows keyed by a
+	// tenant organization's RID (M41 / D-UnifiedOrgGraph), so their token is `organization` and neither
+	// has one of its own.
 	want := []string{
 		"person", "unit", "organization", "link__member_of", "order", "document", "audit",
 		"external_organization", "taxon", "languoid", "vehicle", "account", "card",
+		"company", "institution",
 	}
 	for _, w := range want {
 		o, ok := Default.Get(w)
@@ -330,6 +337,186 @@ func TestLedgerExemptionsAreEarned(t *testing.T) {
 		t.Errorf("more than one Ledger type registered (%v) — each is an exception to D-Ontology's "+
 			"kind rule and needs its own argument in decisions.md, not a precedent", ledgers)
 	}
+}
+
+// TestProfileTypesAreKeyedToTheirProfiledToken is the STRUCTURAL half of the second escape (M58
+// ticket 5), and the reason `Profile` needs no prose where `Ledger` needs a sentence.
+//
+// A ledger's claim ("these rows have no token of their own") cannot be checked against anything — the
+// absence of a token is not written down anywhere — so it is held by a reason and a cap. A profile's
+// claim IS checkable: it says the rows are keyed by ANOTHER table's RID, and that is a fact the DDL
+// records. So this reads the migrations and asserts the profile's own table is PRIMARY-KEY-FK'd to
+// the profiled token's table. A declaration that profiles the wrong parent, or a table that stops
+// being a sidecar and grows its own RID, goes red here rather than being believed.
+//
+// The parent's table is not hard-coded: it is the profiled TYPE's own listed table, taken from the
+// registry. So `organization`'s table moving moves this check with it.
+func TestProfileTypesAreKeyedToTheirProfiledToken(t *testing.T) {
+	pks := parsePrimaryKeyRefs(t)
+	seen := 0
+	for _, o := range Default.All() {
+		if o.Profile == "" {
+			continue
+		}
+		seen++
+		parent, ok := Default.Get(o.Profile)
+		if !ok {
+			t.Errorf("%s profiles %q, which is not itself a registered object type — the guard has no "+
+				"table to check the key against, so the claim would go unverified", o.Type, o.Profile)
+			continue
+		}
+		parentTable, ownTable := listedTable(parent), listedTable(o)
+		if ownTable == "" || parentTable == "" {
+			t.Errorf("%s: cannot determine the listed table (own=%q parent=%q)", o.Type, ownTable, parentTable)
+			continue
+		}
+		ref, found := pks[ownTable]
+		switch {
+		case !found:
+			t.Errorf("%s: %s declares no single-column PRIMARY KEY in migrations/ — a profile is a "+
+				"SIDECAR keyed by its parent's RID, and this table is not shaped like one", o.Type, ownTable)
+		case ref == "":
+			t.Errorf("%s: %s's primary key REFERENCES nothing — it mints its own identifiers, so it is "+
+				"not a profile of %s and should carry its own RID type token instead",
+				o.Type, ownTable, o.Profile)
+		case ref != parentTable:
+			t.Errorf("%s: %s's primary key REFERENCES %s, but the type declares Profile %q whose table "+
+				"is %s — the declaration and the schema disagree about what these rows ARE",
+				o.Type, ownTable, ref, o.Profile, parentTable)
+		}
+	}
+	// Non-vacuity: this guard reads files outside the package and parses SQL by hand, so a parse that
+	// silently matches nothing would turn every assertion above into a pass. If the catalog has profile
+	// types, the parser must have found primary keys.
+	if seen > 0 && len(pks) < 10 {
+		t.Fatalf("parsed only %d primary keys from migrations/ — the parser is broken, and every check "+
+			"above is vacuous", len(pks))
+	}
+}
+
+// TestProfileTypesShareOneParentToday. `Profile` is deliberately UNCAPPED where `Ledger` is capped at
+// one: the sidecar-on-organization shape has two members already (company and education org
+// profiles), so a second profile type is the pattern working, not eroding. What is worth a review
+// moment is a profile of a DIFFERENT parent — and that is not hypothetical: religion_org_profiles is
+// the same sidecar shape keyed to tenant_UNITS, so the day a religion profile becomes listable this
+// guard goes red and asks for the modelling argument rather than accepting the copy.
+func TestProfileTypesShareOneParentToday(t *testing.T) {
+	parents := map[string][]string{}
+	for _, o := range Default.All() {
+		if o.Profile != "" {
+			parents[o.Profile] = append(parents[o.Profile], o.Type)
+		}
+	}
+	if len(parents) > 1 {
+		t.Errorf("profile types now hang off more than one parent (%v) — the sidecar-on-organization "+
+			"shape is D-UnifiedOrgGraph's, and a second parent is a modelling decision that belongs in "+
+			"decisions.md before it belongs here", parents)
+	}
+	if got := parents["organization"]; len(got) > 0 && len(got) < 2 {
+		t.Errorf("expected both sidecar profile types on `organization`, got %v", got)
+	}
+}
+
+// TestRegisterProfileRules pins the arms Register grew for the second escape, including the two that
+// keep it from becoming a way AROUND the token check rather than an admission of one.
+func TestRegisterProfileRules(t *testing.T) {
+	base := func() ObjectType {
+		return ObjectType{Type: "company", Module: "company", ListEndpoint: "S.e", Facets: []Facet{validFacet()}}
+	}
+	cases := []struct {
+		name string
+		edit func(*ObjectType)
+		want string
+	}{
+		{"no escape at all", func(o *ObjectType) {}, "not a registered object or link type token"},
+		{"both escapes", func(o *ObjectType) { o.Profile, o.Ledger = "organization", "because" }, "different admissions"},
+		{"profiles itself", func(o *ObjectType) { o.Profile = "company" }, "profiles itself"},
+		{"profiles a non-token", func(o *ObjectType) { o.Profile = "not_a_token" }, "not a registered object type token"},
+		{"profiles a link", func(o *ObjectType) { o.Profile = "link__member_of" }, "not a registered object type token"},
+		{"a real token claiming Profile", func(o *ObjectType) { o.Type, o.Profile = "person", "organization" }, "must not claim Profile"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			o := base()
+			c.edit(&o)
+			err := New().Register(o)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("got %v, want an error mentioning %q", err, c.want)
+			}
+		})
+	}
+	ok := base()
+	ok.Profile = "organization"
+	if err := New().Register(ok); err != nil {
+		t.Fatalf("a well-formed profile declaration must be registrable: %v", err)
+	}
+}
+
+// parsePrimaryKeyRefs maps each table in migrations/ to the table its single-column PRIMARY KEY
+// REFERENCES, or "" when the key references nothing. Tables with no single-column PK are absent.
+//
+// Both the inline form (`company_id uuid PRIMARY KEY REFERENCES oikumenea.tenant_organizations(id)`)
+// and a later `ALTER TABLE … ADD … FOREIGN KEY (pk) REFERENCES …` are recognised: since the 46→15
+// migration consolidation a table's shape is NOT its CREATE TABLE, and a guard that reads only the
+// CREATE block is reading a snapshot (the vehicle.color defect ticket 3 had to un-decide).
+func parsePrimaryKeyRefs(t *testing.T) map[string]string {
+	t.Helper()
+	var (
+		pkInline = regexp.MustCompile(`^\s{2,}([a-z_][a-z0-9_]*)\s+[a-z]+\s+PRIMARY KEY(.*)$`)
+		refRe    = regexp.MustCompile(`REFERENCES\s+(oikumenea\.[a-z_]+)`)
+		alterFK  = regexp.MustCompile(`ALTER TABLE (?:ONLY )?(oikumenea\.[a-z_]+)[\s\S]{0,200}?FOREIGN KEY \(([a-z_]+)\)\s+REFERENCES\s+(oikumenea\.[a-z_]+)`)
+	)
+	dir := filepath.Join("..", "..", "migrations")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read migrations dir: %v", err)
+	}
+	refs := map[string]string{} // table -> referenced table ("" = none)
+	pkCol := map[string]string{}
+	var bodies []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		bodies = append(bodies, string(body))
+		var current string
+		for _, line := range strings.Split(string(body), "\n") {
+			if m := createRe.FindStringSubmatch(line); m != nil {
+				current = m[1]
+				continue
+			}
+			if current == "" {
+				continue
+			}
+			if strings.HasPrefix(line, ")") {
+				current = ""
+				continue
+			}
+			if m := pkInline.FindStringSubmatch(line); m != nil {
+				if _, dup := refs[current]; !dup {
+					pkCol[current] = m[1]
+					if r := refRe.FindStringSubmatch(m[2]); r != nil {
+						refs[current] = r[1]
+					} else {
+						refs[current] = ""
+					}
+				}
+			}
+		}
+	}
+	// A PK whose FK arrived later, by ALTER.
+	for _, body := range bodies {
+		for _, m := range alterFK.FindAllStringSubmatch(body, -1) {
+			if pkCol[m[1]] == m[2] && refs[m[1]] == "" {
+				refs[m[1]] = m[3]
+			}
+		}
+	}
+	return refs
 }
 
 // TestCodeFacetsCarryNoLabelPromise: a code facet's KEY IS ITS LABEL, which is the whole reason the

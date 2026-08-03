@@ -55,12 +55,22 @@ type DegreeLevel struct {
 
 // ---- objects ----
 
+// VisibilityShadow is the owning organization's `shadow` value (D-VisibilityScope). Declared here
+// rather than imported from the tenant domain because a module's domain imports no other module's —
+// the value is the tenant_organizations CHECK set's own spelling, and the queries project it verbatim.
+const VisibilityShadow = "shadow"
+
 type Institution struct {
 	ID, Code, Name, KindID string
 	CountryID              string // "" = none
 	FoundedOn, ClosedOn    string // ISO date; "" = none
 	State                  string
-	CreatedAt, UpdatedAt   time.Time
+	// Visibility is the OWNING tenant organization's public/shadow bit (M41 / D-UnifiedOrgGraph — an
+	// institution IS a `university`-domain organization). Carried for the transport's shadow gate and
+	// NOT on the wire: `shadow` hides existence, so the value only ever decides whether the caller sees
+	// the row at all. "public" | "shadow" (D-VisibilityScope).
+	Visibility           string
+	CreatedAt, UpdatedAt time.Time
 }
 
 type Unit struct {
@@ -247,4 +257,23 @@ func (in DormInput) Validate() error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+// InstitutionFilter is the facet filter block `listInstitutions` and `institutionStats` BOTH take
+// (M58 ticket 5 / D-ObjectFacets). One struct, built by one transport helper, so a list and its
+// dashboard cannot read the same URL differently — the sqlc parity guard proves the same for the SQL
+// half.
+//
+// Every field is a pointer: nil means "criterion disabled", which the predicates read as a SQL NULL
+// narg rather than an empty-string sentinel (a sentinel forces one generic plan across every filter
+// shape and is invisible to the parity guard).
+type InstitutionFilter struct {
+	// Query is the free-text arm, routed to SearchInstitutions rather than ANDed as a predicate
+	// (R-21: a `(@query = '' OR …)` guard would defeat the trigram GIN). Empty = the plain arm.
+	Query         string
+	KindID        *string
+	CountryID     *string
+	FoundedOnFrom *string // ISO date, INCLUSIVE
+	FoundedOnTo   *string // ISO date, INCLUSIVE
+	State         *string
 }

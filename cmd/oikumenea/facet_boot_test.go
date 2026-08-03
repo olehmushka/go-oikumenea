@@ -53,6 +53,22 @@ func TestFacetObjectTypesAreRegisteredRIDTypes(t *testing.T) {
 			if ok {
 				t.Errorf("facet type %q claims Ledger but IS a registered token (kind=%s)", o.Type, rid.Kind(info.Kind))
 			}
+		// A PROFILE is the second declared exception (M58 ticket 5): its rows are sidecars keyed by
+		// ANOTHER type's RID — company and institution on tenant_organizations (M41 /
+		// D-UnifiedOrgGraph) — so the profile has no token of its own and must not have one, while the
+		// token it PROFILES must be a real kind=object type. Both halves are asserted, as in Register,
+		// because this copy exists precisely to survive that validation being relaxed.
+		case o.Profile != "":
+			if ok {
+				t.Errorf("facet type %q claims Profile but IS a registered token (kind=%s)", o.Type, rid.Kind(info.Kind))
+			}
+			parent, pok := tokens[o.Profile]
+			if !pok {
+				t.Errorf("facet type %q profiles %q, which is not a registry token in pkg/rid", o.Type, o.Profile)
+			} else if rid.Kind(parent.Kind) != rid.KindObject {
+				t.Errorf("facet type %q profiles %q, which is kind=%s; a profile's rows are keyed by an OBJECT's RID",
+					o.Type, o.Profile, rid.Kind(parent.Kind))
+			}
 		case !ok:
 			t.Errorf("facet type %q is not a registry token in pkg/rid", o.Type)
 		case rid.Kind(info.Kind) != rid.KindObject && rid.Kind(info.Kind) != rid.KindLink:
