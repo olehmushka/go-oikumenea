@@ -54,7 +54,7 @@ type TenantService interface {
 	   (`domain`/`unitKind`/`level`/`levelMin`/`levelMax`/`visibility`/`state`/`pdpScoped`). When neither is set the
 	   listing is the flat, filtered org listing.
 	*/
-	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, queryArg *string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	/*
 	   Facet distributions for an organization's units — the dashboard half of the facet
 	   vocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`
@@ -71,7 +71,7 @@ type TenantService interface {
 	   literal path segment that is a sibling of `{unitId}` — see the route-conflict guard in
 	   `internal/platform/transport`.
 	*/
-	UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
+	UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, queryArg *string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
 	/*
 	   Facet distributions over the organization registry — the dashboard half of the
 	   organization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args
@@ -400,6 +400,11 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 		return errors.WrapWithPermissionDenied(err)
 	}
 	orgArg := req.URL.Query().Get("org")
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
 	var domainArg *string
 	if domainArgStr := req.URL.Query().Get("domain"); domainArgStr != "" {
 		domainArgInternal := domainArgStr
@@ -483,7 +488,7 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), orgArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
+	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), orgArg, queryArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}
@@ -501,6 +506,11 @@ func (t *tenantServiceHandler) HandleUnitStats(rw http.ResponseWriter, req *http
 	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
 		facetsArgInternal := facetsArgStr
 		facetsArg = &facetsArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
 	}
 	var domainArg *string
 	if domainArgStr := req.URL.Query().Get("domain"); domainArgStr != "" {
@@ -554,7 +564,7 @@ func (t *tenantServiceHandler) HandleUnitStats(rw http.ResponseWriter, req *http
 		}
 		pdpScopedArg = &pdpScopedArgInternal
 	}
-	respArg, err := t.impl.UnitStats(req.Context(), bearertoken.Token(authHeader), orgArg, facetsArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg)
+	respArg, err := t.impl.UnitStats(req.Context(), bearertoken.Token(authHeader), orgArg, facetsArg, queryArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg)
 	if err != nil {
 		return err
 	}

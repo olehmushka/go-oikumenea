@@ -93,3 +93,14 @@ RLS backstop (see its entry). The binary's expected revision is `db.ExpectedSche
 - **Contract step note:** enabling RLS is normally staged permissive→tighten (`upgrade-safety.md`).
   For this first release the GUC wiring ships in the same revision as the tightened policies, so there
   is no permissive interim; **post-v1 RLS changes follow the staged rollout.**
+
+### `0022_tenant_unit_search`
+- **Adds (expand-only):** `tenant_units.search_text` — a `GENERATED ALWAYS AS ... STORED` trigram
+  haystack over `lower(coalesce(code,'') || ' ' || name)` — plus the partial GIN index
+  `tenant_units_search_trgm` (`WHERE deleted_at IS NULL`). Postgres computes the column for existing
+  rows as part of the `ADD COLUMN`; there is no backfill step and no data is rewritten by hand.
+- **Enables:** the `query` arg on `GET /units` and `GET /stats/units`, so the console's unit picker
+  searches server-side instead of filtering one page in the browser. `code` is coalesced because it is
+  nullable (NULL = a non-separate sub-unit); without that every codeless unit would have a NULL
+  haystack and drop out of the index entirely.
+- **Contract steps:** none.

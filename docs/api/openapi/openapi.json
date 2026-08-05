@@ -130,6 +130,26 @@
         ],
         "type": "object"
       },
+      "AccountStats": {
+        "description": "Facet distributions over the SAME set `listAccounts` returns under the same filters (M58 /\nD-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an\nestimate and not a page count.\n\nEvery facet here partitions the result set — each counted row lands in exactly one bucket\nof each distribution, so a distribution's counts sum to `totalCount`.\n\nThere is deliberately NO facet over the IBAN. It is envelope-encrypted at rest with no\nplaintext to group, and D-DataScope's aggregation rule forbids the surface regardless.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "AccountType": {
         "description": "A bank-account kind (current/savings/deposit/loan…); instance-extensible.",
         "properties": {
@@ -1801,6 +1821,44 @@
         ],
         "type": "object"
       },
+      "CardPage": {
+        "description": "A keyset page of the instance-wide card registry (M58). Carries the same METADATA-ONLY\nprojection `listAccountCards` does — the PAN is never listed, only decrypted on `getCard`\nfor an authorized caller (PCI-DSS Req 3; D-DataScope CDE scope).\n",
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/Card"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cards"
+        ],
+        "type": "object"
+      },
+      "CardStats": {
+        "description": "Facet distributions over the SAME set `listCards` returns under the same filters (M58 /\nD-ObjectFacets). As with accounts, there is NO facet over the PAN — it is envelope-encrypted\nand inside PCI-DSS CDE scope. `bin` and `lastFour` are clear, but they are display columns\nfor identifying one card, not distributions to group a registry by.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "Citizenship": {
         "description": "A person's effective-dated nationality in a country (D-Geo). A person may hold several; at most one active per country.",
         "properties": {
@@ -2322,6 +2380,26 @@
         },
         "required": [
           "positions"
+        ],
+        "type": "object"
+      },
+      "CompanyStats": {
+        "description": "Facet distributions over the SAME set `listCompanies` returns under the same filters, with\nthe shadow gate folded INTO the count (M58 ticket 5 / D-ObjectFacets).\n\nA company IS a `company`-domain tenant ORGANIZATION plus a sidecar (M41 /\nD-UnifiedOrgGraph), so it carries that organization's public/shadow bit and this count\napplies the organization gate: `public OR reachable`, where reach is DERIVED from unit reach\n(D-VisibilityScope, amended M58 ticket 4) — an organization is visible when any of its live\nunits is in the subject's reach. Folded into SQL rather than applied to the page, because\ntrimming after the fact is right for a page and wrong for a count. `totalCount` therefore\nequals the rows exhaustively paging `listCompanies` under these filters would return.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
         ],
         "type": "object"
       },
@@ -4782,7 +4860,7 @@
         "type": "object"
       },
       "FacetBucket": {
-        "description": "One bucket of a facet distribution (M57 / D-ObjectFacets).\n\n`key` is the bucket's stable, locale-agnostic identity — an enum value (`shadow`), a band\n(`2-3`), `true`/`false`, or a RID for a `ref` facet — and is exactly what you pass back as\nthe corresponding list filter. Two synthetic keys never name a real value: `(unknown)` is\nthe NULL bucket and `(other)` a top-N facet's collapsed tail; neither is a usable filter\nvalue.\n\n`label` carries the object's display name as a locale → text map (D-i18n) and is present\nonly for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name\ncarries no label.\n",
+        "description": "One bucket of a facet distribution (M58 / D-ObjectFacets).\n\n`key` is the bucket's stable, locale-agnostic identity — an enum value, a `YYYY-MM` month,\nor a RID for a `ref` facet — and is exactly what you pass back as the corresponding query\nfilter, which is what makes a chart segment and a filter the same act. Two synthetic keys\nnever name a real value: `(unknown)` is the NULL bucket (mandatory for a nullable column,\nso the gap is visible rather than dropped) and `(other)` is a top-N facet's collapsed tail;\nneither is a usable filter value.\n\n`label` carries a display name as a locale → text map (D-i18n) and is present only for\n`ref` buckets, whose keys are RIDs. Best effort — an id with no resolvable name simply\ncarries no label.\n",
         "properties": {
           "count": {
             "format": "int32",
@@ -4805,7 +4883,7 @@
         "type": "object"
       },
       "FacetDistribution": {
-        "description": "One facet's buckets, in chart order — for an enum, the declared CHECK-set order with\nzero-count buckets included so a chart's shape is stable; for bands, the declared band\norder; for a ref, descending by count with `(other)`/`(unknown)` last.\n",
+        "description": "One facet's buckets, in chart order — for an enum, the declared CHECK-set order with\nzero-count buckets included so a chart's shape is stable across filterings; for the\nmanufactureDate histogram, ascending by month; for a ref facet, descending by count with\n`(other)`/`(unknown)` last.\n",
         "properties": {
           "buckets": {
             "items": {
@@ -6019,6 +6097,26 @@
         ],
         "type": "object"
       },
+      "InstitutionStats": {
+        "description": "Facet distributions over the SAME set `listInstitutions` returns under the same filters,\nwith the shadow gate folded INTO the count (M58 ticket 5 / D-ObjectFacets).\n\nAn institution IS a `university`-domain tenant ORGANIZATION plus a sidecar (M41 /\nD-UnifiedOrgGraph), so it carries that organization's public/shadow bit and this count\napplies the organization gate: `public OR reachable`, where reach is DERIVED from unit reach\n(D-VisibilityScope, amended M58 ticket 4) — an organization is visible when any of its live\nunits is in the subject's reach. Folded into SQL rather than applied to the page, because\ntrimming after the fact is right for a page and wrong for a count. `totalCount` therefore\nequals the rows exhaustively paging `listInstitutions` under these filters would return.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "Insurance": {
         "description": "A person's insurance coverage (D-HealthVulnerability, M36) — an Object. pii:sensitive; gated on\nperson.read. Hard-erased on purge.\n",
         "properties": {
@@ -6249,6 +6347,26 @@
         },
         "required": [
           "languoids"
+        ],
+        "type": "object"
+      },
+      "LanguoidStats": {
+        "description": "Facet distributions over the SAME set `listLanguages` returns under the same structural\nfilters (M58 / D-ObjectFacets), so `totalCount` equals the rows exhaustively paging\n`listLanguages` would return.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
         ],
         "type": "object"
       },
@@ -8063,6 +8181,26 @@
         },
         "required": [
           "organizations"
+        ],
+        "type": "object"
+      },
+      "OrganizationStats": {
+        "description": "Facet distributions over the SAME set `listOrganizations` returns under the same filters,\nwith the shadow gate folded INTO the count (M58 / D-ObjectFacets).\n\nFor an organization that gate is `public OR reachable`, where reach is DERIVED from unit\nreach (M58 ticket 4 follow-up, amending D-VisibilityScope): an organization is visible when\nany of its live units is in the subject's reach. It is not the unit dashboard's predicate\ncopied — a role assignment's `target_unit_id` FKs `tenant_units`, so an organization RID can\nnever appear in a readable-unit set and that predicate would match nothing here. It is\nexactly what `gateOrgs` leaves on the list, which is why `totalCount` equals the rows\nexhaustively paging `listOrganizations` under these filters would return.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
         ],
         "type": "object"
       },
@@ -15281,6 +15419,26 @@
         ],
         "type": "object"
       },
+      "VehicleStats": {
+        "description": "Facet distributions over the SAME set `listVehicles` returns under the same filters\n(M58 / D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield,\nnot an estimate and not a page count.\n\nEvery facet here partitions the result set — each counted row lands in exactly one bucket\nof each distribution, so a distribution's counts sum to `totalCount`. `registrationCountry`\npartitions too, and does so BECAUSE it is confined to the one ACTIVE registration a vehicle\nmay hold; the ownership history behind it is one-to-many and would not.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "VehicleType": {
         "description": "A vehicle taxonomy node (car/truck/motorcycle…); a shallow tree (parentId + denormalized rootId).",
         "properties": {
@@ -16831,12 +16989,76 @@
     },
     "/company/v1/companies": {
       "get": {
+        "description": "List companies, token-paginated, optionally filtered by the facet vocabulary (M58 ticket 5 /\nD-ObjectFacets). Shadow-gated: a company IS a `company`-domain tenant organization (M41 /\nD-UnifiedOrgGraph), so it carries that organization's public/shadow bit and is trimmed by\nthe same rule `listOrganizations` applies. Gated by company.read.\n\nEvery filter arg here is also an arg of `companyStats`, and a chart segment's key is a\nusable value for the arg it came from — that is what makes a dashboard and a list two\nrenderings of one request state.\n",
         "operationId": "CompanyService_listCompanies",
         "parameters": [
           {
-            "description": "Optional case-insensitive code/name filter.",
+            "description": "Optional case-insensitive code / legal-name / short-name filter.",
             "in": "query",
             "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — legal-form RID (`oikumenea.company_legal_forms`).",
+            "in": "query",
+            "name": "legalForm",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `private` | `public` | `state_owned` | `municipal` | `foreign` | `mixed`.",
+            "in": "query",
+            "name": "ownershipCategory",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — country RID (D-Geo). Nullable column; setting it excludes companies with no country.",
+            "in": "query",
+            "name": "countryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — industry-class RID (NACE/ISIC/KVED). Matches the company's PRIMARY\nclassification only, which is the same set the distribution counts, so a chart segment\nlands on exactly the rows it counted.\n",
+            "in": "query",
+            "name": "industryClass",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on the founding date (YYYY-MM-DD). Excludes companies with no founding date.",
+            "in": "query",
+            "name": "foundedOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on the founding date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "foundedOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `dissolved` | `merged`. The COMPANY's lifecycle, not the owning organization's.",
+            "in": "query",
+            "name": "state",
             "required": false,
             "schema": {
               "type": "string"
@@ -16882,6 +17104,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
+        "summary": "List companies, token-paginated, optionally filtered by the facet vocabulary (M58 ticket 5 /",
         "tags": [
           "CompanyService"
         ]
@@ -18346,6 +18569,121 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
+        "tags": [
+          "CompanyService"
+        ]
+      }
+    },
+    "/company/v1/stats/companies": {
+      "get": {
+        "description": "Facet distributions over the company registry — the dashboard half of the company facet\nvocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args `listCompanies`\ntakes, minus paging, so a dashboard and a list are two renderings of one request state.\n\nThe path is `/stats/companies` rather than `/companies/stats` because the server's router\nrejects a literal path segment that is a sibling of `{companyId}` — see the route-conflict\nguard in `internal/platform/transport`.\n",
+        "operationId": "CompanyService_companyStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`legalForm,state`). Omitted or empty =\nevery facet the caller may read; an explicit list of nothing (`facets=,`) returns\n`totalCount` alone. An undeclared facet key is a Company:Invalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listCompanies`.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listCompanies`.",
+            "in": "query",
+            "name": "legalForm",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listCompanies`.",
+            "in": "query",
+            "name": "ownershipCategory",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listCompanies`.",
+            "in": "query",
+            "name": "countryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listCompanies`.",
+            "in": "query",
+            "name": "industryClass",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listCompanies`.",
+            "in": "query",
+            "name": "foundedOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listCompanies`.",
+            "in": "query",
+            "name": "foundedOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listCompanies`.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the company registry — the dashboard half of the company facet",
         "tags": [
           "CompanyService"
         ]
@@ -20927,12 +21265,58 @@
     },
     "/education/v1/institutions": {
       "get": {
+        "description": "List institutions, token-paginated, optionally filtered by the facet vocabulary (M58 ticket\n5 / D-ObjectFacets). Shadow-gated: an institution IS a `university`-domain tenant\norganization (M41 / D-UnifiedOrgGraph), so it carries that organization's public/shadow bit\nand is trimmed by the same rule `listOrganizations` applies. Gated by education.read.\n\nEvery filter arg here is also an arg of `institutionStats`, and a chart segment's key is a\nusable value for the arg it came from — that is what makes a dashboard and a list two\nrenderings of one request state.\n",
         "operationId": "EducationService_listInstitutions",
         "parameters": [
           {
             "description": "Optional case-insensitive code/name filter.",
             "in": "query",
             "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — institution-kind RID (`oikumenea.education_institution_kinds`).",
+            "in": "query",
+            "name": "kindId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — country RID (D-Geo). Nullable column; setting it excludes institutions with no country.",
+            "in": "query",
+            "name": "countryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on the founding date (YYYY-MM-DD). Excludes institutions with no founding date.",
+            "in": "query",
+            "name": "foundedOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on the founding date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "foundedOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `closed` | `merged`. The INSTITUTION's lifecycle, not the owning organization's.",
+            "in": "query",
+            "name": "state",
             "required": false,
             "schema": {
               "type": "string"
@@ -20978,6 +21362,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
+        "summary": "List institutions, token-paginated, optionally filtered by the facet vocabulary (M58 ticket",
         "tags": [
           "EducationService"
         ]
@@ -24949,6 +25334,103 @@
         ]
       }
     },
+    "/education/v1/stats/institutions": {
+      "get": {
+        "description": "Facet distributions over the institution registry — the dashboard half of the institution\nfacet vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args\n`listInstitutions` takes, minus paging, so a dashboard and a list are two renderings of one\nrequest state.\n\nThe path is `/stats/institutions` rather than `/institutions/stats` because the server's\nrouter rejects a literal path segment that is a sibling of `{institutionId}` — see the\nroute-conflict guard in `internal/platform/transport`.\n",
+        "operationId": "EducationService_institutionStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`kindId,state`). Omitted or empty =\nevery facet the caller may read; an explicit list of nothing (`facets=,`) returns\n`totalCount` alone. An undeclared facet key is an Education:Invalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listInstitutions`.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listInstitutions`.",
+            "in": "query",
+            "name": "kindId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listInstitutions`.",
+            "in": "query",
+            "name": "countryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listInstitutions`.",
+            "in": "query",
+            "name": "foundedOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listInstitutions`.",
+            "in": "query",
+            "name": "foundedOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listInstitutions`.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the institution registry — the dashboard half of the institution",
+        "tags": [
+          "EducationService"
+        ]
+      }
+    },
     "/education/v1/unit-kinds": {
       "get": {
         "description": "The `university` domain's unit-kind catalog (owned by the tenant service — M41).",
@@ -25796,12 +26278,40 @@
     },
     "/finance/v1/accounts": {
       "get": {
+        "description": "List accounts, token-paginated, narrowed by any combination of the facet filters below\n(M58 / D-ObjectFacets). Every filter here is also a distribution on `accountStats`. The\nIBAN is never listed. Gated by `finance.read`.\n",
         "operationId": "FinanceService_listAccounts",
         "parameters": [
           {
-            "description": "Optional filter to one holding bank.",
+            "description": "Facet filter — the holding bank's RID. A `company`-domain `tenant_organizations` row\n(M21/M41), never a finance-owned entity.\n",
             "in": "query",
             "name": "institutionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — ISO 4217 code (`UAH`, `USD`). An OPEN value set: the column carries no\nCHECK, so this is matched as a code rather than validated against an enum.\n",
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — account-type RID (`finance_account_types`). Nullable column.",
+            "in": "query",
+            "name": "accountTypeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `closed` | `frozen`.",
+            "in": "query",
+            "name": "status",
             "required": false,
             "schema": {
               "type": "string"
@@ -25847,6 +26357,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
+        "summary": "List accounts, token-paginated, narrowed by any combination of the facet filters below",
         "tags": [
           "FinanceService"
         ]
@@ -26013,7 +26524,8 @@
     },
     "/finance/v1/accounts/{accountId}/cards": {
       "get": {
-        "operationId": "FinanceService_listCards",
+        "description": "The cards on ONE account. Named for its scope, beside `listAccountHolders` — M58 gave the\nplain `listCards` to the instance-wide registry below, which is the collection every other\nfaceted object type's list endpoint is named for. The HTTP path is unchanged.\n",
+        "operationId": "FinanceService_listAccountCards",
         "parameters": [
           {
             "in": "path",
@@ -26046,6 +26558,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
+        "summary": "The cards on ONE account. Named for its scope, beside `listAccountHolders` — M58 gave the",
         "tags": [
           "FinanceService"
         ]
@@ -26255,6 +26768,84 @@
         ]
       }
     },
+    "/finance/v1/cards": {
+      "get": {
+        "description": "The instance-wide card registry, token-paginated and narrowed by the facet filters below\n(M58 / D-ObjectFacets) — the collection-level list `cardStats` draws its dashboard over.\n\nMETADATA ONLY. `bin`, `lastFour`, network, type, status and expiry are clear columns and are\nreturned; the PAN is envelope-encrypted at rest and is decrypted only by `getCard`, for an\nauthorized caller, one card at a time (PCI-DSS Req 3; D-DataScope CDE scope). Browsing the\nregistry is gated by the same `finance.read` that already gates `listAccounts` and\n`listAccountCards` — this endpoint widens the SCOPE of a read the code already permits, and\ndiscloses no field those endpoints did not already return.\n",
+        "operationId": "FinanceService_listCards",
+        "parameters": [
+          {
+            "description": "Facet filter — card-network RID (`finance_card_networks`). Nullable column.",
+            "in": "query",
+            "name": "networkId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `debit` | `credit`.",
+            "in": "query",
+            "name": "cardType",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `blocked` | `expired`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The instance-wide card registry, token-paginated and narrowed by the facet filters below",
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
     "/finance/v1/cards/{cardId}": {
       "delete": {
         "operationId": "FinanceService_deleteCard",
@@ -26455,6 +27046,155 @@
           }
         },
         "summary": "Read-only view of the accounts a person holds.",
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/stats/accounts": {
+      "get": {
+        "description": "Facet distributions over the account registry — the dashboard half of the facet vocabulary\n(M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)\nplus an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request\nstate and a chart segment is a link to the same URL with one more filter applied.\n\n`totalCount` equals the number of rows exhaustively paging `listAccounts` with these same\nfilters would return. One round-trip serves the whole dashboard.\n\nONE aggregate arm, with no subject and no scoped twin — for `externalOrgStats`' reason, not\nthe audit ledger's. `finance_accounts` carries no row-level security and no unit reach:\n`finance.read` held anywhere is the whole visibility decision, so there is nothing for a\nsecond arm to narrow. (Person-held rows are additionally holder-scoped on the PERSON views;\nthat is a different endpoint, and this registry-level listing is not one of them.)\n\nThe path is `/stats/accounts` rather than `/accounts/stats` because the server's router\nrejects a literal path segment that is a sibling of `{accountId}`.\n",
+        "operationId": "FinanceService_accountStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`currency,status`). Omitted or empty\nmeans EVERY facet; a list of nothing (`,`) means none, i.e. `totalCount` alone. Naming a\nfacet this type does not declare is a 400.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — the holding bank's RID.",
+            "in": "query",
+            "name": "institutionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — ISO 4217 code.",
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — account-type RID.",
+            "in": "query",
+            "name": "accountTypeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `closed` | `frozen`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the account registry — the dashboard half of the facet vocabulary",
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/stats/cards": {
+      "get": {
+        "description": "Facet distributions over the card registry — the dashboard half of the facet vocabulary\n(M58 / D-ObjectFacets). Takes exactly the filter args `listCards` takes (minus paging) plus\nan optional `facets` CSV.\n\n`totalCount` equals the number of rows exhaustively paging `listCards` with these same\nfilters would return.\n\nONE aggregate arm, for the same reason `accountStats` has one: no row-level security, no\nunit reach, `finance.read` held anywhere is the whole visibility decision.\n\nThe path is `/stats/cards` rather than `/cards/stats` because the server's router rejects a\nliteral path segment that is a sibling of `{cardId}`.\n",
+        "operationId": "FinanceService_cardStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`networkId,cardType`). Omitted or empty\nmeans EVERY facet; a list of nothing (`,`) means none, i.e. `totalCount` alone. Naming a\nfacet this type does not declare is a 400.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — card-network RID.",
+            "in": "query",
+            "name": "networkId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `debit` | `credit`.",
+            "in": "query",
+            "name": "cardType",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `blocked` | `expired`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the card registry — the dashboard half of the facet vocabulary",
         "tags": [
           "FinanceService"
         ]
@@ -27498,7 +28238,7 @@
     },
     "/language/v1/languages": {
       "get": {
-        "description": "List languoids in code order, optionally filtered by level, root family (glottocode), and a\nname/code substring. `limit` caps the page (default/clamped server-side) since the catalog is\nlarge (~26k); narrow with the filters.\n",
+        "description": "List languoids in code order, optionally filtered by level, root family (glottocode), and a\nname/code substring. `pageSize` caps the page (default/clamped server-side) since the catalog\nis large (~26k); narrow with the filters.\n\n`pageSize` was named `limit` before M58 ticket 4. The rename is a WIRE BREAK, taken because\nthe paging-arg convention (`pageSize`/`pageToken`) is a checked invariant held by every other\nfaceted type, and this endpoint was the only holdout.\n",
         "operationId": "LanguageService_listLanguages",
         "parameters": [
           {
@@ -27514,6 +28254,24 @@
             "description": "Filter to descendants of this root-family glottocode (via family_code).",
             "in": "query",
             "name": "family",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — the Glottolog macroarea, matched EXACTLY. The column is set-valued and\nstored semicolon-joined, so a languoid spanning two macroareas is filtered as\n`Africa;Eurasia` — which is also the bucket key the dashboard emits for it.\n",
+            "in": "query",
+            "name": "macroarea",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — AES endangerment (`not_endangered` | `threatened` | `shifting` | `moribund` | `nearly_extinct` | `extinct`).",
+            "in": "query",
+            "name": "status",
             "required": false,
             "schema": {
               "type": "string"
@@ -27547,9 +28305,9 @@
             }
           },
           {
-            "description": "Max rows to return (server clamps to a sane maximum).",
+            "description": "Max rows to return (server clamps to a sane maximum). Named `limit` before M58 ticket 4.",
             "in": "query",
-            "name": "limit",
+            "name": "pageSize",
             "required": false,
             "schema": {
               "format": "int32",
@@ -27632,6 +28390,94 @@
           }
         },
         "summary": "Fetch one languoid by its RID.",
+        "tags": [
+          "LanguageService"
+        ]
+      }
+    },
+    "/language/v1/stats/languages": {
+      "get": {
+        "description": "Facet distributions over the languoid registry — the dashboard half of the languoid facet\nvocabulary (M58 / D-ObjectFacets). Takes exactly the STRUCTURAL filter args `listLanguages`\ntakes — `level`, `family`, `macroarea`, `status` and the free-text `query` — plus the\n`facets` CSV, so a dashboard and a list are two renderings of one request state.\n\nThe tree-traversal args `parent`/`topLevel` have no counterpart here on purpose: they switch\nthe LIST to a one-level hierarchy walk rather than describing the registry, so there is\nnothing for them to count.\n\nONE arm, and no subject. The languoid catalog is instance-global reference data — no\nrow-level security, no unit column, no reach predicate — so `language.read` held anywhere is\nthe whole visibility decision and there is none left to fold into the count.\n\nThe path is `/stats/languages` rather than `/languages/stats` because the server's router\nrejects a literal path segment that is a sibling of `{id}` — see the route-conflict guard in\n`internal/platform/transport`.\n",
+        "operationId": "LanguageService_languoidStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`level,status`). Omitted or empty = every\nfacet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`\nalone. An undeclared facet key is a Language:LanguoidInvalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listLanguages`.",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listLanguages`.",
+            "in": "query",
+            "name": "family",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listLanguages`.",
+            "in": "query",
+            "name": "macroarea",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listLanguages`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring match on name or glottocode — the same trigram-served\npredicate `listLanguages` uses, so a searched list and its dashboard describe one set.\n",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LanguoidStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the languoid registry — the dashboard half of the languoid facet",
         "tags": [
           "LanguageService"
         ]
@@ -38801,13 +39647,31 @@
     },
     "/tenant/v1/organizations": {
       "get": {
-        "description": "List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,\nM40). Shadow-gated. Gated by organization.read.\n",
+        "description": "List organizations, token-paginated, optionally filtered by domain, visibility and state\n(D-TenantOrganizations, M40; facet vocabulary M58 / D-ObjectFacets). Shadow-gated. Gated by\norganization.read. A malformed filter is a Tenant:OrganizationInvalid.\n",
         "operationId": "TenantService_listOrganizations",
         "parameters": [
           {
             "description": "Optional domain RID filter (organizations of this kind).",
             "in": "query",
             "name": "domain",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `public` | `shadow`. Narrows only (D-VisibilityScope): asking for\n`shadow` returns the shadow organizations the caller can REACH, and an empty page\nrather than an error when that is none. Organization reach is DERIVED from unit reach\n(M58 ticket 4 follow-up) — an organization is visible when any of its live units is in\nthe subject's reach.\n",
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `suspended` | `archived`.",
+            "in": "query",
+            "name": "state",
             "required": false,
             "schema": {
               "type": "string"
@@ -38853,7 +39717,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,",
+        "summary": "List organizations, token-paginated, optionally filtered by domain, visibility and state",
         "tags": [
           "TenantService"
         ]
@@ -38901,7 +39765,7 @@
     },
     "/tenant/v1/organizations/{orgId}": {
       "get": {
-        "description": "Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.",
+        "description": "Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach\nis `Tenant:OrganizationNotFound` — the SAME error a RID that names nothing gets, because\n`shadow` hides EXISTENCE (F-002 / D-VisibilityScope) and a permission error would confirm\nthe organization is real.\n\nThis line already said \"(shadow-gated)\" before M58 ticket 4 and the implementation applied\nno gate at all: `listOrganizations` trimmed shadow organizations while this endpoint handed\nthem over to anyone holding `organization.read`. Fixed there; the two surfaces now share one\ngate rather than one of them being remembered.\n",
         "operationId": "TenantService_getOrganization",
         "parameters": [
           {
@@ -38935,7 +39799,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.",
+        "summary": "Read one organization by RID, shadow-gated. A `shadow` organization the caller cannot reach",
         "tags": [
           "TenantService"
         ]
@@ -39085,6 +39949,76 @@
         ]
       }
     },
+    "/tenant/v1/stats/organizations": {
+      "get": {
+        "description": "Facet distributions over the organization registry — the dashboard half of the\norganization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args\n`listOrganizations` takes, minus paging, so a dashboard and a list are two renderings of\none request state.\n\nUnlike `unitStats` there is no `org` arg: the organization registry is the instance's\nwhole realm catalog, not a per-org tree.\n\nThe shadow gate is folded into SQL: on the list `gateOrgs` trims the page once it is cut,\nwhich is right for a page and wrong for a count. Organization reach is DERIVED from unit\nreach (M58 ticket 4 follow-up): an organization is visible when it is public, or when any\nof its live units is in the subject's reach. `totalCount` therefore equals the rows\nexhaustively paging `listOrganizations` under these filters would return.\n\nThe path is `/stats/organizations` rather than `/organizations/stats` because the server's\nrouter rejects a literal path segment that is a sibling of `{orgId}` — see the\nroute-conflict guard in `internal/platform/transport`.\n",
+        "operationId": "TenantService_organizationStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`domain,state`). Omitted or empty =\nevery facet the caller may read; an explicit list of nothing (`facets=,`) returns\n`totalCount` alone. An undeclared facet key is a Tenant:OrganizationInvalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listOrganizations`.",
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listOrganizations`. Narrows only; asking for `shadow` without instance-admin standing counts zero rather than erroring.",
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listOrganizations`.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the organization registry — the dashboard half of the",
+        "tags": [
+          "TenantService"
+        ]
+      }
+    },
     "/tenant/v1/stats/units": {
       "get": {
         "description": "Facet distributions for an organization's units — the dashboard half of the facet\nvocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`\ntakes (minus paging and the `graph`/`parent`/`rootsOnly` traversal args, which switch that\nendpoint to a hierarchy walk rather than adding a predicate), so a dashboard and a list are\ntwo renderings of one request state.\n\n`org` is REQUIRED, as on `listUnits`. The shadow gate is folded into SQL here: on the list\nit trims the page after it is cut — correct for a page, wrong for a count — so\n`totalCount` equals the number of rows exhaustively paging `listUnits` with these filters\nwould return.\n\nThe path is `/stats/units` rather than `/units/stats` because the server's router rejects a\nliteral path segment that is a sibling of `{unitId}` — see the route-conflict guard in\n`internal/platform/transport`.\n",
@@ -39103,6 +40037,15 @@
             "description": "Optional comma-separated facet keys to compute (`unitKind,level,state`). Omitted or\nempty = every facet the caller may read; an explicit list of nothing (`facets=,`)\nreturns `totalCount` alone. An undeclared facet key is a Tenant:UnitInvalid.\n",
             "in": "query",
             "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listUnits`. Counted inside the same predicate, so a searched list and its dashboard describe one world.",
+            "in": "query",
+            "name": "query",
             "required": false,
             "schema": {
               "type": "string"
@@ -39357,6 +40300,15 @@
             "in": "query",
             "name": "org",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional case-insensitive substring match on the unit's `code`/`name` haystack.\nTrigram-indexed, so a query of 3+ characters is served by an index (migration 0022,\nextending D-PersonSearch's R-21 generalization to the unit tree). Like every other\nfilter here it NARROWS only — the shadow gate still trims the page afterwards, so a\nsearch can never surface a unit the caller could not otherwise read. Ignored when\n`parent`/`rootsOnly` is set.\n",
+            "in": "query",
+            "name": "query",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -40583,6 +41535,130 @@
         ]
       }
     },
+    "/vehicle/v1/stats/vehicles": {
+      "get": {
+        "description": "Facet distributions over the fleet — the dashboard half of the facet vocabulary (M58 /\nD-ObjectFacets). Takes exactly the filter args `listVehicles` takes (minus paging) plus an\noptional `facets` CSV, so a dashboard and a list are two renderings of ONE request state\nand a chart segment is a link to the same URL with one more filter applied.\n\n`totalCount` equals the number of rows exhaustively paging `listVehicles` with these same\nfilters would return. One round-trip serves the whole dashboard.\n\nONE aggregate arm, with no subject and no scoped twin — for the same reason\n`externalOrgStats` has one, and NOT the audit ledger's reason. `vehicle_vehicles` carries no\nrow-level security, no unit column and no reach predicate: `vehicle.read` held anywhere is\nthe whole visibility decision, so there is nothing for a second arm to narrow.\n\nThe path is `/stats/vehicles` rather than `/vehicles/stats` because the server's router\nrejects a literal path segment that is a sibling of `{vehicleId}`.\n",
+        "operationId": "VehicleService_vehicleStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`typeId,status,color`). Omitted or empty\nmeans EVERY facet; a list of nothing (`,`) means none, i.e. `totalCount` alone. Naming a\nfacet this type does not declare is a 400.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional case-insensitive VIN filter.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — vehicle-type RID.",
+            "in": "query",
+            "name": "typeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — brand RID (two-hop via the model).",
+            "in": "query",
+            "name": "brandId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — model RID.",
+            "in": "query",
+            "name": "modelId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — colour RID (`platform_colors`).",
+            "in": "query",
+            "name": "color",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `scrapped` | `exported`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `manufactureDate` (`YYYY-MM-DD`).",
+            "in": "query",
+            "name": "manufactureDateFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `manufactureDate` (`YYYY-MM-DD`).",
+            "in": "query",
+            "name": "manufactureDateTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — country RID of the ACTIVE registration.",
+            "in": "query",
+            "name": "registrationCountry",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the fleet — the dashboard half of the facet vocabulary (M58 /",
+        "tags": [
+          "VehicleService"
+        ]
+      }
+    },
     "/vehicle/v1/vehicle-types": {
       "get": {
         "operationId": "VehicleService_listVehicleTypes",
@@ -40653,12 +41729,85 @@
     },
     "/vehicle/v1/vehicles": {
       "get": {
+        "description": "List vehicles, token-paginated, narrowed by any combination of the facet filters below\n(M58 / D-ObjectFacets). Every filter here is also a distribution on `vehicleStats`, so a\ndashboard and a list are two renderings of one request state. Gated by `vehicle.read`.\n",
         "operationId": "VehicleService_listVehicles",
         "parameters": [
           {
             "description": "Optional case-insensitive VIN filter.",
             "in": "query",
             "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — vehicle-type RID (`vehicle_types`).",
+            "in": "query",
+            "name": "typeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — brand RID. TWO-HOP: the brand hangs off the vehicle's model\n(`vehicle_models.brand_id`), so this matches vehicles whose model belongs to the brand.\n",
+            "in": "query",
+            "name": "brandId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — model RID (`vehicle_models`). Nullable column; the no-model rows are the `(unknown)` bucket.",
+            "in": "query",
+            "name": "modelId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — colour RID (`platform_colors`, domain='vehicle' — D-Color/M42). A hard FK,\nnot free text.\n",
+            "in": "query",
+            "name": "color",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active` | `scrapped` | `exported`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `manufactureDate` (`YYYY-MM-DD`). A calendar\nDATE, not a datetime. Vehicles with no manufacture date are excluded whenever either\nbound is set; the no-date set is a distinct bucket on the stats endpoint.\n",
+            "in": "query",
+            "name": "manufactureDateFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `manufactureDate` (`YYYY-MM-DD`).",
+            "in": "query",
+            "name": "manufactureDateTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — country RID of the vehicle's ACTIVE registration\n(`vehicle_registrations.country_id` where status='active'). An EXISTS semi-join, never a\njoin: registration is ownership HISTORY, and joining it would multiply a vehicle across\nevery country it has ever worn plates in. A vehicle holds at most one active\nregistration, so this filter and its distribution both partition.\n",
+            "in": "query",
+            "name": "registrationCountry",
             "required": false,
             "schema": {
               "type": "string"
@@ -40704,6 +41853,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
+        "summary": "List vehicles, token-paginated, narrowed by any combination of the facet filters below",
         "tags": [
           "VehicleService"
         ]

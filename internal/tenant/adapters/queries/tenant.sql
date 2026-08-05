@@ -184,6 +184,33 @@ WHERE deleted_at IS NULL
 ORDER BY id
 LIMIT @lim;
 
+-- name: SearchUnits :many
+-- ListUnits plus a text predicate over the `search_text` trigram haystack (0022 / D-PersonSearch's
+-- R-21 generalization). A SEPARATE query rather than one more narg on ListUnits, for the reason R-21
+-- recorded and the ListUnits header restates: the banned `(@q = '' OR <ilike>)` guard cannot be
+-- planned — under a generic prepared plan the planner cannot prove @q non-empty, so it abandons the
+-- GIN index and seq-scans. Two statements let each be planned for the shape it actually runs. The
+-- repository picks between them on whether the caller supplied a query, exactly as person does.
+--
+-- Every other predicate is ListUnits' block verbatim, so adding a text query narrows the same
+-- candidate set rather than switching to a different one, and the keyset on `id` stays correct
+-- because the filter is applied before LIMIT.
+SELECT * FROM oikumenea.tenant_units
+WHERE deleted_at IS NULL
+  AND org_id = @org_id
+  AND search_text ILIKE '%' || @query || '%'
+  AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
+  AND (sqlc.narg('level_min')::smallint IS NULL OR level >= sqlc.narg('level_min')::smallint)
+  AND (sqlc.narg('level_max')::smallint IS NULL OR level <= sqlc.narg('level_max')::smallint)
+  AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
+  AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
+  AND (sqlc.narg('pdp_scoped')::boolean IS NULL OR pdp_scoped = sqlc.narg('pdp_scoped')::boolean)
+  AND (sqlc.narg('after')::uuid IS NULL OR id > sqlc.narg('after')::uuid)
+ORDER BY id
+LIMIT @lim;
+
 -- ============================ dashboard aggregates (M57) ============================
 
 -- name: UnitStats :many
@@ -194,11 +221,18 @@ LIMIT @lim;
 --
 -- The traversal args (graph/parent/rootsOnly) have no counterpart here on purpose: they switch the
 -- LIST to a hierarchy walk rather than adding a predicate, so there is nothing for them to count.
+--
+-- The text query (0022) IS carried, as a narg guard rather than the separate statement the list uses.
+-- The list splits because its whole point is to hit the GIN index for a small page; this aggregate
+-- scans the candidate set either way, so a second copy of a query this size would buy nothing and
+-- double what has to stay in step. `query` must still be honoured here, or a searched list and its
+-- dashboard would describe different worlds — the property this CTE exists to preserve.
 WITH cand AS MATERIALIZED (
   SELECT id, org_id, domain_id, kind_id, level, visibility, state, pdp_scoped
   FROM oikumenea.tenant_units
   WHERE deleted_at IS NULL
   AND org_id = @org_id
+  AND (sqlc.narg('query')::text IS NULL OR search_text ILIKE '%' || sqlc.narg('query')::text || '%')
   AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
   AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
   AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
@@ -237,12 +271,15 @@ FROM cand c WHERE sqlc.arg('want_pdp_scoped')::boolean GROUP BY 2;
 
 -- name: UnitStatsForSubject :many
 -- The visibility-scoped arm of UnitStats: identical filters and identical aggregates, with the
--- shadow gate folded into the candidate set.
+-- shadow gate folded into the candidate set. `query` is carried here for the same reason it is
+-- carried on the admin arm (0022) — a searched list and its dashboard must describe one world, and
+-- that has to hold for the scoped caller too, not just the instance admin.
 WITH cand AS MATERIALIZED (
   SELECT id, org_id, domain_id, kind_id, level, visibility, state, pdp_scoped
   FROM oikumenea.tenant_units
   WHERE deleted_at IS NULL
   AND org_id = @org_id
+  AND (sqlc.narg('query')::text IS NULL OR search_text ILIKE '%' || sqlc.narg('query')::text || '%')
   AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
   AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
   AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)

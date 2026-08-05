@@ -23,12 +23,13 @@ import (
 // is WHERE the shadow gate runs: the list trims its page afterwards (gateUnits), which cannot work
 // for a count, so the subject is passed down and the gate is folded into SQL. An instance admin
 // passes no subject and is counted against everything.
-func (s Service) UnitStats(ctx context.Context, token bearertoken.Token, org string, facets *string, domainID *string, unitKind *string, level *int, levelMin *int, levelMax *int, visibility *string, state *string, pdpScoped *bool) (tenantapi.UnitStats, error) {
+func (s Service) UnitStats(ctx context.Context, token bearertoken.Token, org string, facets *string, query *string, domainID *string, unitKind *string, level *int, levelMin *int, levelMax *int, visibility *string, state *string, pdpScoped *bool) (tenantapi.UnitStats, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermUnitRead)); err != nil {
 		return tenantapi.UnitStats{}, err
 	}
 	filter := domain.UnitFilter{
 		OrgID:      org,
+		Query:      derefOr(query, ""),
 		DomainID:   domainID,
 		KindID:     unitKind,
 		Level:      level,

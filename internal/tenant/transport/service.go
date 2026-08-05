@@ -154,7 +154,7 @@ func (s Service) ListUnitCodeEvents(ctx context.Context, token bearertoken.Token
 	return tenantapi.UnitCodeEventList{Events: out}, nil
 }
 
-func (s Service) ListUnits(ctx context.Context, token bearertoken.Token, org string, domainID *string, unitKind *string, level *int, levelMin *int, levelMax *int, visibility *string, state *string, pdpScoped *bool, graph *string, parent *string, rootsOnly *bool, pageSize *int, pageToken *string) (tenantapi.UnitPage, error) {
+func (s Service) ListUnits(ctx context.Context, token bearertoken.Token, org string, query *string, domainID *string, unitKind *string, level *int, levelMin *int, levelMax *int, visibility *string, state *string, pdpScoped *bool, graph *string, parent *string, rootsOnly *bool, pageSize *int, pageToken *string) (tenantapi.UnitPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermUnitRead)); err != nil {
 		return tenantapi.UnitPage{}, err
 	}
@@ -162,6 +162,7 @@ func (s Service) ListUnits(ctx context.Context, token bearertoken.Token, org str
 	// validates it, so an ill-formed facet value is a 400 and never reaches SQL.
 	filter := domain.UnitFilter{
 		OrgID:      org,
+		Query:      derefOr(query, ""),
 		DomainID:   domainID,
 		KindID:     unitKind,
 		Level:      level,
