@@ -87,6 +87,14 @@ Wired by [platform](platform.md) ahead of every authenticated handler:
    person via an operator-configured mapping (a token claim → `person.code` or a designated
    attribute); on a match, create or extend the person's `account` with this
    `external_identity` and link; on **no match, reject**. JIT **never creates a person**.
+   `idp.jit.match` selects the key: **`code`** (default) reads the claim as a `person.code`;
+   **`account-email`** matches it against the single active account carrying that email — the arm for
+   enrolling people known only by address, where an operator creates a login-less shell account with
+   the email and the person's first sign-in attaches its `(issuer, subject)`. That arm requires
+   `email_verified` to be present and **true** (fail-closed: an unverified address is an unproven
+   assertion, and matching on it would let anyone able to claim someone else's address take the
+   prepared account). Both arms honour `account.identity_linking.enabled`, so the cap on additional
+   login points applies to the login path exactly as it does to the admin endpoint.
 4. Construct the **PDP context** `(person, account, request_id)` and attach it to the request
    context. Handlers and the [authorization](authorization.md) PDP read it from there.
 
@@ -97,6 +105,17 @@ convenience so tests can mint tokens; because that key is a credential-equivalen
 can mint valid tokens for any subject), the service **refuses to boot** with an `hs256` issuer
 configured unless `environment` is `local` or `dev` — fail-closed (L-AuthzOnly: the service holds
 no credentials in staging/prod).
+
+**Audience is mandatory for `oidc` issuers** (D-MultiIdPExamples). Each issuer accepts a **set** of
+audiences — `audience:` (scalar), `audiences:` (list), or both, merged — and a token validates when
+its own `aud` **intersects** that set. The set is a set because one public IdP legitimately serves
+several clients of the *same* deployment (console + CLI register separately and receive different
+`aud` values), while `iss` is the routing key and so cannot be repeated. An `oidc` issuer with an
+**empty** set makes the service **refuse to boot**: a public IdP's `iss` is shared by every
+application registered with it (`https://accounts.google.com` is the same string for every Google
+client, and a Google `sub` names the account, not the client), so without the `aud` check an ID token
+minted for an unrelated third-party application would carry an `iss`/`sub` this instance accepts.
+`hs256` issuers are exempt — local/dev only, with a deployment-private key.
 
 ## Conjure API surface
 
@@ -161,7 +180,12 @@ check.
   `account.identity_linking.enabled` knob is the **per-account counterpart** to that
   per-deployment seam ([open-questions](../open-questions.md) DS-20): the deployment chooses
   which issuers it accepts; the knob chooses whether a single account may attach more than
-  one of them.
+  one of them. Working recipes for the public providers — Google, GitHub, Microsoft Entra ID,
+  GitLab, Okta — are in [`deploy/oauth/README.md`](../../deploy/oauth/README.md)
+  (**D-MultiIdPExamples**), in two topologies: **brokered** through Keycloak (one issuer; the only
+  route for **GitHub**, which is OAuth2 without OIDC and so publishes nothing verifiable) and
+  **direct** (one `idp.issuers[]` entry per provider). Enrolment on a new provider is the
+  reject-then-link path above, unchanged.
 - Just-in-time provisioning is resolved (D-JIT): default **reject-unknown**; when enabled,
   **link-on-match only** via a configurable claim→person-key mapping — it never auto-creates a
   person. Full auto-enrolment remains out of scope.

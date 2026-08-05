@@ -359,7 +359,7 @@ func (q *Queries) GetOrganization(ctx context.Context, id string) (OikumeneaTena
 }
 
 const getUnit = `-- name: GetUnit :one
-SELECT id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_units WHERE id = $1 AND deleted_at IS NULL
+SELECT id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at, search_text FROM oikumenea.tenant_units WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUnit(ctx context.Context, id string) (OikumeneaTenantUnit, error) {
@@ -380,6 +380,7 @@ func (q *Queries) GetUnit(ctx context.Context, id string) (OikumeneaTenantUnit, 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -667,7 +668,7 @@ const insertUnit = `-- name: InsertUnit :one
 INSERT INTO oikumenea.tenant_units (org_id, domain_id, kind_id, code, name, level, visibility, pdp_scoped, metadata)
 SELECT $1, $2, $3, $4, $5, $6, $7,
        COALESCE((SELECT d.pdp_scoped FROM oikumenea.tenant_domains d WHERE d.id = $2), true), $8
-RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at, search_text
 `
 
 type InsertUnitParams struct {
@@ -713,6 +714,7 @@ func (q *Queries) InsertUnit(ctx context.Context, arg InsertUnitParams) (Oikumen
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -851,7 +853,7 @@ func (q *Queries) ListAncestors(ctx context.Context, arg ListAncestorsParams) ([
 }
 
 const listChildUnits = `-- name: ListChildUnits :many
-SELECT u.id, u.org_id, u.domain_id, u.kind_id, u.code, u.name, u.level, u.visibility, u.state, u.pdp_scoped, u.metadata, u.created_at, u.updated_at, u.deleted_at FROM oikumenea.tenant_units u
+SELECT u.id, u.org_id, u.domain_id, u.kind_id, u.code, u.name, u.level, u.visibility, u.state, u.pdp_scoped, u.metadata, u.created_at, u.updated_at, u.deleted_at, u.search_text FROM oikumenea.tenant_units u
 JOIN oikumenea.tenant_unit_edges e
   ON e.child_id = u.id AND e.graph_id = $1 AND e.parent_id = $2
 WHERE u.deleted_at IS NULL
@@ -898,6 +900,7 @@ func (q *Queries) ListChildUnits(ctx context.Context, arg ListChildUnitsParams) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -1125,7 +1128,7 @@ func (q *Queries) ListOrganizations(ctx context.Context, arg ListOrganizationsPa
 }
 
 const listRootUnits = `-- name: ListRootUnits :many
-SELECT u.id, u.org_id, u.domain_id, u.kind_id, u.code, u.name, u.level, u.visibility, u.state, u.pdp_scoped, u.metadata, u.created_at, u.updated_at, u.deleted_at FROM oikumenea.tenant_units u
+SELECT u.id, u.org_id, u.domain_id, u.kind_id, u.code, u.name, u.level, u.visibility, u.state, u.pdp_scoped, u.metadata, u.created_at, u.updated_at, u.deleted_at, u.search_text FROM oikumenea.tenant_units u
 WHERE u.deleted_at IS NULL
   AND u.org_id = $1
   AND NOT EXISTS (
@@ -1175,6 +1178,7 @@ func (q *Queries) ListRootUnits(ctx context.Context, arg ListRootUnitsParams) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -1307,7 +1311,7 @@ func (q *Queries) ListUnitLanguages(ctx context.Context, unitID string) ([]ListU
 }
 
 const listUnits = `-- name: ListUnits :many
-SELECT id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_units
+SELECT id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at, search_text FROM oikumenea.tenant_units
 WHERE deleted_at IS NULL
   AND org_id = $1
   AND ($2::uuid IS NULL OR domain_id = $2::uuid)
@@ -1383,6 +1387,7 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Oikumen
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -1708,6 +1713,98 @@ func (q *Queries) RederiveClosureSlice(ctx context.Context, arg RederiveClosureS
 	return err
 }
 
+const searchUnits = `-- name: SearchUnits :many
+SELECT id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at, search_text FROM oikumenea.tenant_units
+WHERE deleted_at IS NULL
+  AND org_id = $1
+  AND search_text ILIKE '%' || $2 || '%'
+  AND ($3::uuid IS NULL OR domain_id = $3::uuid)
+  AND ($4::uuid IS NULL OR kind_id = $4::uuid)
+  AND ($5::smallint IS NULL OR level = $5::smallint)
+  AND ($6::smallint IS NULL OR level >= $6::smallint)
+  AND ($7::smallint IS NULL OR level <= $7::smallint)
+  AND ($8::text IS NULL OR visibility = $8::text)
+  AND ($9::text IS NULL OR state = $9::text)
+  AND ($10::boolean IS NULL OR pdp_scoped = $10::boolean)
+  AND ($11::uuid IS NULL OR id > $11::uuid)
+ORDER BY id
+LIMIT $12
+`
+
+type SearchUnitsParams struct {
+	OrgID      string
+	Query      pgtype.Text
+	DomainID   pgtype.Text
+	KindID     pgtype.Text
+	Level      pgtype.Int2
+	LevelMin   pgtype.Int2
+	LevelMax   pgtype.Int2
+	Visibility pgtype.Text
+	State      pgtype.Text
+	PdpScoped  pgtype.Bool
+	After      pgtype.Text
+	Lim        int32
+}
+
+// ListUnits plus a text predicate over the `search_text` trigram haystack (0022 / D-PersonSearch's
+// R-21 generalization). A SEPARATE query rather than one more narg on ListUnits, for the reason R-21
+// recorded and the ListUnits header restates: the banned `(@q = ” OR <ilike>)` guard cannot be
+// planned — under a generic prepared plan the planner cannot prove @q non-empty, so it abandons the
+// GIN index and seq-scans. Two statements let each be planned for the shape it actually runs. The
+// repository picks between them on whether the caller supplied a query, exactly as person does.
+//
+// Every other predicate is ListUnits' block verbatim, so adding a text query narrows the same
+// candidate set rather than switching to a different one, and the keyset on `id` stays correct
+// because the filter is applied before LIMIT.
+func (q *Queries) SearchUnits(ctx context.Context, arg SearchUnitsParams) ([]OikumeneaTenantUnit, error) {
+	rows, err := q.db.Query(ctx, searchUnits,
+		arg.OrgID,
+		arg.Query,
+		arg.DomainID,
+		arg.KindID,
+		arg.Level,
+		arg.LevelMin,
+		arg.LevelMax,
+		arg.Visibility,
+		arg.State,
+		arg.PdpScoped,
+		arg.After,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaTenantUnit
+	for rows.Next() {
+		var i OikumeneaTenantUnit
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.DomainID,
+			&i.KindID,
+			&i.Code,
+			&i.Name,
+			&i.Level,
+			&i.Visibility,
+			&i.State,
+			&i.PdpScoped,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.SearchText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const seedClosureSelfRows = `-- name: SeedClosureSelfRows :exec
 INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
 VALUES ($1, $2, $2, 0),
@@ -1761,7 +1858,7 @@ func (q *Queries) SetOrgState(ctx context.Context, arg SetOrgStateParams) (Oikum
 const setUnitCode = `-- name: SetUnitCode :one
 UPDATE oikumenea.tenant_units SET code = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at, search_text
 `
 
 type SetUnitCodeParams struct {
@@ -1789,6 +1886,7 @@ func (q *Queries) SetUnitCode(ctx context.Context, arg SetUnitCodeParams) (Oikum
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -1796,7 +1894,7 @@ func (q *Queries) SetUnitCode(ctx context.Context, arg SetUnitCodeParams) (Oikum
 const setUnitState = `-- name: SetUnitState :one
 UPDATE oikumenea.tenant_units SET state = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at, search_text
 `
 
 type SetUnitStateParams struct {
@@ -1822,6 +1920,7 @@ func (q *Queries) SetUnitState(ctx context.Context, arg SetUnitStateParams) (Oik
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -1856,42 +1955,44 @@ WITH cand AS MATERIALIZED (
   FROM oikumenea.tenant_units
   WHERE deleted_at IS NULL
   AND org_id = $1
-  AND ($2::uuid IS NULL OR domain_id = $2::uuid)
-  AND ($3::uuid IS NULL OR kind_id = $3::uuid)
-  AND ($4::smallint IS NULL OR level = $4::smallint)
-  AND ($5::smallint IS NULL OR level >= $5::smallint)
-  AND ($6::smallint IS NULL OR level <= $6::smallint)
-  AND ($7::text IS NULL OR visibility = $7::text)
-  AND ($8::text IS NULL OR state = $8::text)
-  AND ($9::boolean IS NULL OR pdp_scoped = $9::boolean)
+  AND ($2::text IS NULL OR search_text ILIKE '%' || $2::text || '%')
+  AND ($3::uuid IS NULL OR domain_id = $3::uuid)
+  AND ($4::uuid IS NULL OR kind_id = $4::uuid)
+  AND ($5::smallint IS NULL OR level = $5::smallint)
+  AND ($6::smallint IS NULL OR level >= $6::smallint)
+  AND ($7::smallint IS NULL OR level <= $7::smallint)
+  AND ($8::text IS NULL OR visibility = $8::text)
+  AND ($9::text IS NULL OR state = $9::text)
+  AND ($10::boolean IS NULL OR pdp_scoped = $10::boolean)
 )
 SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
 FROM cand
 UNION ALL
 SELECT 'org'::text, c.org_id::text, count(*)::bigint
-FROM cand c WHERE $10::boolean GROUP BY 2
-UNION ALL
-SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
 FROM cand c WHERE $11::boolean GROUP BY 2
 UNION ALL
-SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
+SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
 FROM cand c WHERE $12::boolean GROUP BY 2
 UNION ALL
-SELECT 'level'::text, c.level::text, count(*)::bigint
+SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
 FROM cand c WHERE $13::boolean GROUP BY 2
 UNION ALL
-SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+SELECT 'level'::text, c.level::text, count(*)::bigint
 FROM cand c WHERE $14::boolean GROUP BY 2
 UNION ALL
-SELECT 'state'::text, c.state::text, count(*)::bigint
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
 FROM cand c WHERE $15::boolean GROUP BY 2
 UNION ALL
-SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+SELECT 'state'::text, c.state::text, count(*)::bigint
 FROM cand c WHERE $16::boolean GROUP BY 2
+UNION ALL
+SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+FROM cand c WHERE $17::boolean GROUP BY 2
 `
 
 type UnitStatsParams struct {
 	OrgID          string
+	Query          pgtype.Text
 	DomainID       pgtype.Text
 	KindID         pgtype.Text
 	Level          pgtype.Int2
@@ -1923,12 +2024,19 @@ type UnitStatsRow struct {
 //
 // The traversal args (graph/parent/rootsOnly) have no counterpart here on purpose: they switch the
 // LIST to a hierarchy walk rather than adding a predicate, so there is nothing for them to count.
+//
+// The text query (0022) IS carried, as a narg guard rather than the separate statement the list uses.
+// The list splits because its whole point is to hit the GIN index for a small page; this aggregate
+// scans the candidate set either way, so a second copy of a query this size would buy nothing and
+// double what has to stay in step. `query` must still be honoured here, or a searched list and its
+// dashboard would describe different worlds — the property this CTE exists to preserve.
 // The raw level, not a band: the bands live in the pkg/facet catalog (one definition, already proven
 // against the DDL), so SQL emits the ordinal and Go assigns it. Levels are small, so the group count
 // is bounded by the tree's depth.
 func (q *Queries) UnitStats(ctx context.Context, arg UnitStatsParams) ([]UnitStatsRow, error) {
 	rows, err := q.db.Query(ctx, unitStats,
 		arg.OrgID,
+		arg.Query,
 		arg.DomainID,
 		arg.KindID,
 		arg.Level,
@@ -1969,49 +2077,51 @@ WITH cand AS MATERIALIZED (
   FROM oikumenea.tenant_units
   WHERE deleted_at IS NULL
   AND org_id = $1
-  AND ($2::uuid IS NULL OR domain_id = $2::uuid)
-  AND ($3::uuid IS NULL OR kind_id = $3::uuid)
-  AND ($4::smallint IS NULL OR level = $4::smallint)
-  AND ($5::smallint IS NULL OR level >= $5::smallint)
-  AND ($6::smallint IS NULL OR level <= $6::smallint)
-  AND ($7::text IS NULL OR visibility = $7::text)
-  AND ($8::text IS NULL OR state = $8::text)
-  AND ($9::boolean IS NULL OR pdp_scoped = $9::boolean)
+  AND ($2::text IS NULL OR search_text ILIKE '%' || $2::text || '%')
+  AND ($3::uuid IS NULL OR domain_id = $3::uuid)
+  AND ($4::uuid IS NULL OR kind_id = $4::uuid)
+  AND ($5::smallint IS NULL OR level = $5::smallint)
+  AND ($6::smallint IS NULL OR level >= $6::smallint)
+  AND ($7::smallint IS NULL OR level <= $7::smallint)
+  AND ($8::text IS NULL OR visibility = $8::text)
+  AND ($9::text IS NULL OR state = $9::text)
+  AND ($10::boolean IS NULL OR pdp_scoped = $10::boolean)
   -- The shadow gate, folded INTO the count (D-ObjectFacets rule 3). On the LIST it runs afterwards
   -- (gateUnits trims the page once it is cut), which is right for a page — a short page, never a
   -- skipped row — and wrong for a count: a trimmed row would still have been counted. A public unit
   -- is visible to anyone holding unit.read; a shadow unit only within the subject's readable reach,
   -- which is the same rule FilterVisibleUnits applies row by row, asked once as a set.
   AND (visibility = 'public'
-       OR id IN (SELECT oikumenea.authz_readable_units($10)))
+       OR id IN (SELECT oikumenea.authz_readable_units($11)))
 )
 SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
 FROM cand
 UNION ALL
 SELECT 'org'::text, c.org_id::text, count(*)::bigint
-FROM cand c WHERE $11::boolean GROUP BY 2
-UNION ALL
-SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
 FROM cand c WHERE $12::boolean GROUP BY 2
 UNION ALL
-SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
+SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
 FROM cand c WHERE $13::boolean GROUP BY 2
 UNION ALL
-SELECT 'level'::text, c.level::text, count(*)::bigint
+SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
 FROM cand c WHERE $14::boolean GROUP BY 2
 UNION ALL
-SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+SELECT 'level'::text, c.level::text, count(*)::bigint
 FROM cand c WHERE $15::boolean GROUP BY 2
 UNION ALL
-SELECT 'state'::text, c.state::text, count(*)::bigint
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
 FROM cand c WHERE $16::boolean GROUP BY 2
 UNION ALL
-SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+SELECT 'state'::text, c.state::text, count(*)::bigint
 FROM cand c WHERE $17::boolean GROUP BY 2
+UNION ALL
+SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+FROM cand c WHERE $18::boolean GROUP BY 2
 `
 
 type UnitStatsForSubjectParams struct {
 	OrgID           string
+	Query           pgtype.Text
 	DomainID        pgtype.Text
 	KindID          pgtype.Text
 	Level           pgtype.Int2
@@ -2037,13 +2147,16 @@ type UnitStatsForSubjectRow struct {
 }
 
 // The visibility-scoped arm of UnitStats: identical filters and identical aggregates, with the
-// shadow gate folded into the candidate set.
+// shadow gate folded into the candidate set. `query` is carried here for the same reason it is
+// carried on the admin arm (0022) — a searched list and its dashboard must describe one world, and
+// that has to hold for the scoped caller too, not just the instance admin.
 // The raw level, not a band: the bands live in the pkg/facet catalog (one definition, already proven
 // against the DDL), so SQL emits the ordinal and Go assigns it. Levels are small, so the group count
 // is bounded by the tree's depth.
 func (q *Queries) UnitStatsForSubject(ctx context.Context, arg UnitStatsForSubjectParams) ([]UnitStatsForSubjectRow, error) {
 	rows, err := q.db.Query(ctx, unitStatsForSubject,
 		arg.OrgID,
+		arg.Query,
 		arg.DomainID,
 		arg.KindID,
 		arg.Level,
@@ -2211,7 +2324,7 @@ UPDATE oikumenea.tenant_units SET
     tenant_units.pdp_scoped),
   metadata   = COALESCE($6, metadata)
 WHERE tenant_units.id = $7 AND deleted_at IS NULL
-RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at, search_text
 `
 
 type UpdateUnitParams struct {
@@ -2252,6 +2365,7 @@ func (q *Queries) UpdateUnit(ctx context.Context, arg UpdateUnitParams) (Oikumen
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }

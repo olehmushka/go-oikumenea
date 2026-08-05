@@ -25,6 +25,14 @@ import (
 // failed (identity-federation.md invariant).
 var errInvalidToken = errors.New("invalid inbound token")
 
+// JIT match modes (D-JIT: "a token claim -> person.code OR a designated attribute"). The code arm is
+// the default and the only one that existed before; the account-email arm is what lets an operator who
+// knows only a person's address prepare the link in advance.
+const (
+	JITMatchCode         = "code"          // JITClaim's value is a person.code
+	JITMatchAccountEmail = "account-email" // JITClaim's value is an account_accounts.email
+)
+
 // IssuerType selects how an issuer's tokens are verified.
 const (
 	IssuerOIDC  = "oidc"  // production: OIDC discovery + JWKS (RS256/asymmetric)
@@ -61,12 +69,42 @@ func GuardReservedIssuer(issuers []IssuerConfig) error {
 	return nil
 }
 
+// GuardIssuerAudience refuses an `oidc` issuer that pins no audience. This is not a hygiene rule but
+// a fail-closed authentication guard: a PUBLIC IdP's `iss` is shared by every application registered
+// with it (`https://accounts.google.com` is the same string for every Google OAuth client on earth,
+// and a Google `sub` is stable per Google ACCOUNT, not per client). With no `aud` check, an ID token
+// minted for an unrelated third-party application would carry an `iss`/`sub` this instance accepts
+// and would resolve straight to the linked person — anyone able to sign that user into any Google app
+// could authenticate here. Pinning the audience to this deployment's own client id(s) is what binds a
+// token to THIS relying party.
+//
+// It applies to every `oidc` issuer, not just the known-public ones: whether an issuer is shared is a
+// property of the deployment we cannot infer from the URL. `hs256` issuers are exempt — they are
+// local/dev only (GuardSymmetricIssuers) and their key is already deployment-private. Called once at
+// boot, alongside the other guards.
+func GuardIssuerAudience(issuers []IssuerConfig) error {
+	for _, ic := range issuers {
+		if ic.Type == IssuerHS256 {
+			continue
+		}
+		if len(ic.Audiences) == 0 {
+			return fmt.Errorf("issuer %q (type oidc) pins no audience: set idp.issuers[].audience (or .audiences) to this deployment's client id(s), or any token from that issuer — including one minted for an unrelated application — would be accepted", ic.Issuer)
+		}
+	}
+	return nil
+}
+
 // IssuerConfig describes one accepted issuer (install config — ECV).
 type IssuerConfig struct {
-	Issuer   string // the `iss` value; also the OIDC discovery base URL
-	Audience string // expected `aud`; empty skips the audience check
-	Type     string // IssuerOIDC (default) | IssuerHS256
-	HMACKey  string // symmetric verification key for IssuerHS256 (secret)
+	Issuer string // the `iss` value; also the OIDC discovery base URL
+	// Audiences are the accepted `aud` values; a token validates when its own audience intersects this
+	// set. Several are permitted because one issuer commonly serves several clients of the SAME
+	// deployment — the console's confidential client and a CLI/SDK client register separately with a
+	// public IdP and therefore receive different `aud` values, though both are this instance.
+	// Empty is legal only for IssuerHS256; GuardIssuerAudience refuses it on an oidc issuer at boot.
+	Audiences []string
+	Type      string // IssuerOIDC (default) | IssuerHS256
+	HMACKey   string // symmetric verification key for IssuerHS256 (secret)
 }
 
 // Config is the validator's configuration: the accepted issuers + the JIT mapping.
@@ -74,7 +112,8 @@ type Config struct {
 	Issuers    []IssuerConfig
 	ClockSkew  time.Duration
 	JITEnabled bool
-	JITClaim   string // token claim whose value maps to a person.code (D-JIT link-on-match)
+	JITClaim   string // token claim whose value maps to the person key (D-JIT link-on-match)
+	JITMatch   string // JITMatchCode (default) | JITMatchAccountEmail — WHICH person key JITClaim is matched against
 }
 
 // Claims is the minimal verified projection the middleware needs: the federation key (issuer,
@@ -83,7 +122,11 @@ type Claims struct {
 	Issuer   string
 	Subject  string
 	Email    string
-	JITValue string // the configured JIT claim's string value, "" when absent
+	// EmailVerified is the `email_verified` claim. It is load-bearing ONLY for D-JIT's attribute arm:
+	// matching an unverified address would let anyone able to assert someone else's email at the IdP
+	// claim their account, so that arm requires it to be present AND true (fail-closed).
+	EmailVerified bool
+	JITValue      string // the configured JIT claim's string value, "" when absent
 	// AuthorizedParty is the client-credentials caller's IdP client id (`azp`, falling back to
 	// `client_id`), "" when absent. DIAGNOSTIC ONLY (M51 / D-ServiceIdentities): it is logged when an
 	// unknown token is rejected so an operator can identify the caller, and stored as a display label
@@ -109,6 +152,15 @@ func NewValidator(cfg Config) *Validator {
 		idx[ic.Issuer] = ic
 	}
 	return &Validator{cfg: cfg, byIssuer: idx, oidcVerifiers: map[string]*oidc.IDTokenVerifier{}}
+}
+
+// JITMatch reports the configured D-JIT match mode, defaulting to the code arm when unset so an
+// existing config keeps its behaviour.
+func (v *Validator) JITMatch() string {
+	if v.cfg.JITMatch == JITMatchAccountEmail {
+		return JITMatchAccountEmail
+	}
+	return JITMatchCode
 }
 
 // Validate verifies a raw bearer token and returns its claims, or errInvalidToken on any failure. It
@@ -138,15 +190,35 @@ func (v *Validator) validateHS256(raw string, ic IssuerConfig) (Claims, error) {
 		jwt.WithLeeway(v.cfg.ClockSkew),
 		jwt.WithExpirationRequired(),
 	}
-	if ic.Audience != "" {
-		opts = append(opts, jwt.WithAudience(ic.Audience))
-	}
 	keyFunc := func(_ *jwt.Token) (interface{}, error) { return []byte(ic.HMACKey), nil }
 	if _, err := jwt.ParseWithClaims(raw, claims, keyFunc, opts...); err != nil {
 		return Claims{}, errInvalidToken
 	}
+	// Audience is checked here rather than via jwt.WithAudience: the parser option ANDs repeated
+	// expectations, whereas an issuer's configured audiences are ALTERNATIVES (any one may match).
+	aud, _ := claims.GetAudience()
+	if !audienceAccepted(aud, ic.Audiences) {
+		return Claims{}, errInvalidToken
+	}
 	sub, _ := claims.GetSubject()
 	return v.project(ic.Issuer, sub, claims), nil
+}
+
+// audienceAccepted reports whether a token's audience list intersects the issuer's configured set. An
+// empty configured set skips the check — legal only for hs256 issuers, which GuardIssuerAudience
+// enforces at boot.
+func audienceAccepted(tokenAud []string, configured []string) bool {
+	if len(configured) == 0 {
+		return true
+	}
+	for _, want := range configured {
+		for _, got := range tokenAud {
+			if got == want {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (v *Validator) validateOIDC(ctx context.Context, raw string, ic IssuerConfig) (Claims, error) {
@@ -156,6 +228,11 @@ func (v *Validator) validateOIDC(ctx context.Context, raw string, ic IssuerConfi
 	}
 	tok, err := verifier.Verify(ctx, raw)
 	if err != nil {
+		return Claims{}, errInvalidToken
+	}
+	// go-oidc checks a single ClientID; an issuer here may accept several (one per client of this
+	// deployment), so the audience is verified against the configured set instead — see oidcVerifier.
+	if !audienceAccepted(tok.Audience, ic.Audiences) {
 		return Claims{}, errInvalidToken
 	}
 	var all map[string]any
@@ -176,13 +253,11 @@ func (v *Validator) oidcVerifier(ctx context.Context, ic IssuerConfig) (*oidc.ID
 	if err != nil {
 		return nil, err
 	}
-	cfg := &oidc.Config{}
-	if ic.Audience != "" {
-		cfg.ClientID = ic.Audience
-	} else {
-		cfg.SkipClientIDCheck = true
-	}
-	ver := provider.Verifier(cfg)
+	// SkipClientIDCheck delegates the audience decision to audienceAccepted, which supports a SET of
+	// accepted audiences; go-oidc's own check takes one ClientID. The audience is still verified on
+	// every token (validateOIDC), and GuardIssuerAudience guarantees the set is non-empty at boot, so
+	// skipping here does not weaken verification.
+	ver := provider.Verifier(&oidc.Config{SkipClientIDCheck: true})
 	v.oidcVerifiers[ic.Issuer] = ver
 	return ver, nil
 }
@@ -193,6 +268,14 @@ func (v *Validator) project(issuer, subject string, claims map[string]any) Claim
 	out := Claims{Issuer: issuer, Subject: subject}
 	if e, ok := claims["email"].(string); ok {
 		out.Email = e
+	}
+	// Some IdPs send email_verified as a JSON bool, others (notably older Keycloak mappers) as the
+	// string "true"; both are accepted, anything else counts as unverified.
+	switch v := claims["email_verified"].(type) {
+	case bool:
+		out.EmailVerified = v
+	case string:
+		out.EmailVerified = v == "true"
 	}
 	// azp is the OIDC-standard authorized party; client_id is the common fallback (both name the IdP
 	// client behind a client-credentials token).

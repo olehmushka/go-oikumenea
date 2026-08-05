@@ -82,6 +82,150 @@ service uses the same scheme under the `HERMENEA_` prefix.
 
 ---
 
+## Setting up an identity provider (Docker)
+
+go-oikumenea **never authenticates** — it validates a **JWT** somebody else issued and decides
+authorization (L-AuthzOnly). So "setting up auth" means pointing it at an issuer you trust and telling
+it which audience is yours. Everything below is env-var only: the packaged `app` service mounts
+`deploy/install.docker.yml` **read-only**, so you configure issuers with `OIKUMENEA_*` variables
+rather than editing a file inside the image (D-EnvConfig).
+
+Full per-provider walkthroughs — including registering the OAuth app in Google/GitHub/Entra/GitLab/Okta
+consoles — are in [`deploy/oauth/README.md`](deploy/oauth/README.md). This section is the Docker
+deployment shape.
+
+### First: which variation are you in?
+
+```bash
+curl -fsS https://YOUR-PROVIDER/.well-known/openid-configuration | jq '{issuer, jwks_uri}'
+```
+
+| Result | Variation |
+| --- | --- |
+| JSON with `issuer` + `jwks_uri` | **A** or **B** — your choice |
+| 404 / HTML / error (e.g. **GitHub**) | **C** only — it is OAuth2 without OIDC, so nothing it issues is verifiable |
+
+### Variation A — one OIDC provider, direct
+
+The common case: Google, Entra, Okta, GitLab, Keycloak, Authentik… Two containers need to agree.
+
+```yaml
+# docker-compose.override.yml
+services:
+  app:
+    environment:
+      # `_0_` is the first idp.issuers[] entry; use _1_, _2_ … for more (variation B).
+      OIKUMENEA_IDP_ISSUERS_0_ISSUER: "https://accounts.google.com"   # EXACTLY as discovery printed it
+      OIKUMENEA_IDP_ISSUERS_0_TYPE: "oidc"
+      OIKUMENEA_IDP_ISSUERS_0_AUDIENCE: "<client-id>"                 # MANDATORY — see below
+      OIKUMENEA_IDP_ISSUERS_0_LABEL: "Google"                         # display name in the console
+
+  console-bff:
+    environment:
+      AUTH_URL: "https://console.example.org"        # the PUBLIC origin browsers use
+      AUTH_SECRET: "<openssl rand -base64 32>"
+      AUTH_GOOGLE_ID: "<client-id>"                  # the SAME client id as the audience above
+      AUTH_GOOGLE_SECRET: "<client-secret>"
+```
+
+Register the redirect URI **`<AUTH_URL>/api/auth/callback/google`** with the provider.
+
+Named variables exist for `AUTH_KEYCLOAK_*`, `AUTH_GOOGLE_*`, `AUTH_ENTRA_*`, `AUTH_GITLAB_*` and
+`AUTH_OKTA_*`. For anything else use a **generic slot** — no image rebuild, no code change:
+
+```yaml
+      AUTH_OIDC_ACME_ISSUER: "https://id.acme.example/application/o/oikumenea/"
+      AUTH_OIDC_ACME_ID: "…"
+      AUTH_OIDC_ACME_SECRET: "…"
+      AUTH_OIDC_ACME_LABEL: "Acme SSO"     # callback: <AUTH_URL>/api/auth/callback/acme
+```
+
+**Two rules the deployment will enforce on you:**
+
+- **`AUDIENCE` is mandatory and the container will refuse to start without it.** A public IdP's `iss`
+  is shared by every application registered with it, so the audience is what binds a token to *your*
+  deployment. Set it to the OAuth **client id**, not `oikumenea`.
+- **The issuer string must equal the token's `iss` byte for byte** — it is the routing key. A trailing
+  slash, `http` vs `https`, or a missing `/v2.0` (Entra) means every login 401s.
+
+### Variation B — several providers at once
+
+Add issuer entries by index; the console offers a button per provider whose credentials are present.
+
+```yaml
+  app:
+    environment:
+      OIKUMENEA_IDP_ISSUERS_0_ISSUER: "https://accounts.google.com"
+      OIKUMENEA_IDP_ISSUERS_0_TYPE: "oidc"
+      OIKUMENEA_IDP_ISSUERS_0_AUDIENCE: "<google-client-id>"
+      OIKUMENEA_IDP_ISSUERS_0_LABEL: "Google"
+      OIKUMENEA_IDP_ISSUERS_1_ISSUER: "https://login.microsoftonline.com/<tenant>/v2.0"
+      OIKUMENEA_IDP_ISSUERS_1_TYPE: "oidc"
+      OIKUMENEA_IDP_ISSUERS_1_AUDIENCE: "<entra-client-id>"
+      OIKUMENEA_IDP_ISSUERS_1_LABEL: "Corporate Entra ID"
+```
+
+One person may hold **one login point per provider** on a single account, resolving to the same
+directory record whichever they use.
+
+> If one issuer serves several clients of the *same* deployment (a console **and** a CLI registered
+> separately), it accepts a SET of audiences — but only the YAML file can express it (`audiences: [a, b]`).
+> There is no `…_AUDIENCES` env var, because the env overlay binds only scalar fields of a list
+> element. Mount your own `install.yml` over `/app/var/conf/install.yml` for that case.
+
+### Variation C — brokered (and the only way to use GitHub)
+
+Put an IdP that speaks OIDC in front (Keycloak, Authentik, Auth0…), federate the providers into it, and
+point go-oikumenea at **that** issuer only. GitHub, Discord, Slack and friends reach you this way.
+
+```yaml
+  app:
+    environment:
+      OIKUMENEA_IDP_ISSUERS_0_ISSUER: "https://sso.example.org/realms/oikumenea"
+      OIKUMENEA_IDP_ISSUERS_0_TYPE: "oidc"
+      OIKUMENEA_IDP_ISSUERS_0_AUDIENCE: "oikumenea"
+      OIKUMENEA_IDP_ISSUERS_0_LABEL: "Company SSO"
+```
+
+go-oikumenea needs **nothing** per upstream provider: the broker mints every token, so `iss` stays the
+broker and `sub` is the **broker's** user id, never Google's or GitHub's. The dev stack ships a worked
+example — `scripts/keycloak-brokers.sh` configures Google/GitHub/Entra/GitLab/Okta on the bundled
+Keycloak realm from environment credentials.
+
+### Then: enrolling people
+
+A verified token still has to map to a **person**. Unknown identities are **rejected** — the service is
+a personnel directory first, so a first login is a *link*, never a *create* (D-JIT).
+
+- **Default — link explicitly.** The person signs in once and is refused; the log line
+  `rejected unknown token identity` carries the `issuer`, `subject` and `email`, and an admin links it
+  in the console (*Persons → the person → Account → Link external identity*).
+- **When you only know people's email addresses**, invert it — create a login-less account carrying the
+  address and let the first sign-in attach itself:
+
+  ```yaml
+        OIKUMENEA_IDP_JIT_ENABLED: "true"
+        OIKUMENEA_IDP_JIT_CLAIM: "email"
+        OIKUMENEA_IDP_JIT_MATCH: "account-email"
+        OIKUMENEA_ACCOUNT_IDENTITY_LINKING_ENABLED: "false"   # optional: cap one login point per person
+  ```
+
+  It requires a **verified** email (`email_verified` true) and still never creates a person. Understand
+  what it delegates: every issuer you configure becomes trusted to verify addresses honestly, so anyone
+  proving that address at any of them reaches the account.
+
+### Troubleshooting
+
+| Symptom | Cause |
+| --- | --- |
+| Container exits: *"pins no audience"* | An `oidc` issuer has no `AUDIENCE`. Deliberate and fail-closed — see above. |
+| Console logs in, then *"Your session has expired"* | That banner renders on **any 401**. Either the identity is not linked yet (expected — enrol it), or the audience/issuer does not match. |
+| Every login 401s from the start | `iss` mismatch — compare the configured string with the discovery document character by character. |
+| Provider button missing from the login page | Its `AUTH_<PROVIDER>_ID`/`_SECRET` are unset on **console-bff**. |
+| `redirect_uri_mismatch` at the provider | `AUTH_URL` is not the public origin, or the callback path was not registered. |
+
+---
+
 ## Common tasks
 
 Everything runs through `make` (which delegates to `./godelw`, Atlas, and docker compose):
@@ -113,6 +257,11 @@ curl -sk https://localhost:8443/identity/v1/whoami -H "Authorization: Bearer $TO
 ```
 
 The full hands-on login/token recipe is in [`deploy/keycloak/README.md`](deploy/keycloak/README.md).
+
+**Signing in with Google, GitHub, Entra ID, GitLab or Okta** —
+[`deploy/oauth/README.md`](deploy/oauth/README.md) has working recipes in two topologies: *brokered*
+through Keycloak (one issuer, and the only route for GitHub, which is OAuth2 without OIDC and so
+publishes nothing this service could verify) and *direct* (one `idp.issuers[]` entry per provider).
 
 **Contracts & SDKs.** The API is Conjure-first (`api/*.conjure.yml`). From that one contract come a
 typed **Go SDK** ([`clients/go/`](clients/go/README.md)), a **TypeScript SDK**

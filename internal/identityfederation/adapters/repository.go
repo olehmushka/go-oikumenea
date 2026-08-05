@@ -71,6 +71,19 @@ func (r *Repository) GetActiveAccountByPerson(ctx context.Context, personID stri
 	return toAccount(row), nil
 }
 
+// GetActiveAccountByEmail resolves the single active account carrying an IdP-asserted email. Backs
+// the D-JIT attribute arm; ErrAccountNotFound when no account holds it.
+func (r *Repository) GetActiveAccountByEmail(ctx context.Context, email string) (domain.Account, error) {
+	row, err := r.q.GetActiveAccountByEmail(ctx, pgtype.Text{String: email, Valid: true})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Account{}, domain.ErrAccountNotFound
+		}
+		return domain.Account{}, err
+	}
+	return toAccount(row), nil
+}
+
 func (r *Repository) DisableAccount(ctx context.Context, id string) (domain.Account, error) {
 	row, err := r.q.DisableAccount(ctx, id)
 	if err != nil {

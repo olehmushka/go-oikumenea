@@ -9,9 +9,17 @@ import { UnitSelect } from "@/components/UnitSelect";
 
 /**
  * Searchable entity picker (D-WebUI UX): replaces free-text RID inputs with a type-to-filter
- * dropdown that shows human labels (name/code) and submits the opaque RID. It fetches one page
- * of the relevant list endpoint through the BFF proxy and filters client-side — fine for the
- * admin/dev scale these directories have (the list endpoints have no server-side search param).
+ * dropdown that shows human labels (name/code) and submits the opaque RID.
+ *
+ * Two search modes, declared per kind by `searchParam`:
+ *
+ *  - **Server-side** (`searchParam` set — person, institution, taxon, brand). The typed query is
+ *    debounced and sent to the list endpoint, which matches with a trigram index. REQUIRED for any
+ *    directory that can outgrow one page: the picker loads `pageSize=200`, so with a client-side
+ *    filter alone a 304-person directory left 104 people unselectable — invisible, because the
+ *    dropdown looks like it is searching and simply reports "No matches".
+ *  - **Client-side** (no `searchParam` — roles, catalogs, type registries). Bounded enumerations
+ *    where one page genuinely is the whole set, and whose endpoints take no query param.
  *
  * Two integration modes:
  *  - `name`     → renders a hidden <input name=…> holding the RID, so existing FormData-based
@@ -46,6 +54,12 @@ type Option = { id: string; label: string; hint?: string };
 
 type KindConfig = {
   path: string; // includes any query string
+  /**
+   * Query-parameter name this kind's list endpoint accepts for server-side search. Set it ONLY when
+   * the endpoint really supports it (Conjure `args.query`) — a param the server ignores would be
+   * silently dropped, leaving the picker filtering one page while appearing to search everything.
+   */
+  searchParam?: string;
   pick: (data: unknown) => unknown[];
   toOption: (item: Record<string, unknown>, locale: string) => Option;
 };
@@ -55,7 +69,11 @@ const map = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, s
 
 const REGISTRY: Record<EntityKind, KindConfig> = {
   person: {
+    // The directory is the one picker that reliably outgrows a page — hence server-side search
+    // (D-PersonSearch: trigram-indexed over display name, code, given/surname AND name variants,
+    // so a transliteration or alias matches too, which no client-side label filter could do).
     path: "/person/v1/persons?pageSize=200",
+    searchParam: "query",
     pick: (d) => (d as { persons?: unknown[] })?.persons ?? [],
     toOption: (p) => ({
       id: str(p.id) ?? "",
@@ -140,6 +158,7 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
   // research-groups, …) are loaded into plain <select>s by PersonEducation once an institution is chosen.
   institution: {
     path: "/education/v1/institutions?pageSize=200",
+    searchParam: "query",
     pick: (d) => (d as { institutions?: unknown[] })?.institutions ?? [],
     toOption: (i, locale) => ({
       id: str(i.id) ?? "",
@@ -183,6 +202,7 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
     // the `religionId` filter (roots) and the `subtree` filter (any ancestor): one table, one picker.
     // rankCode is the hint, because "Baptists" means little without "denomination" beside it.
     path: "/religion/v1/taxa?pageSize=500",
+    searchParam: "query",
     pick: (d) => (d as { taxa?: unknown[] })?.taxa ?? [],
     toOption: (t, locale) => ({
       id: str(t.id) ?? "",
@@ -222,6 +242,7 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
   },
   brand: {
     path: "/vehicle/v1/brands",
+    searchParam: "query",
     pick: (d) => (d as { brands?: unknown[] })?.brands ?? [],
     toOption: (b, locale) => ({
       id: str(b.id) ?? "",
@@ -354,11 +375,27 @@ function FlatEntitySelect({
   // table card — can't clip it).
   const [menuPos, setMenuPos] = useState<{ left: number; top: number; width: number } | null>(null);
 
+  // Debounced copy of the typed query, used only by server-searched kinds. 200ms is short enough to
+  // feel immediate and long enough that typing a name is one request, not one per keystroke.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    if (!cfg.searchParam) return;
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 200);
+    return () => clearTimeout(t);
+  }, [query, cfg.searchParam]);
+
+  // The term actually sent to the server. Client-filtered kinds always send nothing.
+  const serverQuery = cfg.searchParam ? debouncedQuery : "";
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    const path =
+      serverQuery.length > 0
+        ? `${cfg.path}${cfg.path.includes("?") ? "&" : "?"}${cfg.searchParam}=${encodeURIComponent(serverQuery)}`
+        : cfg.path;
     api
-      .request(`GET`, cfg.path)
+      .request(`GET`, path)
       .then((d) => {
         if (!alive) return;
         setItems(cfg.pick(d).map((it) => cfg.toOption(it as Record<string, unknown>, locale)));
@@ -372,8 +409,8 @@ function FlatEntitySelect({
     return () => {
       alive = false;
     };
-    // refetch when locale changes so labels re-localize (cheap: ≤200 rows)
-  }, [cfg, locale]);
+    // refetch when locale changes so labels re-localize, and when the debounced server query changes
+  }, [cfg, locale, serverQuery]);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -406,25 +443,36 @@ function FlatEntitySelect({
     };
   }, [open]);
 
-  const selectedOption = items.find((o) => o.id === selected);
+  // The chosen option is remembered rather than looked up in `items`: choosing clears the query,
+  // which refetches the unfiltered first page — and a person found by search is frequently NOT on it,
+  // so a pure lookup would blank the field's label right after a successful pick.
+  const [chosen, setChosen] = useState<Option | null>(null);
+  const selectedOption = chosen?.id === selected ? chosen : items.find((o) => o.id === selected);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    // Server-searched kinds are NOT re-filtered here. The server matches more than a label — a person
+    // matches on their code and on transliterated name variants (D-PersonSearch) — so re-applying a
+    // substring test against the label would throw away correct hits the user cannot otherwise reach.
+    if (cfg.searchParam) return items.slice(0, 50);
     const base = q
       ? items.filter(
           (o) => o.label.toLowerCase().includes(q) || (o.hint ?? "").toLowerCase().includes(q),
         )
       : items;
     return base.slice(0, 50);
-  }, [items, query]);
+  }, [items, query, cfg.searchParam]);
 
   function choose(o: Option) {
     setSelected(o.id);
+    setChosen(o);
     setQuery("");
     setOpen(false);
     onChange?.(o.id, o.label);
   }
   function clear() {
     setSelected("");
+    setChosen(null);
     setQuery("");
     onChange?.("");
   }
@@ -451,6 +499,7 @@ function FlatEntitySelect({
           setActive(0);
           if (selected) {
             setSelected("");
+            setChosen(null);
             onChange?.("");
           }
         }}

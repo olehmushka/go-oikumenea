@@ -34,6 +34,12 @@ type UnitFilter struct {
 	Visibility *string
 	State      *string
 	PDPScoped  *bool
+	// Query is an optional case-insensitive substring match on the unit's `code || name` haystack,
+	// trigram-indexed since migration 0022. It is a plain narrowing predicate like every other field
+	// here — it never widens what a caller may see, since the shadow-visibility gate still trims the
+	// page afterwards. Empty means "no text predicate"; callers trim before setting it, so a
+	// whitespace-only query is never sent to the repository as a search.
+	Query string
 }
 
 // Validate rejects a malformed filter with ErrInvalidUnit, which the transport maps to

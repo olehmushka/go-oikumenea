@@ -76,7 +76,7 @@ export interface ITenantService {
      * listing is the flat, filtered org listing.
      *
      */
-    listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage>;
+    listUnits(org: string, query?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage>;
     /**
      * Facet distributions for an organization's units — the dashboard half of the facet
      * vocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`
@@ -94,7 +94,7 @@ export interface ITenantService {
      * `internal/platform/transport`.
      *
      */
-    unitStats(org: string, facets?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats>;
+    unitStats(org: string, facets?: string | null, query?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats>;
     /**
      * Facet distributions over the organization registry — the dashboard half of the
      * organization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args
@@ -313,7 +313,7 @@ export class TenantService implements ITenantService {
      * listing is the flat, filtered org listing.
      *
      */
-    public listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage> {
+    public listUnits(org: string, query?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage> {
         return this.bridge.call<IUnitPage>(
             "TenantService",
             "listUnits",
@@ -323,6 +323,7 @@ export class TenantService implements ITenantService {
             __undefined,
             {
                 "org": org,
+                "query": query,
                 "domain": domain,
                 "unitKind": unitKind,
                 "level": level,
@@ -360,7 +361,7 @@ export class TenantService implements ITenantService {
      * `internal/platform/transport`.
      *
      */
-    public unitStats(org: string, facets?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats> {
+    public unitStats(org: string, facets?: string | null, query?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats> {
         return this.bridge.call<IUnitStats>(
             "TenantService",
             "unitStats",
@@ -371,6 +372,7 @@ export class TenantService implements ITenantService {
             {
                 "org": org,
                 "facets": facets,
+                "query": query,
                 "domain": domain,
                 "unitKind": unitKind,
                 "level": level,

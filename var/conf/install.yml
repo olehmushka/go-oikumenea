@@ -25,22 +25,82 @@ postgres:
 # so dev/tests can mint tokens. The local Keycloak (docker-compose.dev.yml + deploy/keycloak/) is a
 # real OIDC issuer for manual testing — see deploy/keycloak/README.md. The hmac-key is ECV-encrypted in
 # real deployments.
+# Every `oidc` issuer MUST pin an audience and the server refuses to boot otherwise (D-MultiIdPExamples).
+# A public IdP's `iss` is shared by every application registered with it — `https://accounts.google.com`
+# is the same string for every Google client on earth — so without an `aud` check an ID token minted for
+# an unrelated app would carry an issuer/subject this instance accepts. Use `audience` for one client or
+# `audiences: [a, b]` when several clients of THIS deployment (console + CLI) hit the same issuer.
 idp:
   clock-skew-seconds: 60
   jit:
-    enabled: false           # default reject-unknown (D-JIT). When true, link-on-match via `claim`.
-    claim: person_code       # token claim mapped to person.code for link-on-match
+    enabled: true            # link-on-match (D-JIT); still NEVER creates a person
+    claim: email             # token claim to read
+    match: account-email     # WHICH person key `claim` is matched against (D-JIT):
+                             #   code           -> a person.code (default; the historical behaviour)
+                             #   account-email  -> the single active account carrying that email.
+                             # The account-email arm is for enrolling people you know only by ADDRESS:
+                             # create a login-less shell account with their email and their first
+                             # sign-in attaches its (issuer, subject) — no opaque subject to look up.
+                             # It REQUIRES a verified email (`email_verified` true) and makes every
+                             # configured issuer trusted to verify addresses honestly; pair it with
+                             # account.identity-linking-enabled: false to cap one login point/person.
   issuers:
     - issuer: "https://local-dev.oikumenea.test"
       type: hs256
+      label: "Local dev (HS256)"
       audience: oikumenea
       hmac-key: "local-dev-insecure-signing-key-change-me"
     # Local Keycloak (docker-compose.dev.yml). OIDC discovery + JWKS are fetched lazily on the first
     # token, so the app boots fine before Keycloak is up. The issuer URL must match the token's `iss`
     # exactly; with host-run app + host-minted tokens both use localhost:8080.
+    #
+    # This is also EXAMPLE A of deploy/oauth/README.md: Google/GitHub/Entra/GitLab/Okta federated INTO
+    # this realm (scripts/keycloak-brokers.sh) still produce Keycloak tokens, so they are covered by
+    # this one entry and need nothing added below.
     - issuer: "http://localhost:8080/realms/oikumenea"
       type: oidc
+      label: "Keycloak"
+      # TWO audiences, one issuer: the realm's audience mapper stamps `oikumenea` on the ACCESS token
+      # (what the console's keycloak provider forwards), while an ID token from the same realm carries
+      # the CLIENT ID `oikumenea-web` (what a generic AUTH_OIDC_* slot forwards). A token validates if
+      # its `aud` matches EITHER — that is why one issuer accepts a set.
       audience: oikumenea
+      # A second audience would go here if something forwarded this realm's ID TOKEN instead of its
+      # access token — an ID token carries the CLIENT ID (`oikumenea-web`), not the mapper's
+      # `oikumenea`. One issuer, several accepted `aud` values, matched by intersection:
+      #   audiences: ["oikumenea-web"]
+
+    # --- EXAMPLE B: direct issuers, no broker (deploy/oauth/README.md) ---
+    # Google. The console forwards Google's ID TOKEN (its access tokens are opaque and unverifiable),
+    # so the audience is the console's OAuth client id. Add a second entry under `audiences` if a CLI
+    # or SDK registers its own Google client.
+    - issuer: "https://accounts.google.com"
+      type: oidc
+      label: "Google"
+      audience: "213972482832-0pm8g1d42qshrs3euopkfpf854tpngri.apps.googleusercontent.com"
+
+    # Microsoft Entra ID — the issuer is TENANT-scoped and must end in /v2.0 (the v1 issuer
+    # `https://sts.windows.net/<tenant>/` mints a different token shape this discovery won't verify).
+    # - issuer: "https://login.microsoftonline.com/<tenant-id>/v2.0"
+    #   type: oidc
+    #   label: "Corporate Entra ID"
+    #   audience: "<entra-application-client-id>"
+
+    # GitLab (gitlab.com, or your self-managed base URL).
+    # - issuer: "https://gitlab.com"
+    #   type: oidc
+    #   label: "GitLab"
+    #   audience: "<gitlab-application-id>"
+
+    # Okta / Auth0-shaped tenant. Use the custom authorization server's issuer when you have one.
+    # - issuer: "https://<tenant>.okta.com"
+    #   type: oidc
+    #   label: "Okta"
+    #   audiences: ["<console-client-id>", "<cli-client-id>"]
+
+    # NOT POSSIBLE: GitHub as a direct issuer. GitHub is OAuth2 without OIDC — it issues no ID token
+    # and publishes no JWKS, so there is no signature this service could verify. Broker it through
+    # Keycloak instead (Example A); the token then comes from the Keycloak entry above.
 
 # Identity-federation account knobs (identity-federation.md). identity-linking-enabled gates linking
 # ADDITIONAL login points to one account (default true).

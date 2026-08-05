@@ -84,6 +84,7 @@ planned-tier (M16–M45) decisions live in [`roadmap-decisions.md`](roadmap-deci
 | [D-EnvConfig](#d-envconfig--environment-variables-override-the-yaml-config-and-the-yaml-file-is-optional) | Environment variables override the YAML config, and the YAML file is optional |
 | [D-ObjectFacets](#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) | One per-object-type facet vocabulary driving both list filters and per-module stats endpoints |
 | [D-ConsoleDashboards](#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui) | Every listable type gets a list view and a dashboard view over one URL-borne filter set |
+| [D-MultiIdPExamples](#d-multiidpexamples--public-idps-are-supported-in-two-documented-topologies-an-oidc-issuer-must-pin-an-audience-extends-d-jit-amends-d-webui) | Public IdPs in two topologies (brokered / direct); an `oidc` issuer must pin an audience |
 | L-\* locks | [Carried-over locks](#carried-over-locks-settled-earlier-restated-for-self-containment): L-AuthzOnly, L-AccountOptional, L-SingleDomain, L-UnitIsTenant, L-OneRankScheme, L-Visibility, L-OperatorDB, L-UpgradeSafe, L-Conventions |
 
 ---
@@ -544,6 +545,18 @@ empty, unauthorized records. This is the same link-to-existing model bootstrap u
 
 **Consequence.** See [identity-federation](../modules/identity-federation.md) (inbound validation
 step 3 + the configurable claim→person-key mapping). Full auto-enrolment remains out of scope.
+
+**As built.** Both mappings this decision allows now exist, selected by `idp.jit.match`: the
+`person.code` arm (default, shipped with M8) and the **designated-attribute** arm `account-email`,
+which matches the claim against `account_accounts.email` — unique among active accounts by index, so
+"the single account" is true by construction. That arm exists because an operator enrolling people
+usually knows an ADDRESS, not the IdP's opaque subject; they create a login-less shell account
+carrying the email and the person's first sign-in attaches its `(issuer, subject)`. It requires
+`email_verified` to be present and true, and it makes every configured issuer trusted to verify email
+honestly — which is why it is opt-in and documented in
+[`deploy/oauth/README.md`](../../deploy/oauth/README.md). Linking on this path is subject to
+`account.identity_linking.enabled`, closing a gap where the login path could exceed a cap the admin
+endpoint enforced.
 
 ### D-DirectoryGraphs — Graphs may be directory-only (PDP-enforced flag)
 
@@ -2921,6 +2934,87 @@ page of 100 and drop `nextPageToken`. Every new chrome string needs its four-loc
 decision and **no** visibility filtering locally: a facet the caller may not read simply does not come
 back from the stats endpoint. Lands as **M56** (filters, list view) and **M57** (dashboards)
 ([milestones](../milestones.md)); no schema, no contract beyond D-ObjectFacets'.
+
+---
+
+### D-MultiIdPExamples — Public IdPs are supported in two documented topologies; an `oidc` issuer must pin an audience (extends D-JIT, amends D-WebUI)
+
+**Decision.** Signing in with a public provider (Google, GitHub, Microsoft Entra ID, GitLab, Okta) is
+supported in **two topologies**, both documented with working config in
+[`deploy/oauth/README.md`](../../deploy/oauth/README.md):
+
+- **A — brokered.** Providers federate into Keycloak; **Keycloak remains the sole issuer**, so
+  `idp.issuers[]` is unchanged and the token's `sub` is the Keycloak user id. This is the **only**
+  topology that supports **GitHub**.
+- **B — direct.** Each provider is its own `idp.issuers[]` entry, validated by OIDC discovery + JWKS
+  exactly like any other issuer. The console forwards that provider's **ID token**.
+
+Three rules fall out, and all three are enforced, not merely documented:
+
+1. **An `oidc` issuer MUST pin at least one audience; the service refuses to boot otherwise**
+   (`GuardIssuerAudience`, alongside the existing symmetric- and reserved-issuer guards).
+2. **An issuer accepts a SET of audiences** (`audience:` scalar and/or `audiences:` list, merged), and
+   a token validates when its own `aud` **intersects** that set. The scalar spelling is **retained
+   rather than replaced** by the list: it is the one that survives
+   [D-EnvConfig](#d-envconfig--environment-variables-override-the-yaml-config-and-the-yaml-file-is-optional).
+   The env overlay binds only *scalar* fields of a struct-slice element (`elementBindings` collects
+   `sub.scalars`), so `OIKUMENEA_IDP_ISSUERS_N_AUDIENCE` exists while `…_AUDIENCES` cannot. An
+   env-only deployment can therefore always pin **one** audience — enough to satisfy the boot guard —
+   and only the multi-client case additionally requires the YAML file.
+3. **The console records per provider which token it forwards** (`web/src/lib/auth/providers.ts`):
+   Keycloak's `access_token`, every public IdP's `id_token`. Providers are offered **iff** their
+   credentials are present in the environment.
+
+Enrolment is unchanged: a first login on a new provider is an unknown `(issuer, subject)` and is
+**rejected** ([D-JIT](#d-jit--just-in-time-provisioning-is-link-on-match-only)); an admin links it via
+`POST /accounts/{id}/identities`.
+
+**Why.** The `(issuer, subject)` model and the issuer list were already multi-IdP; what was missing was
+that **the two hard parts are not symmetrical between providers**, and both failure modes are silent.
+
+*GitHub is not OIDC.* It issues no ID token, publishes no JWKS, and its access tokens are opaque
+`gho_*` strings. There is nothing a relying party can verify, so GitHub cannot be a direct issuer
+without the service trusting an unverifiable bearer — which would break
+[L-AuthzOnly](#carried-over-locks-settled-earlier-restated-for-self-containment). Brokering is not a
+workaround but the correct seam: Keycloak does the OAuth2 dance and issues a real JWT. Rather than
+weaken validation for one provider, the topology is documented as the answer.
+
+*A public issuer's `iss` is shared.* `https://accounts.google.com` is the `iss` of every Google OAuth
+client on earth, and a Google `sub` identifies the **account**, not the client. Verification therefore
+turns entirely on `aud`. The previous code made the audience check *optional* (empty `audience` set
+`SkipClientIDCheck`), which was harmless when the only issuers were a private Keycloak realm and a dev
+HMAC key, and becomes an **authentication bypass** the moment a public issuer is added: an ID token
+minted for any unrelated third-party application would carry an `iss`/`sub` this instance accepts and
+resolve straight to the linked person. Fail-closed at boot is the only safe default, and it applies to
+every `oidc` issuer because whether an issuer is shared is a property of the deployment, not something
+inferable from the URL. The audience **set** exists because one public IdP legitimately serves several
+clients of the *same* deployment (the console and a CLI register separately and get different `aud`
+values); the alternative — a second issuer entry with the same `iss` — is unrepresentable, since `iss`
+is the routing key.
+
+*Which token carries the audience differs by provider.* Keycloak's realm audience mapper puts
+`aud: oikumenea` on the **access** token; a public IdP puts its client id on the **ID** token. A
+console that forwards the wrong one logs in successfully and then 401s on every API call — a failure
+that looks like a permissions bug and is a token-selection bug. Making it a declared per-provider
+field turns that into a one-line, reviewable statement.
+
+**Consequence.** **Extends [D-JIT](#d-jit--just-in-time-provisioning-is-link-on-match-only)** (the
+reject-unknown default is what makes a multi-provider deployment safe by default — no provider can
+enrol itself) and **amends
+[D-WebUI](#d-webui--an-optional-standalone-nextjs-admin-ui-reverses-the-api-only-no-ui-drop)**, whose
+single hardcoded Keycloak provider becomes an env-driven registry; the BFF contract (server-side code
+exchange, browser never holds a token) is unchanged. **L-AuthzOnly is unchanged** — the service still
+validates only, holds no credential, and issues no token.
+
+**Breaking on upgrade:** a deployment with an `oidc` issuer and no `audience` will **fail to boot**
+until it pins one. That is deliberate — such a config accepts tokens it should not — and is the one
+exception to the non-destructive-upgrade guarantee in this cycle; see
+[UPGRADING.md](../../UPGRADING.md).
+
+Enforced by `GuardIssuerAudience` + `audienceAccepted` (`internal/identityfederation/middleware`),
+`Issuer.AcceptedAudiences` (`internal/platform/config`), and the console registry; see
+[identity-federation](../modules/identity-federation.md) and
+[`deploy/oauth/README.md`](../../deploy/oauth/README.md). No schema change.
 
 ---
 

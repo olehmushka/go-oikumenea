@@ -37,9 +37,11 @@ connection can be assembled from discrete parts: `<PREFIX>_DB_HOST`, `_DB_PORT`,
 | `OIKUMENEA_IDP_ISSUERS_N_AUDIENCE` | `idp.issuers.audience` |
 | `OIKUMENEA_IDP_ISSUERS_N_HMAC_KEY` | `idp.issuers.hmac-key` |
 | `OIKUMENEA_IDP_ISSUERS_N_ISSUER` | `idp.issuers.issuer` |
+| `OIKUMENEA_IDP_ISSUERS_N_LABEL` | `idp.issuers.label` |
 | `OIKUMENEA_IDP_ISSUERS_N_TYPE` | `idp.issuers.type` |
 | `OIKUMENEA_IDP_JIT_CLAIM` | `idp.jit.claim` |
 | `OIKUMENEA_IDP_JIT_ENABLED` | `idp.jit.enabled` |
+| `OIKUMENEA_IDP_JIT_MATCH` | `idp.jit.match` |
 | `OIKUMENEA_LOGIN_SECURITY_DEDUP_WINDOW_SECONDS` | `login-security.dedup-window-seconds` |
 | `OIKUMENEA_LOGIN_SECURITY_RETENTION_DAYS` | `login-security.retention-days` |
 | `OIKUMENEA_LOGIN_SECURITY_TRUST_FORWARDED_FOR` | `login-security.trust-forwarded-for` |

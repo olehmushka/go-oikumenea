@@ -108,6 +108,9 @@ type Repository interface {
 	GetAccount(ctx context.Context, id string) (Account, error)
 	// GetActiveAccountByPerson returns the person's single active account, or ErrAccountNotFound.
 	GetActiveAccountByPerson(ctx context.Context, personID string) (Account, error)
+	// GetActiveAccountByEmail returns the single active account carrying this IdP-asserted email, or
+	// ErrAccountNotFound. Backs D-JIT's attribute arm; uniqueness is guaranteed by the partial index.
+	GetActiveAccountByEmail(ctx context.Context, email string) (Account, error)
 	DisableAccount(ctx context.Context, id string) (Account, error)
 
 	// external identities

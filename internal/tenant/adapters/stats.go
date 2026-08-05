@@ -5,6 +5,7 @@ package adapters
 
 import (
 	"context"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olegamysk/go-oikumenea/internal/tenant/adapters/tenantsql"
@@ -24,6 +25,7 @@ func (r *Repository) UnitStats(ctx context.Context, subjectPersonID string, f do
 		rows, err := r.q.UnitStatsForSubject(ctx, tenantsql.UnitStatsForSubjectParams{
 			SubjectPersonID: subjectPersonID,
 			OrgID:           f.OrgID,
+			Query:           textPtr(strPtrOrNil(strings.TrimSpace(f.Query))),
 			DomainID:        textPtr(f.DomainID),
 			KindID:          textPtr(f.KindID),
 			Level:           int2Ptr(f.Level),
@@ -51,6 +53,7 @@ func (r *Repository) UnitStats(ctx context.Context, subjectPersonID string, f do
 	}
 	rows, err := r.q.UnitStats(ctx, tenantsql.UnitStatsParams{
 		OrgID:          f.OrgID,
+		Query:          textPtr(strPtrOrNil(strings.TrimSpace(f.Query))),
 		DomainID:       textPtr(f.DomainID),
 		KindID:         textPtr(f.KindID),
 		Level:          int2Ptr(f.Level),

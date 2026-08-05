@@ -93,3 +93,50 @@ RLS backstop (see its entry). The binary's expected revision is `db.ExpectedSche
 - **Contract step note:** enabling RLS is normally staged permissive→tighten (`upgrade-safety.md`).
   For this first release the GUC wiring ships in the same revision as the tightened policies, so there
   is no permissive interim; **post-v1 RLS changes follow the staged rollout.**
+
+### `0022_tenant_unit_search`
+- **Adds (expand-only):** `tenant_units.search_text` — a `GENERATED ALWAYS AS ... STORED` trigram
+  haystack over `lower(coalesce(code,'') || ' ' || name)` — plus the partial GIN index
+  `tenant_units_search_trgm` (`WHERE deleted_at IS NULL`). Postgres computes the column for existing
+  rows as part of the `ADD COLUMN`; there is no backfill step and no data is rewritten by hand.
+- **Enables:** the `query` arg on `GET /units` and `GET /stats/units`, so the console's unit picker
+  searches server-side instead of filtering one page in the browser. `code` is coalesced because it is
+  nullable (NULL = a non-separate sub-unit); without that every codeless unit would have a NULL
+  haystack and drop out of the index entirely.
+- **Contract steps:** none.
+
+## Configuration changes
+
+Breaking changes to `install.yml` that are **not** schema revisions. The boot-time schema check will
+not catch these — the service refuses to start with an explanatory error instead.
+
+### `idp.issuers[]` — an `oidc` issuer must pin an audience (D-MultiIdPExamples)
+
+- **What changed:** an issuer with `type: oidc` and no `audience` (or `audiences`) now makes the
+  service **fail to start**. Previously an empty audience skipped the `aud` check entirely.
+- **Why it is not optional:** a public IdP's `iss` is shared by every application registered with it —
+  `https://accounts.google.com` is the same value for every Google OAuth client, and a Google `sub`
+  identifies the account rather than the client. With no `aud` check, an ID token minted for an
+  unrelated third-party application carries an issuer/subject the instance accepts and resolves to the
+  linked person. The audience is what binds a token to *this* relying party.
+- **Operator action (required if you hit it):** set `audience` to the OAuth client id this deployment
+  receives tokens for. If several clients of the same deployment use one issuer (a console and a CLI
+  registering separately), list them all:
+  ```yaml
+  idp:
+    issuers:
+      - issuer: "https://accounts.google.com"
+        type: oidc
+        audience: "<console-client-id>.apps.googleusercontent.com"
+      - issuer: "https://idp.example/realms/x"
+        type: oidc
+        audiences: ["console-client", "cli-client"]   # token validates if `aud` matches ANY
+  ```
+  A token validates when its own `aud` **intersects** the configured set. `hs256` issuers are exempt
+  (local/dev only, deployment-private key) and need no change.
+- **Configuring by environment variable:** `OIKUMENEA_IDP_ISSUERS_<N>_AUDIENCE` sets the scalar, which
+  is enough to satisfy the guard. There is deliberately no `…_AUDIENCES` — the env overlay binds only
+  scalar fields of a struct-slice element — so the multi-client case requires the YAML file.
+- **Also new, additive:** an optional `label` per issuer, a display name surfaced by
+  `GET /identity/v1/issuers` for binding UIs. Cosmetic; never an identity or authorization input.
+- See [`deploy/oauth/README.md`](deploy/oauth/README.md) for per-provider recipes.

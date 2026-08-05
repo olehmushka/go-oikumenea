@@ -196,6 +196,14 @@ chart reads as a seniority profile over the fifteen most-held ranks. ⑤ **Top u
 > `tenant_units` — there is no `tenant_units.graph_id` to filter or `GROUP BY`. M56 classifies it as a
 > traversal arg, which is what the drift guard checks it against.
 
+> `query` is **not** a facet either — it is a SEARCH arg, the same classification `listPersons.query`
+> carries: free text has no bucket set, so there is nothing to distribute or `GROUP BY`. It is listed
+> here only because it is the third kind of thing `listUnits` accepts. `tenant_units.search_text`
+> (migration 0022, `pii:none`) is the R-21 trigram haystack over `coalesce(code,'') || name`; the list
+> reaches it through a separate `SearchUnits` statement, while both stats arms carry the predicate as
+> a narg — the split is a planning decision, and the counts agree either way. This resolves for
+> **units** the question the organization note below leaves open.
+
 **Components.** ① **Units per level** — bar, level ascending; the org chart's width profile. Each bar
 links to `levelMin`/`levelMax` bracketing its band; those args exist *because* this chart does (the
 scalar `level` matches one level, a band is two). The equality is asserted, not assumed:

@@ -662,6 +662,12 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		cleanup()
 		return nil, werror.Wrap(err, "reject reserved issuer in idp config")
 	}
+	// A public IdP's `iss` is shared by every application registered with it, so an oidc issuer that
+	// pins no audience would accept tokens minted for unrelated applications (D-MultiIdPExamples).
+	if err := middleware.GuardIssuerAudience(vcfg.Issuers); err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "reject oidc issuer without a pinned audience")
+	}
 	// Late-bind the machine-subject registry into authorization (M51): identity-federation registers
 	// after authorization, so the grant writer gets its principal directory here — asserted below.
 	authzSvc.BindPrincipalDirectory(identitySvc)
@@ -764,16 +770,28 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 func issuerOptions(install config.Install) []identityapi.IssuerOption {
 	opts := make([]identityapi.IssuerOption, 0, len(install.IDP.Issuers))
 	for _, is := range install.IDP.Issuers {
+		auds := is.AcceptedAudiences()
 		var audience *string
-		if is.Audience != "" {
-			a := is.Audience
+		if len(auds) > 0 {
+			a := auds[0]
 			audience = &a
+		}
+		var label *string
+		if is.Label != "" {
+			l := is.Label
+			label = &l
 		}
 		typ := is.Type
 		if typ == "" {
 			typ = middleware.IssuerOIDC
 		}
-		opts = append(opts, identityapi.IssuerOption{Issuer: is.Issuer, Audience: audience, Type: typ})
+		opts = append(opts, identityapi.IssuerOption{
+			Issuer:    is.Issuer,
+			Audience:  audience,
+			Audiences: auds,
+			Label:     label,
+			Type:      typ,
+		})
 	}
 	return opts
 }
@@ -782,10 +800,10 @@ func validatorConfig(install config.Install) middleware.Config {
 	issuers := make([]middleware.IssuerConfig, 0, len(install.IDP.Issuers))
 	for _, is := range install.IDP.Issuers {
 		issuers = append(issuers, middleware.IssuerConfig{
-			Issuer:   is.Issuer,
-			Audience: is.Audience,
-			Type:     is.Type,
-			HMACKey:  is.HMACKey,
+			Issuer:    is.Issuer,
+			Audiences: is.AcceptedAudiences(),
+			Type:      is.Type,
+			HMACKey:   is.HMACKey,
 		})
 	}
 	skew := time.Duration(install.IDP.ClockSkewSeconds) * time.Second
@@ -796,7 +814,11 @@ func validatorConfig(install config.Install) middleware.Config {
 	if claim == "" {
 		claim = "person_code"
 	}
-	return middleware.Config{Issuers: issuers, ClockSkew: skew, JITEnabled: install.IDP.JIT.Enabled, JITClaim: claim}
+	match := install.IDP.JIT.Match
+	if match == "" {
+		match = middleware.JITMatchCode
+	}
+	return middleware.Config{Issuers: issuers, ClockSkew: skew, JITEnabled: install.IDP.JIT.Enabled, JITClaim: claim, JITMatch: match}
 }
 
 // defaultDEKCacheTTLSeconds is the unwrapped-DEK cache window when the install config omits it.

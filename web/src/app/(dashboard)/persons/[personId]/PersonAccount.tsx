@@ -2,10 +2,19 @@
 
 // AccountManager — bind a person to a login ACCOUNT and its external identities (M8 /
 // identity-federation). A person is account-optional: this surfaces whether they have one and lets an
-// operator create it, federate Keycloak login points (issuer + subject), unlink them, and disable
-// login. The backend (identity-federation) owns the constraints (≤1 active account per person; an
-// (issuer, subject) is globally unique). issuer = the realm issuer URL (token `iss`); subject = the
-// Keycloak user's `sub` claim (the user UUID) — NOT the username. Mirrors the EmailManager pattern.
+// operator create it, federate login points (issuer + subject), unlink them, and disable login. The
+// backend (identity-federation) owns the constraints (≤1 active account per person; an
+// (issuer, subject) is globally unique). Mirrors the EmailManager pattern.
+//
+// This is the UI for the enrolment step of D-MultiIdPExamples: a first login through a NEW provider
+// is an unknown (issuer, subject) and is rejected (D-JIT reject-unknown), and it is linked here. A
+// person may hold SEVERAL identities — one per provider — and resolves to the same PDP context
+// whichever one signs them in.
+//
+// issuer = the token's `iss`, picked from the instance's configured issuers. subject = the `sub`
+// claim, whose meaning depends on the topology: BROKERED through Keycloak it is the Keycloak user
+// UUID (never the username, and never the upstream Google/GitHub id); DIRECT against a public IdP it
+// is that provider's own subject. Both are copied from the rejected-login log line.
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,9 +27,16 @@ import { useTg } from "@/lib/locale";
 
 type ExternalIdentity = { id: string; accountId: string; issuer: string; subject: string; createdAt?: string };
 type Account = { id: string; personId: string; email?: string; status: string; identities?: ExternalIdentity[] };
-type IssuerOption = { issuer: string; audience?: string; type: string };
+type IssuerOption = { issuer: string; audience?: string; audiences?: string[]; label?: string; type: string };
 
 const tail = (id: string) => id.slice(-8);
+
+// issuerText prefers the operator's display label ("Google") over the bare discovery URL. With one
+// Keycloak realm the URL was self-explanatory; with several public IdPs configured a column of
+// look-alike https://… origins is not, and picking the wrong one silently creates an identity that
+// can never authenticate.
+const issuerText = (i: IssuerOption) =>
+  `${i.label ? `${i.label} — ` : ""}${i.issuer}${i.type === "hs256" ? " (dev)" : ""}`;
 
 // IssuerField renders a dropdown of the instance's configured issuers when any are known, and falls
 // back to a free-text input otherwise (e.g. before config loads, or an instance with no issuers).
@@ -40,8 +56,7 @@ function IssuerField({ issuers, required }: { issuers: IssuerOption[]; required?
     <select name="issuer" required={required} className="input w-full" defaultValue={issuers[0].issuer}>
       {issuers.map((i) => (
         <option key={i.issuer} value={i.issuer}>
-          {i.issuer}
-          {i.type === "hs256" ? " (dev)" : ""}
+          {issuerText(i)}
         </option>
       ))}
     </select>
@@ -155,7 +170,10 @@ function ExistingAccount({
             {identities.map((i) => (
               <li key={i.id} className="flex items-center justify-between gap-2">
                 <span className="truncate">
-                  <span className="text-slate-500">{i.issuer}</span> · <span className="font-mono">{tail(i.subject)}</span>
+                  <span className="text-slate-500" title={i.issuer}>
+                    {issuers.find((o) => o.issuer === i.issuer)?.label ?? i.issuer}
+                  </span>{" "}
+                  · <span className="font-mono">{tail(i.subject)}</span>
                 </span>
                 <button
                   type="button"
@@ -217,15 +235,35 @@ function CreateAccount({
       >
         <input name="email" type="email" className="input w-full" placeholder={tr("email@example.com (optional)")} />
         <IssuerField issuers={issuers} />
-        <input name="subject" className="input w-full" placeholder={tr("subject — Keycloak user `sub` UUID")} />
+        <input name="subject" className="input w-full" placeholder={tr("subject — the token's `sub` claim")} />
         <button className="btn-primary" disabled={busy}>
           <T>Create login account</T>
         </button>
       </form>
       <p className="text-xs text-slate-400">
-        <T>Leave issuer/subject blank to create a login-less shell; you can link a Keycloak identity afterwards.</T>
+        <T>Leave issuer/subject blank to create a login-less shell; you can link an identity afterwards.</T>
       </p>
     </div>
+  );
+}
+
+/**
+ * What `sub` means depends on WHICH topology issued the token, and getting it wrong creates an
+ * identity that silently never authenticates (D-MultiIdPExamples). Brokered through Keycloak, the
+ * token is Keycloak's and the subject is its user UUID — the upstream Google/GitHub id never appears.
+ * Direct against a public IdP, it is that provider's own subject: Google's is a ~21-digit number.
+ * Never the email address and never the username; both are mutable, and neither is the `sub`.
+ */
+function SubjectHint() {
+  return (
+    <p className="text-xs text-slate-400">
+      <T>
+        The `sub` claim of a token from the chosen issuer — a Keycloak user UUID when Keycloak issued
+        it (including logins brokered from Google or GitHub), or the provider's own subject when it is
+        a direct issuer (Google: a ~21-digit number). Never the email or username. Sign in once and
+        the rejected login is logged as `rejected unknown token identity` with the exact value.
+      </T>
+    </p>
   );
 }
 
@@ -252,9 +290,10 @@ function IdentityForm({
         onSubmit(issuer, subject, () => form.reset());
       }}
     >
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-400"><T>Link Keycloak identity</T></div>
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-400"><T>Link external identity</T></div>
       <IssuerField issuers={issuers} required />
-      <input name="subject" required className="input w-full" placeholder={tr("subject — Keycloak user `sub` UUID")} />
+      <input name="subject" required className="input w-full" placeholder={tr("subject — the token's `sub` claim")} />
+      <SubjectHint />
       <button className="btn-ghost" disabled={busy}>
         <T>Link identity</T>
       </button>

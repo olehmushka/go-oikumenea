@@ -615,6 +615,16 @@ services:
             type: string
             param-type: query
             docs: REQUIRED — the organization RID to scope the listing to.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional case-insensitive substring match on the unit's `code`/`name` haystack.
+              Trigram-indexed, so a query of 3+ characters is served by an index (migration 0022,
+              extending D-PersonSearch's R-21 generalization to the unit tree). Like every other
+              filter here it NARROWS only — the shadow gate still trims the page afterwards, so a
+              search can never surface a unit the caller could not otherwise read. Ignored when
+              `parent`/`rootsOnly` is set.
           domain:
             type: optional<string>
             param-type: query
@@ -704,6 +714,10 @@ services:
               Optional comma-separated facet keys to compute (`unitKind,level,state`). Omitted or
               empty = every facet the caller may read; an explicit list of nothing (`facets=,`)
               returns `totalCount` alone. An undeclared facet key is a Tenant:UnitInvalid.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listUnits`. Counted inside the same predicate, so a searched list and its dashboard describe one world.
           domain:
             type: optional<string>
             param-type: query

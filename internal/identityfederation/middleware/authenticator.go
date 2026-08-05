@@ -37,6 +37,9 @@ const ReservedLocalIssuer = "urn:oikumenea:local"
 type Resolver interface {
 	Resolve(ctx context.Context, issuer, subject string) (domain.Resolution, error)
 	LinkOnMatch(ctx context.Context, personID, issuer, subject, email string) (domain.Resolution, error)
+	// PersonIDByAccountEmail backs D-JIT's attribute arm: the person behind the single active account
+	// carrying this IdP-asserted email, and whether one was found.
+	PersonIDByAccountEmail(ctx context.Context, email string) (string, bool, error)
 }
 
 // PersonDirectory resolves a token claim value to an existing person (D-JIT: claim -> person.code).
@@ -93,6 +96,7 @@ type bound struct {
 	resolver   Resolver
 	persons    PersonDirectory
 	jitEnabled bool
+	jitMatch   string // JITMatchCode | JITMatchAccountEmail; read off the validator, not a Bind arg
 	authority  AuthorityResolver
 	pool       *pgxpool.Pool
 	// The machine-subject arm (M51 / D-ServiceIdentities).
@@ -163,6 +167,10 @@ func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons Pe
 	defer a.mu.Unlock()
 	a.bound = &bound{
 		validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled,
+		// Read off the validator rather than added to this already-positional signature: every arg
+		// appended here has to be threaded through main.go correctly, and a silently mis-ordered bool
+		// or string is exactly the kind of mistake a match MODE must not be exposed to.
+		jitMatch: validator.JITMatch(),
 		authority: authority, pool: pool,
 		principals: principals, principalAuthority: principalAuthority,
 	}
@@ -248,10 +256,15 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 			// Neither a person nor a principal: log the identifying claims (the subject is a machine
 			// or IdP id, not a person's name) so an operator can copy the pair straight into a
 			// registration call instead of guessing what the IdP sent.
+			// email + emailVerified are logged beside the subject because an operator typically knows
+			// the person by ADDRESS, not by the IdP's opaque subject: without it a rejection line names
+			// an identity nobody can attribute. Both are unsafe params (pii:contact / pii:basic).
 			svc1log.FromContext(r.Context()).Info("rejected unknown token identity",
 				svc1log.SafeParam("issuer", claims.Issuer),
 				svc1log.SafeParam("authorizedParty", claims.AuthorizedParty),
-				svc1log.UnsafeParam("subject", claims.Subject))
+				svc1log.SafeParam("emailVerified", claims.EmailVerified),
+				svc1log.UnsafeParam("subject", claims.Subject),
+				svc1log.UnsafeParam("email", claims.Email))
 		}
 		unauthorized(rw)
 		return
@@ -340,7 +353,7 @@ func (b *bound) resolve(ctx context.Context, claims Claims) (domain.Resolution, 
 	if !b.jitEnabled || claims.JITValue == "" {
 		return domain.Resolution{}, false, errInvalidToken
 	}
-	personID, ok, err := b.persons.PersonIDByCode(ctx, claims.JITValue)
+	personID, ok, err := b.matchPerson(ctx, claims)
 	if err != nil {
 		return domain.Resolution{}, false, err
 	}
@@ -352,6 +365,27 @@ func (b *bound) resolve(ctx context.Context, claims Claims) (domain.Resolution, 
 		return domain.Resolution{}, false, err
 	}
 	return linked, true, nil
+}
+
+// matchPerson resolves the JIT claim value to an existing person by the configured match mode
+// (D-JIT: "a token claim -> person.code or a designated attribute").
+//
+//   - code (default): the claim value IS a person.code. Unchanged behaviour.
+//   - account-email: the claim value is an email, matched against the single active account carrying
+//     it. This is the arm for an operator who knows a person's address but not the IdP's opaque
+//     subject — they create a login-less shell account with the email, and the person's first sign-in
+//     attaches its (issuer, subject). The match REQUIRES a verified email: `email_verified` must be
+//     present and true, because an unverified address is an unproven claim and matching on it would
+//     let anyone who can assert someone else's address at the IdP take over that account. A rejection
+//     here is logged by the caller with the issuer and subject, as any other unknown identity is.
+func (b *bound) matchPerson(ctx context.Context, claims Claims) (string, bool, error) {
+	if b.jitMatch == JITMatchAccountEmail {
+		if !claims.EmailVerified {
+			return "", false, nil
+		}
+		return b.resolver.PersonIDByAccountEmail(ctx, claims.JITValue)
+	}
+	return b.persons.PersonIDByCode(ctx, claims.JITValue)
 }
 
 // bearerToken extracts the token from the Authorization header (case-insensitive "Bearer " scheme).

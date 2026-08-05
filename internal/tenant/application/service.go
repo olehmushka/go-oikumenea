@@ -10,6 +10,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"encoding/json"
 	"errors"
 	"time"
@@ -227,6 +228,9 @@ func (s *Service) UnitStats(ctx context.Context, subjectPersonID string, isAdmin
 	if err := f.Validate(); err != nil {
 		return stats.Result{}, err
 	}
+	// Trimmed exactly as ListUnits trims it — the dashboard aggregates the set the list would page,
+	// so the two must agree on what an empty query means.
+	f.Query = strings.TrimSpace(f.Query)
 	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
 		return s.newRepo(s.querier(ctx)).UnitStats(ctx, subject, f, sel)
 	})
@@ -245,6 +249,10 @@ func (s *Service) ListUnits(ctx context.Context, f domain.UnitFilter, graphCode 
 	if parent != nil && rootsOnly {
 		return UnitPage{}, domain.ErrInvalidUnit
 	}
+	// Trimmed once, here, so the repository's "is there a text query?" dispatch and the stats binding
+	// agree on what counts as empty: a whitespace-only query must be no predicate at all, not a
+	// search for a space that matches every unit whose name contains one.
+	f.Query = strings.TrimSpace(f.Query)
 	size := pageSizePolicy.Resolve(pageSize)
 	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {

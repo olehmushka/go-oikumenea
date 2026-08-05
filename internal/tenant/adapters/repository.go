@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -110,20 +111,45 @@ func (r *Repository) SetUnitState(ctx context.Context, id string, state domain.S
 // ListUnits returns one keyset page of the flat org listing, narrowed by the unit facet set
 // (M56 / D-ObjectFacets). Every facet is bound as a nullable param, so an unset filter is a SQL NULL
 // and not a sentinel value.
+//
+// A text query routes to the SEPARATE SearchUnits statement (0022) rather than adding one more
+// nullable param, for the reason R-21 recorded: a single statement carrying an optional text
+// predicate cannot be planned for both shapes, and the trigram index is abandoned. The two queries
+// share the same projection and the same keyset, so the caller sees one behaviour. This mirrors
+// person's ListPersons/SearchPersons split exactly.
 func (r *Repository) ListUnits(ctx context.Context, f domain.UnitFilter, after string, limit int) ([]domain.Unit, error) {
-	rows, err := r.q.ListUnits(ctx, tenantsql.ListUnitsParams{
-		OrgID:      f.OrgID,
-		DomainID:   textPtr(f.DomainID),
-		KindID:     textPtr(f.KindID),
-		Level:      int2Ptr(f.Level),
-		LevelMin:   int2Ptr(f.LevelMin),
-		LevelMax:   int2Ptr(f.LevelMax),
-		Visibility: textPtr(f.Visibility),
-		State:      textPtr(f.State),
-		PdpScoped:  boolPtr(f.PDPScoped),
-		After:      textPtr(strPtrOrNil(after)),
-		Lim:        int32(limit),
-	})
+	var rows []tenantsql.OikumeneaTenantUnit
+	var err error
+	if q := strings.TrimSpace(f.Query); q != "" {
+		rows, err = r.q.SearchUnits(ctx, tenantsql.SearchUnitsParams{
+			OrgID:      f.OrgID,
+			Query:      pgtype.Text{String: q, Valid: true},
+			DomainID:   textPtr(f.DomainID),
+			KindID:     textPtr(f.KindID),
+			Level:      int2Ptr(f.Level),
+			LevelMin:   int2Ptr(f.LevelMin),
+			LevelMax:   int2Ptr(f.LevelMax),
+			Visibility: textPtr(f.Visibility),
+			State:      textPtr(f.State),
+			PdpScoped:  boolPtr(f.PDPScoped),
+			After:      textPtr(strPtrOrNil(after)),
+			Lim:        int32(limit),
+		})
+	} else {
+		rows, err = r.q.ListUnits(ctx, tenantsql.ListUnitsParams{
+			OrgID:      f.OrgID,
+			DomainID:   textPtr(f.DomainID),
+			KindID:     textPtr(f.KindID),
+			Level:      int2Ptr(f.Level),
+			LevelMin:   int2Ptr(f.LevelMin),
+			LevelMax:   int2Ptr(f.LevelMax),
+			Visibility: textPtr(f.Visibility),
+			State:      textPtr(f.State),
+			PdpScoped:  boolPtr(f.PDPScoped),
+			After:      textPtr(strPtrOrNil(after)),
+			Lim:        int32(limit),
+		})
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -28,8 +28,18 @@ idp:
   issuers:
     - issuer: "https://local-dev.oikumenea.test"
       type: hs256
+      label: "Local dev (HS256)"
       audience: oikumenea
       hmac-key: "local-dev-insecure-signing-key-change-me"
+    # Real issuers go here — one entry per IdP whose tokens this deployment accepts. Every `oidc`
+    # entry MUST pin an audience (the server refuses to boot otherwise): a public IdP's `iss` is
+    # shared by every application registered with it, so the `aud` is what binds a token to THIS
+    # deployment. See deploy/oauth/README.md for per-provider recipes (Google, GitHub via broker,
+    # Entra, GitLab, Okta) and D-MultiIdPExamples for the rationale.
+    # - issuer: "https://accounts.google.com"
+    #   type: oidc
+    #   label: "Google"
+    #   audience: "<console-oauth-client-id>.apps.googleusercontent.com"
 
 account:
   identity-linking-enabled: true
