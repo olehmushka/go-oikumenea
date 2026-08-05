@@ -20,6 +20,17 @@ WHERE id = @id AND deleted_at IS NULL;
 SELECT * FROM oikumenea.account_accounts
 WHERE person_id = @person_id AND deleted_at IS NULL;
 
+-- name: GetActiveAccountByEmail :one
+-- The single active account holding this IdP-asserted email, of any status. Backs the D-JIT
+-- link-on-match ATTRIBUTE arm: an operator who knows only a person's email creates a login-less shell
+-- account carrying it, and the person's first sign-in matches here and attaches its (issuer, subject).
+--
+-- `email` is citext, so the comparison is case-insensitive, and the partial unique index
+-- (account_accounts_email_active_idx) makes "the single account" true by construction rather than by
+-- convention — there is no ambiguous-match case to resolve in Go.
+SELECT * FROM oikumenea.account_accounts
+WHERE email = @email AND deleted_at IS NULL;
+
 -- name: DisableAccount :one
 -- Reversible login block: flip status to 'disabled'. Idempotent at the app layer.
 UPDATE oikumenea.account_accounts

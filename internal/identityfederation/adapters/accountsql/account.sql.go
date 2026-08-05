@@ -92,6 +92,35 @@ func (q *Queries) GetAccount(ctx context.Context, id string) (OikumeneaAccountAc
 	return i, err
 }
 
+const getActiveAccountByEmail = `-- name: GetActiveAccountByEmail :one
+SELECT id, person_id, email, status, password_hash, mfa_enrolled_at, created_at, updated_at, deleted_at FROM oikumenea.account_accounts
+WHERE email = $1 AND deleted_at IS NULL
+`
+
+// The single active account holding this IdP-asserted email, of any status. Backs the D-JIT
+// link-on-match ATTRIBUTE arm: an operator who knows only a person's email creates a login-less shell
+// account carrying it, and the person's first sign-in matches here and attaches its (issuer, subject).
+//
+// `email` is citext, so the comparison is case-insensitive, and the partial unique index
+// (account_accounts_email_active_idx) makes "the single account" true by construction rather than by
+// convention — there is no ambiguous-match case to resolve in Go.
+func (q *Queries) GetActiveAccountByEmail(ctx context.Context, email pgtype.Text) (OikumeneaAccountAccount, error) {
+	row := q.db.QueryRow(ctx, getActiveAccountByEmail, email)
+	var i OikumeneaAccountAccount
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Email,
+		&i.Status,
+		&i.PasswordHash,
+		&i.MfaEnrolledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getActiveAccountByPerson = `-- name: GetActiveAccountByPerson :one
 SELECT id, person_id, email, status, password_hash, mfa_enrolled_at, created_at, updated_at, deleted_at FROM oikumenea.account_accounts
 WHERE person_id = $1 AND deleted_at IS NULL

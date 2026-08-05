@@ -6165,11 +6165,22 @@
         "description": "One IdP issuer accepted by this instance (from install config), offered to binding UIs so an\noperator picks an issuer rather than typing it. PUBLIC fields only — verification secrets\n(HS256 keys) are never exposed. An external identity's `issuer` must match one of these for a\ntoken from it to ever validate.\n",
         "properties": {
           "audience": {
-            "description": "The expected `aud`, if the instance pins one.",
+            "description": "The expected `aud`, if the instance pins one. When the issuer accepts several (one per\nclient of this deployment) this carries the first; `audiences` carries the full set.\n",
             "type": "string"
+          },
+          "audiences": {
+            "description": "Every `aud` this instance accepts from the issuer. A token validates when its own\naudience intersects this set. Non-empty for every `oidc` issuer (enforced at boot).\n",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "issuer": {
             "description": "The `iss` value (also the OIDC discovery base URL).",
+            "type": "string"
+          },
+          "label": {
+            "description": "Operator-supplied display name for the issuer (\"Google\", \"Corporate Entra ID\"), so a\nbinding UI can offer a readable choice instead of a bare discovery URL. Cosmetic only —\nnever an identity or authorization input.\n",
             "type": "string"
           },
           "type": {
@@ -6178,6 +6189,7 @@
           }
         },
         "required": [
+          "audiences",
           "issuer",
           "type"
         ],

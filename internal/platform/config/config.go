@@ -228,17 +228,54 @@ type IDP struct {
 
 // Issuer is one accepted IdP issuer.
 type Issuer struct {
-	Issuer   string `yaml:"issuer"`   // the `iss` value; also the OIDC discovery base URL
-	Audience string `yaml:"audience"` // expected `aud`; empty skips the check
-	Type     string `yaml:"type"`     // "oidc" (default) | "hs256" (local/dev symmetric; refused at boot in staging/prod)
-	HMACKey  string `yaml:"hmac-key"` // verification key for type hs256 (secret; ECV-encrypted)
+	Issuer string `yaml:"issuer"` // the `iss` value; also the OIDC discovery base URL
+	// Audience pins a single expected `aud` — the common case, kept as the scalar spelling.
+	Audience string `yaml:"audience"`
+	// Audiences pins several accepted `aud` values for one issuer. Needed when a public IdP serves more
+	// than one client of the SAME deployment (the console and a CLI/SDK register as separate OAuth
+	// clients and so receive different `aud` values). Merged with Audience by AcceptedAudiences.
+	//
+	// YAML-ONLY: the env overlay binds only the SCALAR fields of a struct-slice element
+	// (envoverlay.elementBindings keeps sub.scalars), so `OIKUMENEA_IDP_ISSUERS_N_AUDIENCES` does not
+	// exist while `…_AUDIENCE` does. That is why Audience is retained rather than folded into this
+	// list: an env-only deployment (D-EnvConfig) must still be able to pin at least one audience, or
+	// GuardIssuerAudience would make it unbootable.
+	Audiences []string `yaml:"audiences"`
+	// Label is an optional operator-supplied display name ("Google", "Corporate Entra ID") surfaced by
+	// ListIssuers so a binding UI shows a readable choice rather than a discovery URL. Cosmetic only.
+	Label   string `yaml:"label"`
+	Type    string `yaml:"type"`     // "oidc" (default) | "hs256" (local/dev symmetric; refused at boot in staging/prod)
+	HMACKey string `yaml:"hmac-key"` // verification key for type hs256 (secret; ECV-encrypted)
+}
+
+// AcceptedAudiences is the issuer's full accepted-`aud` set: the scalar `audience` plus the
+// `audiences` list, de-duplicated. Both spellings are accepted so a single-client issuer stays a
+// one-liner while a multi-client one is expressible without a second issuer entry.
+func (i Issuer) AcceptedAudiences() []string {
+	out := make([]string, 0, len(i.Audiences)+1)
+	seen := make(map[string]struct{}, len(i.Audiences)+1)
+	for _, a := range append([]string{i.Audience}, i.Audiences...) {
+		if a == "" {
+			continue
+		}
+		if _, dup := seen[a]; dup {
+			continue
+		}
+		seen[a] = struct{}{}
+		out = append(out, a)
+	}
+	return out
 }
 
 // JIT configures just-in-time provisioning: default reject-unknown; when enabled, link-on-match only
 // against an EXISTING person via a token-claim -> person.code mapping (D-JIT). It never creates a person.
 type JIT struct {
 	Enabled bool   `yaml:"enabled"`
-	Claim   string `yaml:"claim"` // token claim whose value maps to a person.code (default "person_code")
+	Claim   string `yaml:"claim"` // token claim to read (default "person_code"; use "email" with match: account-email)
+	// Match selects WHICH person key Claim's value is matched against (D-JIT: "person.code or a
+	// designated attribute"). "code" (default, and the historical behaviour) or "account-email", which
+	// matches the single active account carrying that email and requires a VERIFIED email claim.
+	Match string `yaml:"match"`
 }
 
 // Account holds identity-federation account knobs.

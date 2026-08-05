@@ -1,17 +1,20 @@
 import NextAuth, { type DefaultSession } from "next-auth";
-import Keycloak from "next-auth/providers/keycloak";
+import { consoleProviders, providerById, type ForwardedToken } from "@/lib/auth/providers";
 
 /**
  * Auth.js (NextAuth v5) configuration — the IdP seam for the optional admin console.
  *
- * Flow (D-WebUI): browser → Keycloak Authorization-Code → Auth.js exchanges the code
- * SERVER-SIDE and keeps the access/refresh token in an httpOnly JWT session. The browser
- * never receives a token; the BFF proxy (app/api/oikumenea/[...path]) reads the token from
- * the session and attaches `Authorization: Bearer` when forwarding to the go-oikumenea API.
+ * Flow (D-WebUI): browser → IdP Authorization-Code → Auth.js exchanges the code SERVER-SIDE and keeps
+ * the tokens in an httpOnly JWT session. The browser never receives a token; the BFF proxy
+ * (app/api/oikumenea/[...path]) reads it from the session and attaches `Authorization: Bearer` when
+ * forwarding to the go-oikumenea API.
  *
- * Provider config is read from AUTH_KEYCLOAK_ID / AUTH_KEYCLOAK_SECRET / AUTH_KEYCLOAK_ISSUER
- * (Auth.js conventions). The access token carries `aud: oikumenea` (realm audience mapper),
- * so the service validates it with its normal idp.issuers[] rules — L-AuthzOnly is unchanged.
+ * The offered providers come from `lib/auth/providers` and are ENV-DRIVEN (D-MultiIdPExamples), so
+ * this file no longer knows about any particular IdP. What it does own is the consequence of being
+ * multi-IdP: the forwarded token and the refresh endpoint are now per-provider, because different
+ * IdPs put the API audience on different tokens (Keycloak: the access token, via its realm audience
+ * mapper; public OIDC providers: the ID token, whose `aud` is this console's client id). L-AuthzOnly
+ * is unchanged either way — the service still only validates a token issued elsewhere.
  */
 
 declare module "next-auth" {
@@ -26,33 +29,53 @@ declare module "next-auth" {
 
 // The token fields we persist (Auth.js's JWT is an open record; we read/write these keys).
 interface AppToken {
+  /** The bearer the BFF forwards — already the RIGHT token for the provider that issued it. */
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number; // epoch seconds
+  /** Which registry provider signed this session in; drives refresh and token selection. */
+  providerId?: string;
   error?: "RefreshTokenError";
 }
 
-const ISSUER = process.env.AUTH_KEYCLOAK_ISSUER!;
+/** Pick the token the service can actually verify for this provider. */
+function forwardedToken(
+  account: { access_token?: string | null; id_token?: string | null },
+  which: ForwardedToken,
+): string | undefined {
+  const picked = which === "id_token" ? account.id_token : account.access_token;
+  return picked ?? undefined;
+}
 
-async function refreshAccessToken(refreshToken: string) {
-  // Discover the token endpoint, then run the refresh_token grant against Keycloak.
-  const wellKnown = await fetch(`${ISSUER}/.well-known/openid-configuration`).then((r) =>
+/**
+ * Run the refresh_token grant against the provider's own token endpoint, discovered from its issuer.
+ * Discovery (rather than a hardcoded URL) is what keeps this provider-agnostic.
+ */
+async function refreshAccessToken(providerId: string, refreshToken: string) {
+  const provider = providerById[providerId];
+  if (!provider) throw new Error(`unknown provider ${providerId}`);
+
+  const wellKnown = await fetch(`${provider.issuer}/.well-known/openid-configuration`).then((r) =>
     r.json(),
   );
-  const res = await fetch(wellKnown.token_endpoint as string, {
+  const tokenEndpoint = wellKnown.token_endpoint as string;
+  if (!tokenEndpoint) throw new Error(`no token_endpoint for ${providerId}`);
+
+  const res = await fetch(tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: process.env.AUTH_KEYCLOAK_ID!,
-      client_secret: process.env.AUTH_KEYCLOAK_SECRET!,
+      client_id: process.env[`${provider.envPrefix}_ID`]!,
+      client_secret: process.env[`${provider.envPrefix}_SECRET`]!,
       refresh_token: refreshToken,
     }),
   });
   const tokens = await res.json();
   if (!res.ok) throw tokens;
   return tokens as {
-    access_token: string;
+    access_token?: string;
+    id_token?: string;
     expires_in: number;
     refresh_token?: string;
   };
@@ -69,21 +92,20 @@ const AUTH_SECRET =
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   secret: AUTH_SECRET,
-  providers: [
-    Keycloak({
-      clientId: process.env.AUTH_KEYCLOAK_ID,
-      clientSecret: process.env.AUTH_KEYCLOAK_SECRET,
-      issuer: ISSUER,
-    }),
-  ],
+  providers: consoleProviders.map((p) => p.factory()),
   callbacks: {
     async jwt({ token, account }) {
       const t = token as AppToken & Record<string, unknown>;
-      // Initial sign-in: persist the Keycloak tokens onto the (server-only) JWT.
+
+      // Initial sign-in: persist the provider and ITS correct bearer onto the (server-only) JWT.
       if (account) {
-        t.accessToken = account.access_token;
-        t.refreshToken = account.refresh_token;
-        t.expiresAt = account.expires_at;
+        const provider = providerById[account.provider];
+        t.providerId = account.provider;
+        t.accessToken = provider
+          ? forwardedToken(account, provider.forward)
+          : (account.access_token ?? undefined);
+        t.refreshToken = account.refresh_token ?? undefined;
+        t.expiresAt = account.expires_at ?? undefined;
         return token;
       }
 
@@ -92,11 +114,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return token;
       }
 
-      // Expired: refresh, or flag the session so the UI can re-authenticate.
-      if (!t.refreshToken) return token;
+      // Expired: refresh, or flag the session so the UI can re-authenticate. Providers that never
+      // issued a refresh_token (Google without offline access, say) simply fall through to re-login.
+      if (!t.refreshToken || !t.providerId) return token;
       try {
-        const refreshed = await refreshAccessToken(t.refreshToken);
-        t.accessToken = refreshed.access_token;
+        const provider = providerById[t.providerId];
+        const refreshed = await refreshAccessToken(t.providerId, t.refreshToken);
+        const next = forwardedToken(refreshed, provider?.forward ?? "access_token");
+        // A refresh that does not return the token shape we forward leaves the session unusable;
+        // flag it rather than silently pinning a stale or wrong-typed bearer.
+        if (!next) throw new Error(`refresh returned no ${provider?.forward} for ${t.providerId}`);
+        t.accessToken = next;
         t.expiresAt = Math.floor(Date.now() / 1000) + refreshed.expires_in;
         if (refreshed.refresh_token) t.refreshToken = refreshed.refresh_token;
         delete t.error;

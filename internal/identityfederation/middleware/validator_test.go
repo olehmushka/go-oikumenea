@@ -19,7 +19,7 @@ const (
 
 func testValidator(jitClaim string) *Validator {
 	return NewValidator(Config{
-		Issuers:   []IssuerConfig{{Issuer: testIssuer, Audience: testAud, Type: IssuerHS256, HMACKey: testKey}},
+		Issuers:   []IssuerConfig{{Issuer: testIssuer, Audiences: []string{testAud}, Type: IssuerHS256, HMACKey: testKey}},
 		ClockSkew: 60 * time.Second,
 		JITClaim:  jitClaim,
 	})
@@ -111,6 +111,101 @@ func TestValidatorRejects(t *testing.T) {
 			t.Fatal("expected rejection of an unsigned (alg=none) token")
 		}
 	})
+}
+
+// TestValidatorMultiAudience pins the SET semantics of an issuer's configured audiences: one issuer
+// may serve several clients of the same deployment (console + CLI), and a token matching ANY of them
+// validates while an unlisted one does not. The alternative reading — requiring a token to carry all
+// configured audiences — would make a second client unreachable, so this is a behavioural lock, not a
+// restatement of the code.
+func TestValidatorMultiAudience(t *testing.T) {
+	const consoleAud, cliAud = "oikumenea-console", "oikumenea-cli"
+	v := NewValidator(Config{
+		Issuers:   []IssuerConfig{{Issuer: testIssuer, Audiences: []string{consoleAud, cliAud}, Type: IssuerHS256, HMACKey: testKey}},
+		ClockSkew: 60 * time.Second,
+	})
+
+	for _, aud := range []string{consoleAud, cliAud} {
+		c := baseClaims()
+		c["aud"] = aud
+		if _, err := v.Validate(context.Background(), mintHS256(t, testKey, c)); err != nil {
+			t.Fatalf("audience %q is configured but was rejected: %v", aud, err)
+		}
+	}
+
+	t.Run("unlisted audience rejected", func(t *testing.T) {
+		c := baseClaims()
+		c["aud"] = "some-third-party-app"
+		if _, err := v.Validate(context.Background(), mintHS256(t, testKey, c)); err == nil {
+			t.Fatal("expected rejection of an audience outside the configured set")
+		}
+	})
+
+	t.Run("multi-valued aud claim matches on intersection", func(t *testing.T) {
+		c := baseClaims()
+		c["aud"] = []string{"unrelated", cliAud}
+		if _, err := v.Validate(context.Background(), mintHS256(t, testKey, c)); err != nil {
+			t.Fatalf("token whose aud list contains a configured audience was rejected: %v", err)
+		}
+	})
+}
+
+// TestGuardIssuerAudience locks the fail-closed boot rule behind the multi-IdP examples: a PUBLIC
+// issuer's `iss` is shared by every application registered with it, so an oidc issuer with no pinned
+// audience would accept an ID token minted for an unrelated third-party app and resolve it to the
+// linked person. hs256 is exempt (local/dev only, deployment-private key).
+func TestGuardIssuerAudience(t *testing.T) {
+	cases := []struct {
+		name    string
+		issuers []IssuerConfig
+		wantErr bool
+	}{
+		{
+			"oidc without audience rejected",
+			[]IssuerConfig{{Issuer: "https://accounts.google.com", Type: IssuerOIDC}},
+			true,
+		},
+		{
+			"oidc with empty-string audience rejected",
+			[]IssuerConfig{{Issuer: "https://accounts.google.com", Type: IssuerOIDC, Audiences: []string{}}},
+			true,
+		},
+		{
+			"defaulted (empty) type counts as oidc",
+			[]IssuerConfig{{Issuer: "https://accounts.google.com"}},
+			true,
+		},
+		{
+			"oidc with audience allowed",
+			[]IssuerConfig{{Issuer: "https://accounts.google.com", Type: IssuerOIDC, Audiences: []string{"client-id.apps.googleusercontent.com"}}},
+			false,
+		},
+		{
+			"hs256 without audience allowed",
+			[]IssuerConfig{{Issuer: testIssuer, Type: IssuerHS256, HMACKey: testKey}},
+			false,
+		},
+		{
+			"one bad issuer among good ones is rejected",
+			[]IssuerConfig{
+				{Issuer: testIssuer, Type: IssuerHS256, HMACKey: testKey},
+				{Issuer: "https://ok.example", Type: IssuerOIDC, Audiences: []string{"a"}},
+				{Issuer: "https://accounts.google.com", Type: IssuerOIDC},
+			},
+			true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := GuardIssuerAudience(tc.issuers)
+			if tc.wantErr && err == nil {
+				t.Fatal("expected the guard to refuse this issuer set")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("guard unexpectedly refused: %v", err)
+			}
+		})
+	}
 }
 
 func TestGuardSymmetricIssuers(t *testing.T) {

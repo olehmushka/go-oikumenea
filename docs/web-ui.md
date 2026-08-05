@@ -93,7 +93,12 @@ lifecycle), [memberships & positions](modules/membership.md), the [rank](modules
   compose-internal `https://app:8443`, or the host binary in dev). `API_BASE_URL` is **required** —
   console-bff throws at startup if it is unset rather than defaulting to a host port that the packaged
   topology no longer publishes.
-- A reachable Keycloak realm with the confidential `oikumenea-web` client (`deploy/keycloak/`).
+- At least one configured IdP. The bundled default is a Keycloak realm with the confidential
+  `oikumenea-web` client (`deploy/keycloak/`); the login screen renders a button per provider whose
+  credentials are present in the console environment (D-MultiIdPExamples), so Google/Entra/GitLab/Okta
+  can be offered alongside or instead of it — see [`deploy/oauth/README.md`](../deploy/oauth/README.md).
+  Whichever provider signs a session in, the BFF forwards the token that provider's issuer entry pins
+  an audience on (Keycloak: the access token; public IdPs: the ID token).
 - Build-time: the committed [`docs/api/openapi/openapi.json`](api/openapi/openapi.json) (kept fresh
   from Conjure by `scripts/gen-openapi.sh`).
 

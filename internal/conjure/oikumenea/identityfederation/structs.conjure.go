@@ -136,10 +136,45 @@ token from it to ever validate.
 type IssuerOption struct {
 	// The `iss` value (also the OIDC discovery base URL).
 	Issuer string `json:"issuer"`
-	// The expected `aud`, if the instance pins one.
+	/*
+	   The expected `aud`, if the instance pins one. When the issuer accepts several (one per
+	   client of this deployment) this carries the first; `audiences` carries the full set.
+	*/
 	Audience *string `json:"audience,omitempty"`
+	/*
+	   Every `aud` this instance accepts from the issuer. A token validates when its own
+	   audience intersects this set. Non-empty for every `oidc` issuer (enforced at boot).
+	*/
+	Audiences []string `json:"audiences"`
+	/*
+	   Operator-supplied display name for the issuer ("Google", "Corporate Entra ID"), so a
+	   binding UI can offer a readable choice instead of a bare discovery URL. Cosmetic only —
+	   never an identity or authorization input.
+	*/
+	Label *string `json:"label,omitempty"`
 	// One of oidc | hs256 (hs256 is local/dev only).
 	Type string `json:"type"`
+}
+
+func (o IssuerOption) MarshalJSON() ([]byte, error) {
+	if o.Audiences == nil {
+		o.Audiences = make([]string, 0)
+	}
+	type _tmpIssuerOption IssuerOption
+	return safejson.Marshal(_tmpIssuerOption(o))
+}
+
+func (o *IssuerOption) UnmarshalJSON(data []byte) error {
+	type _tmpIssuerOption IssuerOption
+	var rawIssuerOption _tmpIssuerOption
+	if err := safejson.Unmarshal(data, &rawIssuerOption); err != nil {
+		return err
+	}
+	if rawIssuerOption.Audiences == nil {
+		rawIssuerOption.Audiences = make([]string, 0)
+	}
+	*o = IssuerOption(rawIssuerOption)
+	return nil
 }
 
 func (o IssuerOption) MarshalYAML() (interface{}, error) {

@@ -7,6 +7,17 @@
 
 # local-dev tooling connection/secrets (commit .env.example instead)
 .env
+.env.local
+.env.*.local
+# brokered-provider client secrets (Example A); commit deploy/oauth/.env.oauth.example instead
+.env.oauth
+
+# OAuth client credentials for the local multi-IdP examples (D-MultiIdPExamples). These files carry a
+# live client_secret — the downloaded Google/Entra/Okta client JSON, and any per-provider secret env
+# file. Commit the *.example spellings instead; never the real ones.
+/var/*.json
+/var/oauth/
+!/var/conf/
 
 # compiled binaries dropped at the repo root by `go build ./cmd/oikumenea|./cmd/hermenea`.
 # MUST be anchored with a leading slash — a bare `oikumenea`/`hermenea` matches every same-named

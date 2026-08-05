@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -227,6 +228,28 @@ func (s *Service) Resolve(ctx context.Context, issuer, subject string) (domain.R
 // person.code), create-or-extend that person's account and link the identity, returning the
 // resolution. It NEVER creates a person. An (issuer, subject) already linked to a DIFFERENT account
 // surfaces ErrIdentityConflict (reject).
+// PersonIDByAccountEmail resolves the person behind the single active account carrying this
+// IdP-asserted email, reporting whether a match was found (D-JIT's ATTRIBUTE arm).
+//
+// It deliberately matches the ACCOUNT's email rather than a person's contact emails: the account
+// email is the LOGIN identity, is unique among active accounts by index, and can be set before any
+// identity is linked — which is what lets an operator who knows only an address prepare the match in
+// advance. Person contact emails (personprofile) are multi-valued and carry no uniqueness guarantee,
+// so matching them could bind a login to whichever row happened to be found first.
+func (s *Service) PersonIDByAccountEmail(ctx context.Context, email string) (string, bool, error) {
+	if strings.TrimSpace(email) == "" {
+		return "", false, nil
+	}
+	account, err := s.newRepo(db.RequestQuerier(ctx, s.pool)).GetActiveAccountByEmail(ctx, email)
+	if errors.Is(err, domain.ErrAccountNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return account.PersonID, true, nil
+}
+
 func (s *Service) LinkOnMatch(ctx context.Context, personID, issuer, subject, email string) (domain.Resolution, error) {
 	id := domain.ExternalIdentity{Issuer: issuer, Subject: subject}
 	if err := id.Validate(); err != nil {
@@ -246,6 +269,19 @@ func (s *Service) LinkOnMatch(ctx context.Context, personID, issuer, subject, em
 			}
 		} else if err != nil {
 			return err
+		}
+		// The SAME operator gate LinkIdentity applies (identity-federation.md: "linking ADDITIONAL
+		// identities beyond the first is operator-gated by account.identity_linking.enabled"). It was
+		// previously enforced only on the admin endpoint, so the JIT path could silently exceed the
+		// cap — which matters most under the account-email match arm, where the thing being matched is
+		// an assertion made by whoever is signing in. The first identity on a fresh account is always
+		// permitted, exactly as on the admin path.
+		count, err := repo.CountActiveIdentities(ctx, account.ID)
+		if err != nil {
+			return err
+		}
+		if count >= 1 && !s.linkingEnabled() {
+			return domain.ErrLinkingDisabled
 		}
 		id.AccountID = account.ID
 		linked, err := repo.InsertIdentity(ctx, id)
