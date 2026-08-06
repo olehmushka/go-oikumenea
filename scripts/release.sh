@@ -156,6 +156,22 @@ docker_logged_in() {
   return 1
 }
 
+# npm_in DIR ARGS… — run npm with DIR as the working directory.
+#
+# NOT `npm --prefix DIR`. That flag is honoured by `install` and `run-script` and IGNORED by `pack`
+# and `publish`, which operate on the current directory regardless — so the same flag silently means
+# two different things depending on the subcommand, and the release got all the way through
+# installing, building and bumping the version before dying on:
+#
+#   npm error path /home/user18/projects/go-oikumenea/package.json
+#   npm error enoent Could not read package.json
+#
+# A cd cannot mean two things.
+npm_in() {
+  local dir="$1"; shift
+  ( cd "$dir" && npm "$@" )
+}
+
 # ── the contract gate ───────────────────────────────────────────────────────────────────────────
 # Both SDKs are GENERATED from api/*.conjure.yml (D-ClientSDK / D-Conjure). Publishing one whose
 # committed sources no longer match the contract ships wrong types to every consumer, and it is
@@ -409,7 +425,7 @@ cmd_ts_sdk() {
     # fix it. Publishing an untraceable version is worse than a failed release.
     if git symbolic-ref -q HEAD >/dev/null; then
       say "setting $pkg_dir/package.json version: $current -> $version"
-      run npm --prefix "$pkg_dir" version "$version" --no-git-tag-version --allow-same-version
+      run npm_in "$pkg_dir" version "$version" --no-git-tag-version --allow-same-version
       run git add "$pkg_dir/package.json"
       [[ -f "$pkg_dir/package-lock.json" ]] && run git add "$pkg_dir/package-lock.json"
       run git commit -m "chore(sdk): oikumenea-client $version"
@@ -419,8 +435,8 @@ cmd_ts_sdk() {
   fi
 
   say "building the package…"
-  run npm --prefix "$pkg_dir" ci
-  run npm --prefix "$pkg_dir" run build
+  run npm_in "$pkg_dir" ci
+  run npm_in "$pkg_dir" run build
 
   local tag="${prefix}${version}"
 
@@ -431,7 +447,7 @@ cmd_ts_sdk() {
     if npm view "${NPM_PACKAGE}@${version}" version >/dev/null 2>&1; then
       say "${NPM_PACKAGE}@${version} is already on npm — nothing to publish."
     else
-      run npm --prefix "$pkg_dir" publish --access public
+      run npm_in "$pkg_dir" publish --access public
     fi
     ensure_tag "$tag" "TypeScript client SDK $version"
     if ! git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1; then
@@ -440,7 +456,7 @@ cmd_ts_sdk() {
     fi
     say "released: npm i ${NPM_PACKAGE}@${version}"
   else
-    run npm --prefix "$pkg_dir" pack --dry-run
+    run npm_in "$pkg_dir" pack --dry-run
     say "not published (no --push). The pack listing above is exactly what would go to npm."
   fi
 }
