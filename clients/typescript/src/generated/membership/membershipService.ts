@@ -55,7 +55,7 @@ export interface IMembershipService {
      * guard in `internal/platform/transport`.
      *
      */
-    membershipStats(facets?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipStats>;
+    membershipStats(facets?: string | null, org?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipStats>;
     /**
      * List memberships across every unit the caller may read, token-paginated, narrowed by the
      * membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
@@ -71,7 +71,7 @@ export interface IMembershipService {
      * widen what the caller may see: filtering can only narrow the visible set.
      *
      */
-    listMemberships(pageSize?: number | null, pageToken?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipPage>;
+    listMemberships(pageSize?: number | null, pageToken?: string | null, org?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipPage>;
     /** A person's active memberships across units, token-paginated. */
     listPersonMemberships(personId: string, pageSize?: number | null, pageToken?: string | null): Promise<IMembershipPage>;
 }
@@ -262,7 +262,7 @@ export class MembershipService implements IMembershipService {
      * guard in `internal/platform/transport`.
      *
      */
-    public membershipStats(facets?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipStats> {
+    public membershipStats(facets?: string | null, org?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipStats> {
         return this.bridge.call<IMembershipStats>(
             "MembershipService",
             "membershipStats",
@@ -272,6 +272,7 @@ export class MembershipService implements IMembershipService {
             __undefined,
             {
                 "facets": facets,
+                "org": org,
                 "unitId": unitId,
                 "personId": personId,
                 "positionId": positionId,
@@ -300,7 +301,7 @@ export class MembershipService implements IMembershipService {
      * widen what the caller may see: filtering can only narrow the visible set.
      *
      */
-    public listMemberships(pageSize?: number | null, pageToken?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipPage> {
+    public listMemberships(pageSize?: number | null, pageToken?: string | null, org?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipPage> {
         return this.bridge.call<IMembershipPage>(
             "MembershipService",
             "listMemberships",
@@ -311,6 +312,7 @@ export class MembershipService implements IMembershipService {
             {
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+                "org": org,
                 "unitId": unitId,
                 "personId": personId,
                 "positionId": positionId,

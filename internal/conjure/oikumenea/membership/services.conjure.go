@@ -53,7 +53,7 @@ type MembershipServiceClient interface {
 	   rejects a literal path segment that is a sibling of `{membershipId}` — see the route-conflict
 	   guard in `internal/platform/transport`.
 	*/
-	MembershipStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error)
+	MembershipStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error)
 	/*
 	   List memberships across every unit the caller may read, token-paginated, narrowed by the
 	   membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
@@ -68,7 +68,7 @@ type MembershipServiceClient interface {
 	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
 	   widen what the caller may see: filtering can only narrow the visible set.
 	*/
-	ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
+	ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
 	// A person's active memberships across units, token-paginated.
 	ListPersonMemberships(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
 }
@@ -258,7 +258,7 @@ func (c *membershipServiceClient) ListMembers(ctx context.Context, authHeader be
 	return *returnVal, nil
 }
 
-func (c *membershipServiceClient) MembershipStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error) {
+func (c *membershipServiceClient) MembershipStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error) {
 	var returnVal *MembershipStats
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("MembershipStats"))
@@ -267,6 +267,9 @@ func (c *membershipServiceClient) MembershipStats(ctx context.Context, authHeade
 	queryParams := make(url.Values)
 	if facetsArg != nil {
 		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if orgArg != nil {
+		queryParams.Set("org", fmt.Sprint(*orgArg))
 	}
 	if unitIdArg != nil {
 		queryParams.Set("unitId", fmt.Sprint(*unitIdArg))
@@ -298,7 +301,7 @@ func (c *membershipServiceClient) MembershipStats(ctx context.Context, authHeade
 	return *returnVal, nil
 }
 
-func (c *membershipServiceClient) ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
+func (c *membershipServiceClient) ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
 	var returnVal *MembershipPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMemberships"))
@@ -310,6 +313,9 @@ func (c *membershipServiceClient) ListMemberships(ctx context.Context, authHeade
 	}
 	if pageTokenArg != nil {
 		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	if orgArg != nil {
+		queryParams.Set("org", fmt.Sprint(*orgArg))
 	}
 	if unitIdArg != nil {
 		queryParams.Set("unitId", fmt.Sprint(*unitIdArg))
@@ -406,7 +412,7 @@ type MembershipServiceClientWithAuth interface {
 	   rejects a literal path segment that is a sibling of `{membershipId}` — see the route-conflict
 	   guard in `internal/platform/transport`.
 	*/
-	MembershipStats(ctx context.Context, facetsArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error)
+	MembershipStats(ctx context.Context, facetsArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error)
 	/*
 	   List memberships across every unit the caller may read, token-paginated, narrowed by the
 	   membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
@@ -421,7 +427,7 @@ type MembershipServiceClientWithAuth interface {
 	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
 	   widen what the caller may see: filtering can only narrow the visible set.
 	*/
-	ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
+	ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
 	// A person's active memberships across units, token-paginated.
 	ListPersonMemberships(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
 }
@@ -471,12 +477,12 @@ func (c *membershipServiceClientWithAuth) ListMembers(ctx context.Context, unitI
 	return c.client.ListMembers(ctx, c.authHeader, unitIdArg, pageSizeArg, pageTokenArg)
 }
 
-func (c *membershipServiceClientWithAuth) MembershipStats(ctx context.Context, facetsArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error) {
-	return c.client.MembershipStats(ctx, c.authHeader, facetsArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
+func (c *membershipServiceClientWithAuth) MembershipStats(ctx context.Context, facetsArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error) {
+	return c.client.MembershipStats(ctx, c.authHeader, facetsArg, orgArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 }
 
-func (c *membershipServiceClientWithAuth) ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
-	return c.client.ListMemberships(ctx, c.authHeader, pageSizeArg, pageTokenArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
+func (c *membershipServiceClientWithAuth) ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
+	return c.client.ListMemberships(ctx, c.authHeader, pageSizeArg, pageTokenArg, orgArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 }
 
 func (c *membershipServiceClientWithAuth) ListPersonMemberships(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error) {
@@ -564,20 +570,20 @@ func (c *membershipServiceClientWithTokenProvider) ListMembers(ctx context.Conte
 	return c.client.ListMembers(ctx, bearertoken.Token(token), unitIdArg, pageSizeArg, pageTokenArg)
 }
 
-func (c *membershipServiceClientWithTokenProvider) MembershipStats(ctx context.Context, facetsArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error) {
+func (c *membershipServiceClientWithTokenProvider) MembershipStats(ctx context.Context, facetsArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(MembershipStats), err
 	}
-	return c.client.MembershipStats(ctx, bearertoken.Token(token), facetsArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
+	return c.client.MembershipStats(ctx, bearertoken.Token(token), facetsArg, orgArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 }
 
-func (c *membershipServiceClientWithTokenProvider) ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
+func (c *membershipServiceClientWithTokenProvider) ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(MembershipPage), err
 	}
-	return c.client.ListMemberships(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
+	return c.client.ListMemberships(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg, orgArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 }
 
 func (c *membershipServiceClientWithTokenProvider) ListPersonMemberships(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error) {

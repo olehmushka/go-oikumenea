@@ -164,6 +164,56 @@ So `ClassWindow` carries one rule and one restriction. It **ships on the stats e
 been bucketed. An enum or a RID window is a facet; a continuum has no chart order, and that is the
 whole reason it is not one.
 
+### The first facets a caller may not read (M59)
+
+Rule 2 — "a facet above `pii:basic` inherits its field's own read code, and a caller without it gets
+the facet **omitted**" — has been in D-ObjectFacets since M56 and had **never once run**. Every facet
+in the catalog was `pii:none`/`pii:basic` with an empty `ReadPermission`, so `pkg/stats`' omission
+branch and the console's absent-is-not-empty branch were exercised only by construction. Two facets
+carry a code now, and reaching them settled two questions the rule had not had to answer.
+
+**A facet inherits the code of the SURFACE it reads, not the tier of the column it names.** Rule 2's
+mandatory arm keys on the `pii:` tier, and that is necessary without being sufficient.
+`vehicle.registrationCountry` groups `vehicle_registrations.country_id` — a `pii:none` column, so no
+guard asked for anything — while `ListRegistrations` and `ListPersonVehicles` require
+`vehicle.registration.read` from a base role of their own. A caller with plain `vehicle.read` could
+therefore group the whole fleet by registration country and filter the list by it, deriving one value
+at a time exactly what those endpoints refuse to return. The tier answers *how sensitive is this
+value*; a cross-table facet also discloses a **relationship**, and a relationship has its own code
+(D-LinkPermissions). So the shipped-since-M58 facet was retrofitted with one, `account.holderKind` was
+born with one, and a guard now holds every facet whose `Table` is a separately-gated surface to
+carrying a code.
+
+**Filtering by a gated facet is REFUSED, not omitted — and the asymmetry is the point.** The stats
+side omits; the list side had never been asked. Of the three possible behaviours, honouring the filter
+makes the endpoint an oracle over an attribute the caller may not read (binary-search the values and
+you have recovered the column), and ignoring it returns rows the caller asked to exclude with nothing
+in the response saying so — a filter that fails OPEN. Refusing with a 403 that names the code
+discloses nothing the caller did not already supply. A 403 on `/stats` would leak the same bit the
+omission hides, because a `facets=` list names a DIMENSION; a filter names a VALUE, and having named
+it the caller learns nothing from being refused.
+
+`ObjectType.FilterReadCodes(supplied)` decides which codes a request needs from the args it actually
+carried — pure and catalog-driven, so a newly gated facet is covered by declaration alone — and each
+module's existing PEP produces its own 403. An **absent** arg gates nothing: a caller without
+`finance.holder.read` still lists and pages accounts normally, and simply cannot ask about holders.
+
+### A chart drawn from another module (M59)
+
+"One endpoint per module, so a whole dashboard is one round-trip" is the shape and is no longer an
+absolute. One catalogued component was never a distribution of its own type: the unit dashboard's
+**headcount by unit** counts memberships. `ChartDef.source` names the endpoint to ask, the registry
+type whose facets label the buckets and whose LIST the segments link to, and `carry` — an
+**allowlist** of the host dashboard's params that travel with the request.
+
+The allowlist is the load-bearing part. Forwarding the host's whole filter set would send the source
+params it does not ship, which it would ignore — leaving the chart counting a **wider** set than the
+dashboard around it while both numbers looked reasonable, the failure this vocabulary exists to
+prevent. So the build-time guard holds every carried param to being a real arg of BOTH endpoints, and
+the chart's facet to being declared by the SOURCE type rather than the host. The segments then leave
+the dashboard: a unit bar links to the membership list filtered by that unit and org, because the rows
+behind the number are memberships.
+
 ---
 
 ## Catalog
@@ -238,11 +288,21 @@ scalar `level` matches one level, a band is two). The equality is asserted, not 
 filter returns. ②
 **Kind mix** donut. ③ **Public/shadow split** — a two-segment bar, not a donut: the shadow count is a
 governance number an operator reads exactly, so the label carries the count. ④ **State tiles**. ⑤
-~~**Headcount by unit**~~ — **NOT BUILT (M57 ticket 3), and it is a contract gap rather than a
-console omission.** The unit dashboard is org-scoped (`org` is a *required* filter) but
-`membershipStats` ships no `org` arg, and `membership.unitId` is an exact-match facet — so no
-membership query can be narrowed to an organization, and the chart would have shown units from other
-orgs beneath an org-filtered dashboard. Recorded in [Open seams](#open-seams) with the two routes out.
+**Headcount by unit** — **BUILT (M59)**, catalogued at M57 and left undrawn for two milestones. The
+blocker was real and was a contract gap: the unit dashboard is org-scoped (`org` is a *required*
+filter) but `membershipStats` shipped no `org` arg, so the chart would have shown units from other
+orgs beneath an org-filtered dashboard. M59 ships that arg as a facet on `link__member_of` and draws
+the chart from `membershipStats` through `ChartDef.source` — the one chart on any dashboard sourced
+from another module's aggregate. Its bars link to the MEMBERSHIP list, not the unit list, because the
+rows behind the number are memberships.
+>
+> The seam's other half turned out to be **already false**: it recorded this as needing "a facet whose
+> Table is not the listed table, which the catalog does not do today", and the catalog had done it
+> since M56 — `person.rankId` (`person_ranks`), `person.unitId` (`membership_memberships`) and
+> `person.hasAccount` (`account_accounts`) are all cross-table, and `Facet.Table` says outright that it
+> "is NOT always the list endpoint's own table". What was actually missing was the arg and the console
+> arm, both smaller than the seam implied. Re-read the code before believing a seam that says
+> something cannot be done.
 
 #### `membership` (token `link__member_of`) — [membership](../modules/membership.md) · `membership_memberships`
 
@@ -259,6 +319,7 @@ orgs beneath an org-filtered dashboard. Recorded in [Open seams](#open-seams) wi
 | Facet | Kind | Source | Notes |
 |---|---|---|---|
 | `unitId` | ref | `unit_id` | EXACT match, **not** subtree-expanding — the opposite of `person.unitId`. A membership names the one unit the person belongs to; expanding would double-count a person against every ancestor and make the M57 headcount-by-unit chart lie |
+| `org` | ref | `authz_unit_org.org_id` | **M59.** The organization of the membership's UNIT — the membership row carries no `org_id`. It PARTITIONS despite living on another table (one membership → one unit → one org). The table is `authz_unit_org`, the RLS-**exempt** trigger-maintained projection M55 built, and **not** `tenant_units`: that table is RLS-FORCED, so a semi-join into it from this module would be trimmed by a policy written for unit reads and would answer a confident zero on an unpinned connection. It exists so that the org-scoped unit dashboard can draw a membership chart without mixing organizations |
 | `personId` | ref | `person_id` | |
 | `positionId` | ref | `position_id` | nullable — membership without a billet is legal |
 | `status` | enum | `status` | `active`/`ended` |
@@ -422,7 +483,7 @@ It is the repetition ticket 2 was supposed to be — see the review entry for wh
 | `color` | ref → color | `color_id` | → `platform_colors` (domain='vehicle'), a **hard FK since M42/D-Color**. See the correction below. Nullable |
 | `status` | enum | `status` | `active` / `scrapped` / `exported` |
 | `manufactureDate` | date-range | `manufacture_date` | A calendar **DATE**, not a timestamptz — so the month bucket inverse sends bare `YYYY-MM-DD` bounds and needs **no** RFC-3339 widening, the opposite of `external_organization.asOf`. Nullable ⇒ mandatory `(unknown)` |
-| `registrationCountry` | ref → country | `vehicle_registrations.country_id` | **ACTIVE registration only**, and that choice is what makes it partition — see below. `(unknown)` = never registered or deregistered |
+| `registrationCountry` | ref → country | `vehicle_registrations.country_id` | **ACTIVE registration only**, and that choice is what makes it partition — see below. `(unknown)` = never registered or deregistered. **GATED since M59** on `vehicle.registration.read` — see [The first facets a caller may not read](#the-first-facets-a-caller-may-not-read-m59) |
 
 **Components.** ① **Fleet status** tiles, `scrapped` toned red. ② **Type mix** bar. ③ **Top brands**
 bar. ④ **Colours** bar, **painted the colours it names**. ⑤ **Fleet age** histogram by month of
@@ -461,6 +522,7 @@ The first module to bring **two object types at once**, and `card` is the first 
 | `account.currency` | code | `currency` | ISO 4217. `KindCode`, not enum: the column carries **no CHECK**, so the value set is open — the `audit.action` case. The key is its own label. Nullable |
 | `account.accountTypeId` | ref → account_type | `account_type_id` | Instance-extensible catalog. Nullable |
 | `account.status` | enum | `status` | `active` / `closed` / `frozen`, `frozen` toned red |
+| `account.holderKind` | enum | `finance_account_holders.holder_kind` | **M59, and the first facet BORN gated** (`finance.holder.read`, the code `listAccountHolders` already requires from its own base role). `person`/`company` — the kind of the account's ACTIVE PRIMARY holder, of which `finance_account_holders_primary_active` (a partial UNIQUE on `account_id WHERE role='primary' AND effective_to IS NULL`) admits at most one, which is what makes it partition instead of double-counting a jointly held account. `(unknown)` = no active primary holder. See [The first facets a caller may not read](#the-first-facets-a-caller-may-not-read-m59) |
 | `card.networkId` | ref → card_network | `network_id` | Instance-extensible catalog. Nullable |
 | `card.cardType` | enum | `card_type` | `debit` / `credit`. Keyed `cardType`, not `type`: beside `networkId` a bare `type` reads as the card's network |
 | `card.status` | enum | `status` | `active` / `blocked` / `expired` |
@@ -904,10 +966,18 @@ aggregation rule exists to prevent:
 | Legal record offence detail | `person_legal_records` | `pii:special` (Art. 10) |
 | IBAN / PAN | `finance_accounts`, `finance_cards` | PCI-DSS CDE |
 
-Plaintext discriminators that sit *beside* those encrypted values (`person_health_records.kind`,
-`person_legal_records.kind`/`disposition`, `finance_cards.card_type`) **may** be faceted, but only
-under rule 2 — each inherits its surface's own read code (`person.health.read`,
-`person.legal-record.read`, `finance.read`), so the facet is simply absent for a caller without it.
+Plaintext discriminators that sit *beside* an encrypted value **may** be faceted under rule 2 — each
+inherits its surface's own read code, so the facet is simply absent for a caller without it.
+
+> **Corrected (M59): the three columns this paragraph used to name as candidates are not all
+> eligible.** `person_health_records.kind` and `person_legal_records.kind`/`disposition` are
+> `COMMENT`-classified **`pii:special`** in the DDL, so rule 1 forbids a facet over them outright and
+> `plaintext_test.go` would refuse one — they were never available to be rule 2's example. (Whether
+> that classification is right for a plaintext discriminator is a separate question, and changing it
+> would be a D-DataScope argument, not a facet one.) `finance_cards.card_type` is `pii:none` and IS
+> faceted, but gated by nothing beyond `finance.read`, which is the endpoint's own code — no rule-2
+> behaviour there either. The eligible shape turned out to be a different one: a facet over a
+> separately **gated relationship**, whatever the column's tier (see below).
 `person_persons.attributes` is a free-form `pii:special` bag and is **never** faceted: the boundary
 there is policy, not a code split (D-DataScope's residual).
 
@@ -1089,14 +1159,18 @@ M58 ticket 6 adds five guard files, because two of its properties live where no 
   the same request state plus one filter value (the age pyramid is two). That works because a wing is
   a real, reachable list — it does not generalize to a high-cardinality ref, where N is the
   cardinality.
-- **A dashboard chart that needs another module's stats.** `unit` ⑤ headcount-by-unit is the only
-  catalogued component of the M57 tranche that was NOT built, because it cannot be drawn honestly: the
-  unit dashboard is org-scoped and `membershipStats` has no `org` arg, so the chart would mix
-  organizations. Two routes out, both additive: declare an `org` facet on `link__member_of` (the
-  membership row has no `org_id`, so it would be a join through `tenant_units` — a facet whose Table
-  is not the listed table, which the catalog does not do today), or draw it from `person`'s stats
-  filtered by the org's root unit, since `person.unitId` IS subtree-expanding — which undercounts on a
-  multi-root org and so needs the facet anyway. M58.
+- ~~**A dashboard chart that needs another module's stats.**~~ **CLOSED (M59).** The first of the two
+  routes was taken — an `org` facet on `link__member_of` — plus the console arm the seam did not
+  mention (`ChartDef.source`), and the chart is drawn. Two corrections to what this entry said. The
+  facet does **not** join `tenant_units`: that table is RLS-FORCED, so the predicate reads
+  `authz_unit_org`, the RLS-exempt trigger-maintained projection M55 built for exactly this question —
+  a `tenant_units` semi-join would have answered a confident zero on an unpinned connection (the
+  ticket-7 trap). And "a facet whose Table is not the listed table, which the catalog does not do
+  today" was **already false when written**: `person.rankId`, `person.unitId` and `person.hasAccount`
+  have all been cross-table since M56, and `Facet.Table`'s own doc comment says it "is NOT always the
+  list endpoint's own table". The blocker was never the kernel; it was one missing arg and one missing
+  console arm. The second route stays rejected for the reason recorded: drawing it from `person`
+  filtered by the org's root unit undercounts on a multi-root org.
 - ~~**A band is only click-through when the contract ships bounds.**~~ **CLOSED (M57 ticket 3
   follow-up).** `unit.level`'s bars were inert because the arg was a scalar exact match and the
   buckets are pairs of levels — the case `levelMin`/`levelMax` had been deferred against ("additive
@@ -1112,11 +1186,15 @@ M58 ticket 6 adds five guard files, because two of its properties live where no 
   its visibility is the RLS policy — the query carries no subject at all. What replaces the parity
   guard there is the source guard: unpinned, the same statement answers a confident zero. If a future
   type's policy ever needs an app-layer predicate as WELL, the pair comes back.
-- **D-ObjectFacets rule 2 has no live case yet.** Every facet in the catalog is `pii:none`/`pii:basic`
-  with an empty `ReadPermission`, so no caller has ever seen a facet omitted. The console's
-  absent-is-not-empty branch (an omitted facet draws NO card, never a zeroed one) is therefore
-  exercised only by construction; the first gated facet — `person_health_records.kind` and its
-  siblings, M58 — is what will exercise it for real.
+- ~~**D-ObjectFacets rule 2 has no live case yet.**~~ **CLOSED (M59), and not where this entry
+  expected.** The nominated candidate could never have worked: `person_health_records.kind` is
+  `pii:special` in the DDL, so rule **1** forbids a facet over it and the plaintext guard would refuse
+  one. The live cases turned out to be a different shape — a facet over a separately **gated
+  relationship** whatever the column's own tier: `vehicle.registrationCountry`
+  (`vehicle.registration.read`) and `account.holderKind` (`finance.holder.read`). Reaching them also
+  forced the rule's missing half, the LIST side: a gated facet's filter arg is REFUSED rather than
+  omitted, because a filter names a VALUE where `facets=` names a dimension. See
+  [The first facets a caller may not read](#the-first-facets-a-caller-may-not-read-m59).
 - **Time series over history.** Every count is *as of now*. "Headcount over the last 12 months" needs
   the tier-(a) `valid_from`/`valid_to` link history (D-Temporal) folded into the aggregate, which is
   the same seam R-31's re-scope left open — not attempted here.

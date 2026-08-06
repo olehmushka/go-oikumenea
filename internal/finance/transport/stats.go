@@ -37,15 +37,22 @@ func (s FinanceService) AccountStats(
 	currency *string,
 	accountTypeID *string,
 	status *string,
+	holderKind *string,
 ) (financeapi.AccountStats, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+		return financeapi.AccountStats{}, err
+	}
+	// The FILTER side of rule 2 applies to the dashboard too: `facets=holderKind` without the code is
+	// silently omitted, but holderKind=person as a FILTER narrows the total a caller may not narrow it
+	// by, so it is refused on both surfaces identically.
+	if err := s.requireFilterCodes(ctx, token, "account", map[string]bool{"holderKind": holderKind != nil}); err != nil {
 		return financeapi.AccountStats{}, err
 	}
 	sel, err := selectFinanceFacets(ctx, s, token, "account", strOr(facets))
 	if err != nil {
 		return financeapi.AccountStats{}, err
 	}
-	res, err := s.app.AccountStats(ctx, accountFilter(institutionID, currency, accountTypeID, status), sel)
+	res, err := s.app.AccountStats(ctx, accountFilter(institutionID, currency, accountTypeID, status, holderKind), sel)
 	if err != nil {
 		return financeapi.AccountStats{}, s.mapError(ctx, err)
 	}
@@ -58,13 +65,31 @@ func (s FinanceService) AccountStats(
 // accountFilter is the ONE place a request's account facet args become the domain filter, shared by
 // the list and the stats endpoint: the two must read the same arguments the same way, or the same URL
 // means two different things depending on which surface renders it.
-func accountFilter(institutionID, currency, accountTypeID, status *string) domain.AccountFilter {
+func accountFilter(institutionID, currency, accountTypeID, status, holderKind *string) domain.AccountFilter {
 	return domain.AccountFilter{
 		InstitutionID: institutionID,
 		Currency:      currency,
 		AccountTypeID: accountTypeID,
 		Status:        status,
+		HolderKind:    holderKind,
 	}
+}
+
+// requireFilterCodes enforces the LIST side of D-ObjectFacets rule 2 (M59): a gated facet's filter arg
+// may be USED only by a caller holding the facet's own read code. facet.FilterReadCodes decides WHICH
+// codes a request needs — pure, catalog-driven, so a newly gated facet is covered the moment it is
+// declared — and the existing PEP produces the module's own 403. `supplied` is keyed by facet Key.
+func (s FinanceService) requireFilterCodes(ctx context.Context, token bearertoken.Token, objectType string, supplied map[string]bool) error {
+	o, ok := facet.Default.Get(objectType)
+	if !ok {
+		return nil // unreachable past the boot-time MustBeBound; a missing catalog gates nothing new
+	}
+	for _, code := range o.FilterReadCodes(supplied) {
+		if err := s.pep.RequireAnywhere(ctx, token, code); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ============================ cards ============================

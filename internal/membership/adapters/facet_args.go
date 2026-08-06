@@ -87,6 +87,7 @@ func facetTextEmptyNull(s string) pgtype.Text {
 // exactly the drift the shared file avoids.
 type membershipFacetArgsT struct {
 	unitID              pgtype.Text
+	orgID               pgtype.Text
 	personID            pgtype.Text
 	positionID          pgtype.Text
 	status              pgtype.Text
@@ -99,6 +100,7 @@ type membershipFacetArgsT struct {
 func membershipFacetArgs(f domain.MembershipFilter) membershipFacetArgsT {
 	return membershipFacetArgsT{
 		unitID:              facetText(f.UnitID),
+		orgID:               facetText(f.OrgID),
 		personID:            facetText(f.PersonID),
 		positionID:          facetText(f.PositionID),
 		status:              facetText(f.Status),

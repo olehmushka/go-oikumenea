@@ -192,13 +192,13 @@ func (s Service) ListMembers(ctx context.Context, token bearertoken.Token, unitI
 // the per-unit roster, which gates on `membership.read` AT a named unit, this one has no unit to
 // gate on: it requires the code ANYWHERE and then folds the caller's readable reach into the SQL, so
 // the page is cut after the intersection (the ListPersons dispatch, D-PersonReadScope).
-func (s Service) ListMemberships(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string, unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore *string) (membershipapi.MembershipPage, error) {
+func (s Service) ListMemberships(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string, orgID, unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore *string) (membershipapi.MembershipPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermMembershipRead)); err != nil {
 		return membershipapi.MembershipPage{}, err
 	}
 	// One filter for the whole vocabulary, built once and passed down BOTH branches of the dispatch
 	// below — the two paths must never see different filters.
-	filter, err := membershipFilter(unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore)
+	filter, err := membershipFilter(orgID, unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore)
 	if err != nil {
 		return membershipapi.MembershipPage{}, s.mapError(ctx, err, errCtx{})
 	}

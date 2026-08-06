@@ -152,6 +152,9 @@ SELECT * FROM oikumenea.membership_memberships m
 WHERE m.deleted_at IS NULL
   AND (@after = '' OR m.id::text > @after)
   AND (sqlc.narg('unit_id')::uuid IS NULL OR m.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('org_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = sqlc.narg('org_id')::uuid))
   AND (sqlc.narg('person_id')::uuid IS NULL OR m.person_id = sqlc.narg('person_id')::uuid)
   AND (sqlc.narg('position_id')::uuid IS NULL OR m.position_id = sqlc.narg('position_id')::uuid)
   AND (sqlc.narg('status')::text IS NULL OR m.status = sqlc.narg('status')::text)
@@ -170,6 +173,9 @@ SELECT * FROM oikumenea.membership_memberships m
 WHERE m.deleted_at IS NULL
   AND (@after = '' OR m.id::text > @after)
   AND (sqlc.narg('unit_id')::uuid IS NULL OR m.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('org_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = sqlc.narg('org_id')::uuid))
   AND (sqlc.narg('person_id')::uuid IS NULL OR m.person_id = sqlc.narg('person_id')::uuid)
   AND (sqlc.narg('position_id')::uuid IS NULL OR m.position_id = sqlc.narg('position_id')::uuid)
   AND (sqlc.narg('status')::text IS NULL OR m.status = sqlc.narg('status')::text)
@@ -201,6 +207,9 @@ SELECT * FROM oikumenea.membership_memberships m
 WHERE m.deleted_at IS NULL
   AND (@after = '' OR m.id::text > @after)
   AND (sqlc.narg('unit_id')::uuid IS NULL OR m.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('org_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = sqlc.narg('org_id')::uuid))
   AND (sqlc.narg('person_id')::uuid IS NULL OR m.person_id = sqlc.narg('person_id')::uuid)
   AND (sqlc.narg('position_id')::uuid IS NULL OR m.position_id = sqlc.narg('position_id')::uuid)
   AND (sqlc.narg('status')::text IS NULL OR m.status = sqlc.narg('status')::text)
@@ -809,6 +818,9 @@ WITH cand AS MATERIALIZED (
   FROM oikumenea.membership_memberships m
   WHERE m.deleted_at IS NULL
   AND (sqlc.narg('unit_id')::uuid IS NULL OR m.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('org_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = sqlc.narg('org_id')::uuid))
   AND (sqlc.narg('person_id')::uuid IS NULL OR m.person_id = sqlc.narg('person_id')::uuid)
   AND (sqlc.narg('position_id')::uuid IS NULL OR m.position_id = sqlc.narg('position_id')::uuid)
   AND (sqlc.narg('status')::text IS NULL OR m.status = sqlc.narg('status')::text)
@@ -829,6 +841,27 @@ FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k)
       FROM (SELECT c.unit_id::text AS k, count(*) AS n
             FROM cand c
             WHERE sqlc.arg('want_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+-- org: the one facet whose value is NOT a column of the candidate row. The candidate carries unit_id;
+-- the organization is resolved through authz_unit_org, the RLS-EXEMPT trigger-maintained projection
+-- (migration 0011) rather than tenant_units — a semi-join into that RLS-FORCED table would be trimmed
+-- by a policy written for unit reads and would answer a confident zero on an unpinned connection.
+-- LEFT JOIN, not INNER: a candidate whose projection row were somehow missing must land in (unknown)
+-- rather than vanish, because a distribution that does not sum to totalCount is the one thing a chart
+-- may never do. The projection is complete by construction (BEFORE INSERT trigger + backfill + FK), so
+-- the bucket is expected to stay empty; it exists so that an empty bucket is what a gap LOOKS like.
+SELECT 'org'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT uo.org_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.authz_unit_org uo ON uo.unit_id = c.unit_id
+            WHERE sqlc.arg('want_org')::boolean
             GROUP BY 1) g) t
 GROUP BY 2
 UNION ALL
@@ -874,6 +907,9 @@ WITH cand AS MATERIALIZED (
   FROM oikumenea.membership_memberships m
   WHERE m.deleted_at IS NULL
   AND (sqlc.narg('unit_id')::uuid IS NULL OR m.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('org_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = sqlc.narg('org_id')::uuid))
   AND (sqlc.narg('person_id')::uuid IS NULL OR m.person_id = sqlc.narg('person_id')::uuid)
   AND (sqlc.narg('position_id')::uuid IS NULL OR m.position_id = sqlc.narg('position_id')::uuid)
   AND (sqlc.narg('status')::text IS NULL OR m.status = sqlc.narg('status')::text)
@@ -895,6 +931,27 @@ FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k)
       FROM (SELECT c.unit_id::text AS k, count(*) AS n
             FROM cand c
             WHERE sqlc.arg('want_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+-- org: the one facet whose value is NOT a column of the candidate row. The candidate carries unit_id;
+-- the organization is resolved through authz_unit_org, the RLS-EXEMPT trigger-maintained projection
+-- (migration 0011) rather than tenant_units — a semi-join into that RLS-FORCED table would be trimmed
+-- by a policy written for unit reads and would answer a confident zero on an unpinned connection.
+-- LEFT JOIN, not INNER: a candidate whose projection row were somehow missing must land in (unknown)
+-- rather than vanish, because a distribution that does not sum to totalCount is the one thing a chart
+-- may never do. The projection is complete by construction (BEFORE INSERT trigger + backfill + FK), so
+-- the bucket is expected to stay empty; it exists so that an empty bucket is what a gap LOOKS like.
+SELECT 'org'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT uo.org_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.authz_unit_org uo ON uo.unit_id = c.unit_id
+            WHERE sqlc.arg('want_org')::boolean
             GROUP BY 1) g) t
 GROUP BY 2
 UNION ALL

@@ -56,7 +56,7 @@ type MembershipService interface {
 	   rejects a literal path segment that is a sibling of `{membershipId}` — see the route-conflict
 	   guard in `internal/platform/transport`.
 	*/
-	MembershipStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error)
+	MembershipStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error)
 	/*
 	   List memberships across every unit the caller may read, token-paginated, narrowed by the
 	   membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
@@ -71,7 +71,7 @@ type MembershipService interface {
 	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
 	   widen what the caller may see: filtering can only narrow the visible set.
 	*/
-	ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
+	ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, orgArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
 	// A person's active memberships across units, token-paginated.
 	ListPersonMemberships(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
 }
@@ -368,6 +368,11 @@ func (m *membershipServiceHandler) HandleMembershipStats(rw http.ResponseWriter,
 		facetsArgInternal := facetsArgStr
 		facetsArg = &facetsArgInternal
 	}
+	var orgArg *string
+	if orgArgStr := req.URL.Query().Get("org"); orgArgStr != "" {
+		orgArgInternal := orgArgStr
+		orgArg = &orgArgInternal
+	}
 	var unitIdArg *string
 	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
 		unitIdArgInternal := unitIdArgStr
@@ -398,7 +403,7 @@ func (m *membershipServiceHandler) HandleMembershipStats(rw http.ResponseWriter,
 		effectiveFromBeforeArgInternal := effectiveFromBeforeArgStr
 		effectiveFromBeforeArg = &effectiveFromBeforeArgInternal
 	}
-	respArg, err := m.impl.MembershipStats(req.Context(), bearertoken.Token(authHeader), facetsArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
+	respArg, err := m.impl.MembershipStats(req.Context(), bearertoken.Token(authHeader), facetsArg, orgArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 	if err != nil {
 		return err
 	}
@@ -424,6 +429,11 @@ func (m *membershipServiceHandler) HandleListMemberships(rw http.ResponseWriter,
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
+	var orgArg *string
+	if orgArgStr := req.URL.Query().Get("org"); orgArgStr != "" {
+		orgArgInternal := orgArgStr
+		orgArg = &orgArgInternal
+	}
 	var unitIdArg *string
 	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
 		unitIdArgInternal := unitIdArgStr
@@ -454,7 +464,7 @@ func (m *membershipServiceHandler) HandleListMemberships(rw http.ResponseWriter,
 		effectiveFromBeforeArgInternal := effectiveFromBeforeArgStr
 		effectiveFromBeforeArg = &effectiveFromBeforeArgInternal
 	}
-	respArg, err := m.impl.ListMemberships(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
+	respArg, err := m.impl.ListMemberships(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, orgArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 	if err != nil {
 		return err
 	}

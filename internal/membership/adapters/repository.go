@@ -204,6 +204,7 @@ func (r *Repository) ListMemberships(ctx context.Context, f domain.MembershipFil
 	rows, err := r.q.ListMemberships(ctx, membershipsql.ListMembershipsParams{
 		After:               after,
 		UnitID:              fa.unitID,
+		OrgID:               fa.orgID,
 		PersonID:            fa.personID,
 		PositionID:          fa.positionID,
 		Status:              fa.status,
@@ -233,6 +234,7 @@ func (r *Repository) ListMembershipsForSubject(ctx context.Context, subjectPerso
 			After:               after,
 			SubjectPersonID:     subjectPersonID,
 			UnitID:              fa.unitID,
+			OrgID:               fa.orgID,
 			PersonID:            fa.personID,
 			PositionID:          fa.positionID,
 			Status:              fa.status,
@@ -249,6 +251,7 @@ func (r *Repository) ListMembershipsForSubject(ctx context.Context, subjectPerso
 		After:               after,
 		SubjectPersonID:     subjectPersonID,
 		UnitID:              fa.unitID,
+		OrgID:               fa.orgID,
 		PersonID:            fa.personID,
 		PositionID:          fa.positionID,
 		Status:              fa.status,

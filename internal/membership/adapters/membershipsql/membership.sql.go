@@ -522,20 +522,24 @@ SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_fro
 WHERE m.deleted_at IS NULL
   AND ($1 = '' OR m.id::text > $1)
   AND ($2::uuid IS NULL OR m.unit_id = $2::uuid)
-  AND ($3::uuid IS NULL OR m.person_id = $3::uuid)
-  AND ($4::uuid IS NULL OR m.position_id = $4::uuid)
-  AND ($5::text IS NULL OR m.status = $5::text)
-  AND ($6::date IS NULL
-       OR m.effective_from >= $6::date)
+  AND ($3::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = $3::uuid))
+  AND ($4::uuid IS NULL OR m.person_id = $4::uuid)
+  AND ($5::uuid IS NULL OR m.position_id = $5::uuid)
+  AND ($6::text IS NULL OR m.status = $6::text)
   AND ($7::date IS NULL
-       OR m.effective_from < ($7::date + 1))
+       OR m.effective_from >= $7::date)
+  AND ($8::date IS NULL
+       OR m.effective_from < ($8::date + 1))
 ORDER BY m.id
-LIMIT $8
+LIMIT $9
 `
 
 type ListMembershipsParams struct {
 	After               interface{}
 	UnitID              pgtype.Text
+	OrgID               pgtype.Text
 	PersonID            pgtype.Text
 	PositionID          pgtype.Text
 	Status              pgtype.Text
@@ -568,6 +572,7 @@ func (q *Queries) ListMemberships(ctx context.Context, arg ListMembershipsParams
 	rows, err := q.db.Query(ctx, listMemberships,
 		arg.After,
 		arg.UnitID,
+		arg.OrgID,
 		arg.PersonID,
 		arg.PositionID,
 		arg.Status,
@@ -657,21 +662,25 @@ SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_fro
 WHERE m.deleted_at IS NULL
   AND ($1 = '' OR m.id::text > $1)
   AND ($2::uuid IS NULL OR m.unit_id = $2::uuid)
-  AND ($3::uuid IS NULL OR m.person_id = $3::uuid)
-  AND ($4::uuid IS NULL OR m.position_id = $4::uuid)
-  AND ($5::text IS NULL OR m.status = $5::text)
-  AND ($6::date IS NULL
-       OR m.effective_from >= $6::date)
+  AND ($3::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = $3::uuid))
+  AND ($4::uuid IS NULL OR m.person_id = $4::uuid)
+  AND ($5::uuid IS NULL OR m.position_id = $5::uuid)
+  AND ($6::text IS NULL OR m.status = $6::text)
   AND ($7::date IS NULL
-       OR m.effective_from < ($7::date + 1))
-  AND m.unit_id IN (SELECT oikumenea.authz_readable_units($8))
+       OR m.effective_from >= $7::date)
+  AND ($8::date IS NULL
+       OR m.effective_from < ($8::date + 1))
+  AND m.unit_id IN (SELECT oikumenea.authz_readable_units($9))
 ORDER BY m.id
-LIMIT $9
+LIMIT $10
 `
 
 type ListMembershipsForSubjectParams struct {
 	After               interface{}
 	UnitID              pgtype.Text
+	OrgID               pgtype.Text
 	PersonID            pgtype.Text
 	PositionID          pgtype.Text
 	Status              pgtype.Text
@@ -688,6 +697,7 @@ func (q *Queries) ListMembershipsForSubject(ctx context.Context, arg ListMembers
 	rows, err := q.db.Query(ctx, listMembershipsForSubject,
 		arg.After,
 		arg.UnitID,
+		arg.OrgID,
 		arg.PersonID,
 		arg.PositionID,
 		arg.Status,
@@ -731,21 +741,25 @@ SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_fro
 WHERE m.deleted_at IS NULL
   AND ($1 = '' OR m.id::text > $1)
   AND ($2::uuid IS NULL OR m.unit_id = $2::uuid)
-  AND ($3::uuid IS NULL OR m.person_id = $3::uuid)
-  AND ($4::uuid IS NULL OR m.position_id = $4::uuid)
-  AND ($5::text IS NULL OR m.status = $5::text)
-  AND ($6::date IS NULL
-       OR m.effective_from >= $6::date)
+  AND ($3::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = $3::uuid))
+  AND ($4::uuid IS NULL OR m.person_id = $4::uuid)
+  AND ($5::uuid IS NULL OR m.position_id = $5::uuid)
+  AND ($6::text IS NULL OR m.status = $6::text)
   AND ($7::date IS NULL
-       OR m.effective_from < ($7::date + 1))
-  AND oikumenea.authz_unit_readable_by(m.unit_id, $8)
+       OR m.effective_from >= $7::date)
+  AND ($8::date IS NULL
+       OR m.effective_from < ($8::date + 1))
+  AND oikumenea.authz_unit_readable_by(m.unit_id, $9)
 ORDER BY m.id
-LIMIT $9
+LIMIT $10
 `
 
 type ListMembershipsForSubjectDenseParams struct {
 	After               interface{}
 	UnitID              pgtype.Text
+	OrgID               pgtype.Text
 	PersonID            pgtype.Text
 	PositionID          pgtype.Text
 	Status              pgtype.Text
@@ -769,6 +783,7 @@ func (q *Queries) ListMembershipsForSubjectDense(ctx context.Context, arg ListMe
 	rows, err := q.db.Query(ctx, listMembershipsForSubjectDense,
 		arg.After,
 		arg.UnitID,
+		arg.OrgID,
 		arg.PersonID,
 		arg.PositionID,
 		arg.Status,
@@ -910,62 +925,79 @@ WITH cand AS MATERIALIZED (
   FROM oikumenea.membership_memberships m
   WHERE m.deleted_at IS NULL
   AND ($1::uuid IS NULL OR m.unit_id = $1::uuid)
-  AND ($2::uuid IS NULL OR m.person_id = $2::uuid)
-  AND ($3::uuid IS NULL OR m.position_id = $3::uuid)
-  AND ($4::text IS NULL OR m.status = $4::text)
-  AND ($5::date IS NULL
-       OR m.effective_from >= $5::date)
+  AND ($2::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = $2::uuid))
+  AND ($3::uuid IS NULL OR m.person_id = $3::uuid)
+  AND ($4::uuid IS NULL OR m.position_id = $4::uuid)
+  AND ($5::text IS NULL OR m.status = $5::text)
   AND ($6::date IS NULL
-       OR m.effective_from < ($6::date + 1))
+       OR m.effective_from >= $6::date)
+  AND ($7::date IS NULL
+       OR m.effective_from < ($7::date + 1))
 )
 SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
 FROM cand
 UNION ALL
 SELECT 'unitId'::text,
        CASE WHEN t.k IS NULL THEN '(unknown)'
-            WHEN t.rk <= $7::integer THEN t.k
+            WHEN t.rk <= $8::integer THEN t.k
             ELSE '(other)' END,
        sum(t.n)::bigint, NULL::bigint
 FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
       FROM (SELECT c.unit_id::text AS k, count(*) AS n
             FROM cand c
-            WHERE $8::boolean
+            WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'org'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT uo.org_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.authz_unit_org uo ON uo.unit_id = c.unit_id
+            WHERE $10::boolean
             GROUP BY 1) g) t
 GROUP BY 2
 UNION ALL
 SELECT 'personId'::text,
        CASE WHEN t.k IS NULL THEN '(unknown)'
-            WHEN t.rk <= $7::integer THEN t.k
+            WHEN t.rk <= $8::integer THEN t.k
             ELSE '(other)' END,
        sum(t.n)::bigint, NULL::bigint
 FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
       FROM (SELECT c.person_id::text AS k, count(*) AS n
             FROM cand c
-            WHERE $9::boolean
+            WHERE $11::boolean
             GROUP BY 1) g) t
 GROUP BY 2
 UNION ALL
 SELECT 'positionId'::text,
        CASE WHEN t.k IS NULL THEN '(unknown)'
-            WHEN t.rk <= $7::integer THEN t.k
+            WHEN t.rk <= $8::integer THEN t.k
             ELSE '(other)' END,
        sum(t.n)::bigint, NULL::bigint
 FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
       FROM (SELECT c.position_id::text AS k, count(*) AS n
             FROM cand c
-            WHERE $10::boolean
+            WHERE $12::boolean
             GROUP BY 1) g) t
 GROUP BY 2
 UNION ALL
 SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
-FROM cand c WHERE $11::boolean GROUP BY c.status
+FROM cand c WHERE $13::boolean GROUP BY c.status
 UNION ALL
 SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
-FROM cand c WHERE $12::boolean GROUP BY 2
+FROM cand c WHERE $14::boolean GROUP BY 2
 `
 
 type MembershipStatsParams struct {
 	UnitID              pgtype.Text
+	OrgID               pgtype.Text
 	PersonID            pgtype.Text
 	PositionID          pgtype.Text
 	Status              pgtype.Text
@@ -973,6 +1005,7 @@ type MembershipStatsParams struct {
 	EffectiveFromBefore pgtype.Date
 	TopN                int32
 	WantUnitID          bool
+	WantOrg             bool
 	WantPersonID        bool
 	WantPositionID      bool
 	WantStatus          bool
@@ -999,9 +1032,18 @@ type MembershipStatsRow struct {
 // unitId/personId/positionId are per-ROW attributes of the membership, so each of those distributions
 // partitions the candidate set exactly; positionId's (unknown) bucket is the memberships with no
 // billet, which is the vacancy signal this module exists to answer.
+// org: the one facet whose value is NOT a column of the candidate row. The candidate carries unit_id;
+// the organization is resolved through authz_unit_org, the RLS-EXEMPT trigger-maintained projection
+// (migration 0011) rather than tenant_units — a semi-join into that RLS-FORCED table would be trimmed
+// by a policy written for unit reads and would answer a confident zero on an unpinned connection.
+// LEFT JOIN, not INNER: a candidate whose projection row were somehow missing must land in (unknown)
+// rather than vanish, because a distribution that does not sum to totalCount is the one thing a chart
+// may never do. The projection is complete by construction (BEFORE INSERT trigger + backfill + FK), so
+// the bucket is expected to stay empty; it exists so that an empty bucket is what a gap LOOKS like.
 func (q *Queries) MembershipStats(ctx context.Context, arg MembershipStatsParams) ([]MembershipStatsRow, error) {
 	rows, err := q.db.Query(ctx, membershipStats,
 		arg.UnitID,
+		arg.OrgID,
 		arg.PersonID,
 		arg.PositionID,
 		arg.Status,
@@ -1009,6 +1051,7 @@ func (q *Queries) MembershipStats(ctx context.Context, arg MembershipStatsParams
 		arg.EffectiveFromBefore,
 		arg.TopN,
 		arg.WantUnitID,
+		arg.WantOrg,
 		arg.WantPersonID,
 		arg.WantPositionID,
 		arg.WantStatus,
@@ -1043,63 +1086,80 @@ WITH cand AS MATERIALIZED (
   FROM oikumenea.membership_memberships m
   WHERE m.deleted_at IS NULL
   AND ($1::uuid IS NULL OR m.unit_id = $1::uuid)
-  AND ($2::uuid IS NULL OR m.person_id = $2::uuid)
-  AND ($3::uuid IS NULL OR m.position_id = $3::uuid)
-  AND ($4::text IS NULL OR m.status = $4::text)
-  AND ($5::date IS NULL
-       OR m.effective_from >= $5::date)
+  AND ($2::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.authz_unit_org uo
+        WHERE uo.unit_id = m.unit_id AND uo.org_id = $2::uuid))
+  AND ($3::uuid IS NULL OR m.person_id = $3::uuid)
+  AND ($4::uuid IS NULL OR m.position_id = $4::uuid)
+  AND ($5::text IS NULL OR m.status = $5::text)
   AND ($6::date IS NULL
-       OR m.effective_from < ($6::date + 1))
-  AND m.unit_id IN (SELECT oikumenea.authz_readable_units($7))
+       OR m.effective_from >= $6::date)
+  AND ($7::date IS NULL
+       OR m.effective_from < ($7::date + 1))
+  AND m.unit_id IN (SELECT oikumenea.authz_readable_units($8))
 )
 SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
 FROM cand
 UNION ALL
 SELECT 'unitId'::text,
        CASE WHEN t.k IS NULL THEN '(unknown)'
-            WHEN t.rk <= $8::integer THEN t.k
+            WHEN t.rk <= $9::integer THEN t.k
             ELSE '(other)' END,
        sum(t.n)::bigint, NULL::bigint
 FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
       FROM (SELECT c.unit_id::text AS k, count(*) AS n
             FROM cand c
-            WHERE $9::boolean
+            WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'org'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT uo.org_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.authz_unit_org uo ON uo.unit_id = c.unit_id
+            WHERE $11::boolean
             GROUP BY 1) g) t
 GROUP BY 2
 UNION ALL
 SELECT 'personId'::text,
        CASE WHEN t.k IS NULL THEN '(unknown)'
-            WHEN t.rk <= $8::integer THEN t.k
+            WHEN t.rk <= $9::integer THEN t.k
             ELSE '(other)' END,
        sum(t.n)::bigint, NULL::bigint
 FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
       FROM (SELECT c.person_id::text AS k, count(*) AS n
             FROM cand c
-            WHERE $10::boolean
+            WHERE $12::boolean
             GROUP BY 1) g) t
 GROUP BY 2
 UNION ALL
 SELECT 'positionId'::text,
        CASE WHEN t.k IS NULL THEN '(unknown)'
-            WHEN t.rk <= $8::integer THEN t.k
+            WHEN t.rk <= $9::integer THEN t.k
             ELSE '(other)' END,
        sum(t.n)::bigint, NULL::bigint
 FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
       FROM (SELECT c.position_id::text AS k, count(*) AS n
             FROM cand c
-            WHERE $11::boolean
+            WHERE $13::boolean
             GROUP BY 1) g) t
 GROUP BY 2
 UNION ALL
 SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
-FROM cand c WHERE $12::boolean GROUP BY c.status
+FROM cand c WHERE $14::boolean GROUP BY c.status
 UNION ALL
 SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
-FROM cand c WHERE $13::boolean GROUP BY 2
+FROM cand c WHERE $15::boolean GROUP BY 2
 `
 
 type MembershipStatsForSubjectParams struct {
 	UnitID              pgtype.Text
+	OrgID               pgtype.Text
 	PersonID            pgtype.Text
 	PositionID          pgtype.Text
 	Status              pgtype.Text
@@ -1108,6 +1168,7 @@ type MembershipStatsForSubjectParams struct {
 	SubjectPersonID     string
 	TopN                int32
 	WantUnitID          bool
+	WantOrg             bool
 	WantPersonID        bool
 	WantPositionID      bool
 	WantStatus          bool
@@ -1127,9 +1188,18 @@ type MembershipStatsForSubjectRow struct {
 //
 // The reach arrives as the migration-0017 SET function, uncorrelated: it reads only
 // @subject_person_id, so the planner evaluates it once and probes a hash.
+// org: the one facet whose value is NOT a column of the candidate row. The candidate carries unit_id;
+// the organization is resolved through authz_unit_org, the RLS-EXEMPT trigger-maintained projection
+// (migration 0011) rather than tenant_units — a semi-join into that RLS-FORCED table would be trimmed
+// by a policy written for unit reads and would answer a confident zero on an unpinned connection.
+// LEFT JOIN, not INNER: a candidate whose projection row were somehow missing must land in (unknown)
+// rather than vanish, because a distribution that does not sum to totalCount is the one thing a chart
+// may never do. The projection is complete by construction (BEFORE INSERT trigger + backfill + FK), so
+// the bucket is expected to stay empty; it exists so that an empty bucket is what a gap LOOKS like.
 func (q *Queries) MembershipStatsForSubject(ctx context.Context, arg MembershipStatsForSubjectParams) ([]MembershipStatsForSubjectRow, error) {
 	rows, err := q.db.Query(ctx, membershipStatsForSubject,
 		arg.UnitID,
+		arg.OrgID,
 		arg.PersonID,
 		arg.PositionID,
 		arg.Status,
@@ -1138,6 +1208,7 @@ func (q *Queries) MembershipStatsForSubject(ctx context.Context, arg MembershipS
 		arg.SubjectPersonID,
 		arg.TopN,
 		arg.WantUnitID,
+		arg.WantOrg,
 		arg.WantPersonID,
 		arg.WantPositionID,
 		arg.WantStatus,

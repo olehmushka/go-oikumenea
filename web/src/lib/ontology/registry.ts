@@ -178,9 +178,16 @@ export interface FilterDef {
   /** the arg is NON-optional in the contract (unit.org — listUnits rejects an unscoped listing) */
   required?: boolean;
   /**
-   * Facet.ReadPermission — the inherited read code (D-ObjectFacets rule 2). Empty for every facet
-   * today (all are pii:none/basic); the bar hides a filter whose code the caller lacks, which is
-   * cosmetic only: the server omits the facet regardless.
+   * Facet.ReadPermission — the inherited read code (D-ObjectFacets rule 2). The bar hides a filter
+   * whose code the caller lacks.
+   *
+   * That hiding stopped being cosmetic at M59. It used to be: no facet carried a code, and the
+   * server's only rule-2 behaviour was omitting a distribution, so an offered control would merely
+   * have returned an unfiltered-looking dashboard. Now two facets carry one
+   * (vehicle.registrationCountry, account.holderKind) and the server REFUSES the filter arg with a
+   * 403 for a caller without the code — because honouring it would answer a question about data they
+   * may not read, and ignoring it would return rows they asked to exclude. So a filter offered here
+   * without its `requires` is a control that fails on use.
    */
   requires?: string;
   /**
@@ -254,6 +261,27 @@ export interface ChartDef {
    * White and silver segments get a hairline border for the same reason.
    */
   swatch?: "color";
+  /**
+   * Draw this chart from ANOTHER type's stats endpoint (M59).
+   *
+   * Every other chart on a dashboard reads the host type's own aggregate, because a stats endpoint is
+   * per-module by construction (D-ObjectFacets). One catalogued component never fit that: the unit
+   * dashboard's headcount-by-unit is a distribution of MEMBERSHIPS, and M57 left it unbuilt rather
+   * than draw it dishonestly — the unit dashboard is org-scoped and `membershipStats` had no `org`
+   * arg, so the chart would have counted units from other organizations.
+   *
+   * With that arg (M59) the chart is drawable, and this is what it takes: the endpoint to ask, the
+   * registry type whose facets label the buckets and whose LIST the segments link to, and `carry` —
+   * the host dashboard's params that travel with the request. `carry` is an allowlist rather than the
+   * whole filter set on purpose: the two types share only the params that mean the same thing on
+   * both, and forwarding a host filter the source does not ship would silently widen the chart
+   * relative to the dashboard around it. The Go guard holds every `carry` param to being a real arg
+   * of BOTH endpoints.
+   *
+   * The segments therefore leave this dashboard: a unit bar links to the membership list filtered by
+   * that unit and org, which is the honest destination — the rows behind the number are memberships.
+   */
+  source?: { path: string; type: string; carry: string[] };
   /** the SQL semantics an operator would otherwise reverse-engineer from a surprising count */
   note?: string;
 }
@@ -734,6 +762,17 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
           orientation: "horizontal", tone: { public: "slate", shadow: "amber" },
           note: "A shadow unit is listed only for a subject whose read reaches it (L-Visibility).",
         },
+        {
+          // ⑤ HEADCOUNT BY UNIT — catalogued at M57, built at M59. It is the one chart on any
+          // dashboard drawn from another module's aggregate, because the number is a count of
+          // MEMBERSHIPS: the unit dashboard could not answer it and membershipStats could not be
+          // narrowed to this org until `org` shipped. Its bars therefore link to the membership list,
+          // not the unit list — the rows behind the number are memberships.
+          key: "headcount", title: "Headcount by unit", form: "bar", facet: "unitId",
+          orientation: "horizontal",
+          source: { path: "/membership/v1/stats/memberships", type: "link__member_of", carry: ["org"] },
+          note: "Memberships per unit in this organization, top 15 — every status, matching the membership list's own default. Exact unit, not the subtree, so a person is counted once.",
+        },
       ],
     },
     properties: [
@@ -1032,6 +1071,13 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
         key: "unitId", kind: "ref", label: "Unit", params: ["unitId"], control: "unit",
         // person.unitId expands to the subtree; this one does not — same control, different SQL.
         hint: "Exact unit — not the subtree.",
+      },
+      {
+        // M59: the membership row has no org_id — this matches the org of its UNIT. It is what makes
+        // the headcount-by-unit chart on the ORG-SCOPED unit dashboard drawable without mixing
+        // organizations, and it is the filter that chart's bars carry back.
+        key: "org", kind: "ref", label: "Organization", params: ["org"], control: "org",
+        hint: "The organization of the membership's unit.",
       },
       { key: "personId", kind: "ref", label: "Person", params: ["personId"], control: "person" },
       { key: "positionId", kind: "ref", label: "Position", params: ["positionId"], control: "position", dependsOn: "unitId" },
@@ -2372,6 +2418,10 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
         hint: "Inclusive bounds; either one excludes vehicles with no recorded manufacture date.",
       },
       { key: "registrationCountry", kind: "ref", label: "Registered in", params: ["registrationCountry"], control: "country",
+        // GATED (M59): the country comes from vehicle_registrations, whose own endpoints require
+        // vehicle.registration.read. Hiding the control is no longer cosmetic — the server now REFUSES
+        // the arg for a caller without the code, so an offered filter would 403 on use.
+        requires: "vehicle.registration.read",
         hint: "The country of the vehicle's ACTIVE registration — where it is registered now, not everywhere it has been." },
     ],
     dashboard: {
@@ -2434,6 +2484,17 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { key: "currency", kind: "code", label: "Currency", params: ["currency"],
         hint: "ISO 4217 (UAH, USD). Matched exactly; the column has no constraint to enumerate." },
       { key: "accountTypeId", kind: "ref", label: "Account type", params: ["accountTypeId"], control: "accountType" },
+      {
+        // GATED (M59): who holds an account is disclosed by finance_account_holders, which
+        // listAccountHolders gates on its own code. Matches the ACTIVE PRIMARY holder only.
+        key: "holderKind", kind: "enum", label: "Held by", params: ["holderKind"],
+        requires: "finance.holder.read",
+        values: [
+          { value: "person", label: "A person" },
+          { value: "company", label: "A company" },
+        ],
+        hint: "The kind of the account's active primary holder.",
+      },
       {
         key: "status", kind: "enum", label: "Status", params: ["status"],
         values: [

@@ -412,6 +412,29 @@ func membershipType() ObjectType {
 					"person against every ancestor and make the M57 headcount-by-unit chart lie.",
 			},
 			{
+				Key:     "org",
+				Kind:    KindRef,
+				Table:   "oikumenea.authz_unit_org",
+				Column:  "org_id",
+				RefType: "organization",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "Cross-module: the organization of the membership's unit, reached by a semi-join " +
+					"on unit_id — the shape person.unitId already uses. It PARTITIONS despite living on " +
+					"another table: a membership names exactly one unit and a unit belongs to exactly one " +
+					"org, so no row is counted twice. It exists because the unit dashboard is org-scoped " +
+					"while membershipStats was not, which is why M57's headcount-by-unit chart could not " +
+					"be drawn honestly (it would have mixed organizations) and went unbuilt until M59.\n" +
+					"\n" +
+					"The table is authz_unit_org, NOT tenant_units.org_id, and that is load-bearing rather " +
+					"than incidental: tenant_units is RLS-FORCED under tenant_units_reach, so a semi-join " +
+					"into it from a membership query would be silently trimmed by a policy meant for unit " +
+					"reads — on an unpinned connection it answers a confident ZERO (the M58 ticket-7 trap). " +
+					"authz_unit_org is the RLS-EXEMPT, trigger-maintained unit->org projection M55 built " +
+					"for exactly this question (migration 0011), covering every unit including soft-deleted " +
+					"ones. It widens nothing: the membership rows are still cut by the reach predicate, " +
+					"and this only NAMES the org of a row the caller may already read.",
+			},
+			{
 				Key:     "personId",
 				Kind:    KindRef,
 				Table:   "oikumenea.membership_memberships",
@@ -1109,13 +1132,28 @@ func vehicleType() ObjectType {
 					"three-valued logic). M58 buckets it by month — the fleet-age curve.",
 			},
 			{
-				Key:     "registrationCountry",
-				Kind:    KindRef,
-				Table:   "oikumenea.vehicle_registrations",
-				Column:  "country_id",
-				RefType: "country",
-				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
-				Note: "ANOTHER TABLE (still vehicle's), and the one facet here that had to choose a SET. " +
+				Key:            "registrationCountry",
+				Kind:           KindRef,
+				Table:          "oikumenea.vehicle_registrations",
+				Column:         "country_id",
+				RefType:        "country",
+				ReadPermission: "vehicle.registration.read",
+				Buckets:        Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "THE FIRST GATED FACET (M59), and it was retrofitted rather than born: M58 ticket 3 " +
+					"declared it with an empty ReadPermission because the COLUMN is pii:none, which is all " +
+					"rule 2's mandatory arm checks. But the column's tier is not the whole question — " +
+					"vehicle_registrations is a separately gated RELATIONSHIP (D-LinkPermissions): " +
+					"ListRegistrations and ListPersonVehicles both require vehicle.registration.read, and " +
+					"it sits in its own base role rather than in vehicle-reader. So a caller holding only " +
+					"vehicle.read could group the whole fleet by registration country and filter the list " +
+					"by it — deriving, one value at a time, exactly what the sub-resource endpoints " +
+					"refuse to return. The facet now inherits the link's code: the distribution is OMITTED " +
+					"for a caller without it, and the filter arg is REFUSED (FilterReadCodes). " +
+					"THE RULE THIS SETTLES: a facet inherits the read code of the SURFACE it reads, not " +
+					"the tier of the column it names — a cross-table facet is a disclosure of the joined " +
+					"table's relationship, whatever the column's own tier says.\n" +
+					"\n" +
+					"ANOTHER TABLE (still vehicle's), and the one facet here that had to choose a SET. " +
 					"vehicle_registrations is ownership HISTORY — one-to-many, so grouping it raw would " +
 					"count a re-registered vehicle under every country it has ever worn plates in, and " +
 					"would need NonPartitioning. It is instead confined to the ACTIVE registration, of " +
@@ -1189,6 +1227,31 @@ func accountType() ObjectType {
 				Values:  []string{"active", "closed", "frozen"},
 				Buckets: Buckets{Strategy: StrategyIdentity},
 				Note:    "M58 tones the frozen segment red — a frozen account is the one an analyst opens this dashboard for.",
+			},
+			{
+				Key:            "holderKind",
+				Kind:           KindEnum,
+				Table:          "oikumenea.finance_account_holders",
+				Column:         "holder_kind",
+				Values:         []string{"person", "company"},
+				ReadPermission: "finance.holder.read",
+				Buckets:        Buckets{Strategy: StrategyIdentity, IncludeUnknown: true},
+				Note: "The first facet BORN gated (M59), where vehicle.registrationCountry was retrofitted " +
+					"— the same rule reached from the other side. finance_account_holders is the " +
+					"polymorphic person|company holder LINK (19/2/1), and listAccountHolders already " +
+					"requires finance.holder.read from its own base role, so who holds an account is a " +
+					"disclosure separate from the account itself. A caller with finance.read alone gets " +
+					"this distribution OMITTED and the filter arg REFUSED; with the code, both work.\n" +
+					"\n" +
+					"ANOTHER TABLE, and it had to choose a SET for the reason registrationCountry did: " +
+					"holding is one-to-many (an account may be held jointly), so grouping the link raw " +
+					"would count a person+company joint account in both buckets and need NonPartitioning. " +
+					"It is instead confined to the ACTIVE PRIMARY holder, of which " +
+					"finance_account_holders_primary_active admits at most one per account (a partial " +
+					"UNIQUE on account_id WHERE role='primary' AND effective_to IS NULL) — so the " +
+					"distribution PARTITIONS by construction, guaranteed by an index rather than by " +
+					"convention. Matched as an EXISTS semi-join, never a join. The (unknown) bucket is " +
+					"the accounts with no active primary holder.",
 			},
 		},
 		NonFacetArgs: []NonFacetArg{

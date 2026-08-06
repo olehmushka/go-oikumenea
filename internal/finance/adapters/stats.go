@@ -61,6 +61,17 @@ func buildAccountFilter(b *argBuf, f domain.AccountFilter) string {
 	if f.Status != nil {
 		w += " AND a.status = " + b.add(*f.Status)
 	}
+	// holderKind is the one predicate here that leaves finance_accounts. It is an EXISTS semi-join
+	// confined to the ACTIVE PRIMARY holder — the row finance_account_holders_primary_active admits at
+	// most one of per account — so filtering cannot multiply a jointly held account, and the filtered
+	// set is exactly the set the matching aggregate branch counts. Reaching this arg at all requires
+	// finance.holder.read (facet.FilterReadCodes, gated in the transport).
+	if f.HolderKind != nil {
+		w += ` AND EXISTS (SELECT 1 FROM oikumenea.finance_account_holders h
+              WHERE h.account_id = a.id AND h.deleted_at IS NULL
+                AND h.role = 'primary' AND h.effective_to IS NULL
+                AND h.holder_kind = ` + b.add(*f.HolderKind) + `)`
+	}
 	return w
 }
 
@@ -115,15 +126,35 @@ FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k)
             FROM cand c
             WHERE %[4]s::boolean
             GROUP BY 1) g) t
-GROUP BY 2`
+GROUP BY 2
+UNION ALL
+-- holderKind: the FIRST GATED distribution to ship (M59 / D-ObjectFacets rule 2). The candidate
+-- carries the kind of its ACTIVE PRIMARY holder, resolved once in the CTE by a LATERAL that the
+-- primary-active partial UNIQUE makes single-valued — so this partitions, and a jointly held account
+-- is counted once, under the holder the account is actually in the name of. NULL (no active primary
+-- holder) lands in (unknown), which keeps the sum equal to totalCount.
+--
+-- The want flag carries the ENTITLEMENT as well as the selection: stats.Selection has already dropped
+-- this facet for a caller without finance.holder.read, so the branch is skipped by the planner and the
+-- kind is never grouped. The CTE's LATERAL still runs, which is harmless — it projects a value that
+-- nothing reads — and keeping the projection unconditional is what lets the filter and the aggregate
+-- share one candidate set.
+SELECT 'holderKind'::text, c.holder_kind::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE %[6]s::boolean GROUP BY 2`
 
 // AccountStats aggregates the same candidate set ListAccounts pages, under the same filters.
 func (r *Repository) AccountStats(ctx context.Context, f domain.AccountFilter, sel stats.Selection) ([]stats.Group, error) {
 	b := &argBuf{}
 	where := buildAccountFilter(b, f)
 	sql := `WITH cand AS MATERIALIZED (
-  SELECT a.institution_id, a.currency, a.account_type_id, a.status
+  SELECT a.institution_id, a.currency, a.account_type_id, a.status, h.holder_kind
   FROM oikumenea.finance_accounts a
+  LEFT JOIN LATERAL (
+    SELECT hh.holder_kind FROM oikumenea.finance_account_holders hh
+    WHERE hh.account_id = a.id AND hh.deleted_at IS NULL
+      AND hh.role = 'primary' AND hh.effective_to IS NULL
+    LIMIT 1
+  ) h ON true
   WHERE ` + where + `
 )` + fmt.Sprintf(accountAggregate,
 		b.add(sel.Wants("status")),
@@ -131,6 +162,7 @@ func (r *Repository) AccountStats(ctx context.Context, f domain.AccountFilter, s
 		b.add(sel.Wants("accountTypeId")),
 		b.add(sel.Wants("currency")),
 		b.add(sel.TopN()),
+		b.add(sel.Wants("holderKind")),
 	)
 	rows, err := r.c.Query(ctx, sql, b.args...)
 	if err != nil {

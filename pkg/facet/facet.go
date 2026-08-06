@@ -703,6 +703,45 @@ func isLowerCamel(s string) bool {
 	return true
 }
 
+// FilterReadCodes is the LIST-side half of D-ObjectFacets rule 2 (M59), and it is deliberately not
+// symmetric with the stats-side half.
+//
+// On a dashboard, a facet the caller may not read is OMITTED — never a zeroed bucket, never a 403 —
+// because the request did not ask about it: `facets=` names what to compute, and silence about a
+// gated dimension discloses nothing. A LIST filter is the opposite act. The caller has named a value
+// of that dimension and is asking which rows carry it, so there are only three possible behaviours
+// and two of them are wrong:
+//
+//   - honour it — the response then answers a question about an attribute the caller may not read.
+//     Repeated with different values it is an oracle: binary-searching `registrationCountry` recovers
+//     each vehicle's registration country exactly, which is the disclosure the code exists to gate.
+//   - ignore it — the page silently contains rows the caller asked to exclude. A filter that fails
+//     OPEN is the dangerous direction (the same reasoning parseFacetDate already records), and the
+//     caller cannot tell it happened.
+//   - refuse it — 403, naming the code. It leaks nothing the caller did not already supply, and it is
+//     the only one of the three that is honest about what happened.
+//
+// So: the codes returned here MUST be required before the filter is applied. `supplied` is keyed by
+// facet Key and is true when that arg was actually present on the request; an absent arg gates
+// nothing, which is why a caller without the code can still list and page the collection normally.
+// The result is sorted and deduped (two facets may inherit one code).
+//
+// Pure, so it is testable without a PEP: the transport asks the PEP for each returned code and lets
+// the existing RequireAnywhere produce the module's own 403.
+func (o ObjectType) FilterReadCodes(supplied map[string]bool) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, f := range o.Facets {
+		if f.ReadPermission == "" || !supplied[f.Key] || seen[f.ReadPermission] {
+			continue
+		}
+		seen[f.ReadPermission] = true
+		out = append(out, f.ReadPermission)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Exempt marks a listable object type as deliberately carrying no facets, with a rationale, so the
 // M58 completeness sweep stays honest rather than silently incomplete.
 func (r *Registry) Exempt(objectType, why string) { r.exempt[objectType] = why }

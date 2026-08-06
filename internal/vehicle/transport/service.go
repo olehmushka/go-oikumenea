@@ -252,6 +252,9 @@ func (s VehicleService) ListVehicles(
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return vehicleapi.VehiclePage{}, err
 	}
+	if err := s.requireFilterCodes(ctx, token, map[string]bool{"registrationCountry": registrationCountry != nil}); err != nil {
+		return vehicleapi.VehiclePage{}, err
+	}
 	limit := pageSizeOr(pageSize)
 	f := vehicleFilter(typeID, brandID, modelID, color, status, manufactureDateFrom, manufactureDateTo, registrationCountry)
 	rows, err := s.app.ListVehicles(ctx, strOr(query), decodeToken(pageToken), f, limit)

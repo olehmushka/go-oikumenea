@@ -15,6 +15,8 @@ import { IEducationUnitList } from "./educationUnitList";
 import { IEndAppointmentRequest } from "./endAppointmentRequest";
 import { IEnrollment } from "./enrollment";
 import { IEnrollmentList } from "./enrollmentList";
+import { IEnrollmentPage } from "./enrollmentPage";
+import { IEnrollmentStats } from "./enrollmentStats";
 import { IFillPositionRequest } from "./fillPositionRequest";
 import { IGroup } from "./group";
 import { IGroupList } from "./groupList";
@@ -110,7 +112,46 @@ export interface IEducationService {
     endAppointment(appointmentId: string, request: IEndAppointmentRequest): Promise<IAppointment>;
     /** Read-only list of the education positions a person holds, enriched with title + institution. */
     listPersonAppointments(personId: string): Promise<IPersonAppointmentList>;
-    listEnrollments(personId: string): Promise<IEnrollmentList>;
+    /**
+     * The enrollments ONE named person holds. Renamed from `listEnrollments` in M58 ticket 7 when
+     * the top-level browse below took that name — the HTTP path is unchanged, and the sibling
+     * `listPersonAppointments` already used this shape.
+     *
+     * Holder-scoped (D-PersonReadScope): a caller who may not read this person gets an EMPTY list
+     * rather than a 403, because a permission error would confirm the person exists.
+     *
+     */
+    listPersonEnrollments(personId: string): Promise<IEnrollmentList>;
+    /**
+     * Browse the enrollment register, token-paginated, optionally filtered by the facet vocabulary
+     * (M58 ticket 7 / D-ObjectFacets). Gated by education.read.
+     *
+     * Until M58 ticket 7 an enrollment could be reached only one person at a time, so the
+     * population could be interrogated and never described. This endpoint is the browse mode, and
+     * it is HOLDER-SCOPED in SQL: an instance admin sees every enrollment, and everyone else sees
+     * the enrollments of people they may read (D-PersonReadScope — the holder holds an active
+     * membership in a unit of the caller's reach). The scope is part of the query rather than a
+     * filter over the page, because trimming a keyset page after it is cut returns a short page
+     * with a next-page token still attached (R-06).
+     *
+     * Every filter arg here is also an arg of `enrollmentStats`, and a chart segment's key is a
+     * usable value for the arg it came from — that is what makes a dashboard and a list two
+     * renderings of one request state.
+     *
+     */
+    listEnrollments(institutionId?: string | null, programId?: string | null, unitId?: string | null, groupId?: string | null, degreeLevelId?: string | null, status?: string | null, effectiveFromFrom?: string | null, effectiveFromTo?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IEnrollmentPage>;
+    /**
+     * Facet distributions over the enrollment register — the dashboard half of the enrollment
+     * facet vocabulary (M58 ticket 7 / D-ObjectFacets). Takes exactly the filter args
+     * `listEnrollments` takes, minus paging, so a dashboard and a list are two renderings of one
+     * request state.
+     *
+     * The path is `/stats/enrollments` rather than `/enrollments/stats` because the server's
+     * router rejects a literal path segment that is a sibling of a path parameter — see the
+     * route-conflict guard in `internal/platform/transport`.
+     *
+     */
+    enrollmentStats(facets?: string | null, institutionId?: string | null, programId?: string | null, unitId?: string | null, groupId?: string | null, degreeLevelId?: string | null, status?: string | null, effectiveFromFrom?: string | null, effectiveFromTo?: string | null): Promise<IEnrollmentStats>;
     createEnrollment(personId: string, request: IUpsertEnrollmentRequest): Promise<IEnrollment>;
     updateEnrollment(personId: string, enrollmentId: string, request: IUpsertEnrollmentRequest): Promise<IEnrollment>;
     deleteEnrollment(personId: string, enrollmentId: string): Promise<void>;
@@ -720,10 +761,19 @@ export class EducationService implements IEducationService {
         );
     }
 
-    public listEnrollments(personId: string): Promise<IEnrollmentList> {
+    /**
+     * The enrollments ONE named person holds. Renamed from `listEnrollments` in M58 ticket 7 when
+     * the top-level browse below took that name — the HTTP path is unchanged, and the sibling
+     * `listPersonAppointments` already used this shape.
+     *
+     * Holder-scoped (D-PersonReadScope): a caller who may not read this person gets an EMPTY list
+     * rather than a 403, because a permission error would confirm the person exists.
+     *
+     */
+    public listPersonEnrollments(personId: string): Promise<IEnrollmentList> {
         return this.bridge.call<IEnrollmentList>(
             "EducationService",
-            "listEnrollments",
+            "listPersonEnrollments",
             "GET",
             "/education/v1/persons/{personId}/enrollments",
             __undefined,
@@ -732,6 +782,85 @@ export class EducationService implements IEducationService {
             [
                 personId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Browse the enrollment register, token-paginated, optionally filtered by the facet vocabulary
+     * (M58 ticket 7 / D-ObjectFacets). Gated by education.read.
+     *
+     * Until M58 ticket 7 an enrollment could be reached only one person at a time, so the
+     * population could be interrogated and never described. This endpoint is the browse mode, and
+     * it is HOLDER-SCOPED in SQL: an instance admin sees every enrollment, and everyone else sees
+     * the enrollments of people they may read (D-PersonReadScope — the holder holds an active
+     * membership in a unit of the caller's reach). The scope is part of the query rather than a
+     * filter over the page, because trimming a keyset page after it is cut returns a short page
+     * with a next-page token still attached (R-06).
+     *
+     * Every filter arg here is also an arg of `enrollmentStats`, and a chart segment's key is a
+     * usable value for the arg it came from — that is what makes a dashboard and a list two
+     * renderings of one request state.
+     *
+     */
+    public listEnrollments(institutionId?: string | null, programId?: string | null, unitId?: string | null, groupId?: string | null, degreeLevelId?: string | null, status?: string | null, effectiveFromFrom?: string | null, effectiveFromTo?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IEnrollmentPage> {
+        return this.bridge.call<IEnrollmentPage>(
+            "EducationService",
+            "listEnrollments",
+            "GET",
+            "/education/v1/enrollments",
+            __undefined,
+            __undefined,
+            {
+                "institutionId": institutionId,
+                "programId": programId,
+                "unitId": unitId,
+                "groupId": groupId,
+                "degreeLevelId": degreeLevelId,
+                "status": status,
+                "effectiveFromFrom": effectiveFromFrom,
+                "effectiveFromTo": effectiveFromTo,
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions over the enrollment register — the dashboard half of the enrollment
+     * facet vocabulary (M58 ticket 7 / D-ObjectFacets). Takes exactly the filter args
+     * `listEnrollments` takes, minus paging, so a dashboard and a list are two renderings of one
+     * request state.
+     *
+     * The path is `/stats/enrollments` rather than `/enrollments/stats` because the server's
+     * router rejects a literal path segment that is a sibling of a path parameter — see the
+     * route-conflict guard in `internal/platform/transport`.
+     *
+     */
+    public enrollmentStats(facets?: string | null, institutionId?: string | null, programId?: string | null, unitId?: string | null, groupId?: string | null, degreeLevelId?: string | null, status?: string | null, effectiveFromFrom?: string | null, effectiveFromTo?: string | null): Promise<IEnrollmentStats> {
+        return this.bridge.call<IEnrollmentStats>(
+            "EducationService",
+            "enrollmentStats",
+            "GET",
+            "/education/v1/stats/enrollments",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "institutionId": institutionId,
+                "programId": programId,
+                "unitId": unitId,
+                "groupId": groupId,
+                "degreeLevelId": degreeLevelId,
+                "status": status,
+                "effectiveFromFrom": effectiveFromFrom,
+                "effectiveFromTo": effectiveFromTo,
+            },
+            __undefined,
             __undefined,
             __undefined
         );

@@ -33,7 +33,7 @@ type FinanceService interface {
 	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `accountStats`. The
 	   IBAN is never listed. Gated by `finance.read`.
 	*/
-	ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
 	/*
 	   Facet distributions over the account registry — the dashboard half of the facet vocabulary
 	   (M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)
@@ -52,7 +52,7 @@ type FinanceService interface {
 	   The path is `/stats/accounts` rather than `/accounts/stats` because the server's router
 	   rejects a literal path segment that is a sibling of `{accountId}`.
 	*/
-	AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error)
+	AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string) (AccountStats, error)
 	// Returns the account with the decrypted IBAN for authorized callers.
 	GetAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (Account, error)
 	UpdateAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, requestArg UpdateAccountRequest) (Account, error)
@@ -282,6 +282,11 @@ func (f *financeServiceHandler) HandleListAccounts(rw http.ResponseWriter, req *
 		statusArgInternal := statusArgStr
 		statusArg = &statusArgInternal
 	}
+	var holderKindArg *string
+	if holderKindArgStr := req.URL.Query().Get("holderKind"); holderKindArgStr != "" {
+		holderKindArgInternal := holderKindArgStr
+		holderKindArg = &holderKindArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -295,7 +300,7 @@ func (f *financeServiceHandler) HandleListAccounts(rw http.ResponseWriter, req *
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := f.impl.ListAccounts(req.Context(), bearertoken.Token(authHeader), institutionIdArg, currencyArg, accountTypeIdArg, statusArg, pageSizeArg, pageTokenArg)
+	respArg, err := f.impl.ListAccounts(req.Context(), bearertoken.Token(authHeader), institutionIdArg, currencyArg, accountTypeIdArg, statusArg, holderKindArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}
@@ -333,7 +338,12 @@ func (f *financeServiceHandler) HandleAccountStats(rw http.ResponseWriter, req *
 		statusArgInternal := statusArgStr
 		statusArg = &statusArgInternal
 	}
-	respArg, err := f.impl.AccountStats(req.Context(), bearertoken.Token(authHeader), facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg)
+	var holderKindArg *string
+	if holderKindArgStr := req.URL.Query().Get("holderKind"); holderKindArgStr != "" {
+		holderKindArgInternal := holderKindArgStr
+		holderKindArg = &holderKindArgInternal
+	}
+	respArg, err := f.impl.AccountStats(req.Context(), bearertoken.Token(authHeader), facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg, holderKindArg)
 	if err != nil {
 		return err
 	}

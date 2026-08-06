@@ -21,6 +21,8 @@ export * from "./endAppointmentRequest";
 export * from "./enrollment";
 export * from "./enrollmentList";
 export * from "./enrollmentNotFound";
+export * from "./enrollmentPage";
+export * from "./enrollmentStats";
 export * from "./facetBucket";
 export * from "./facetDistribution";
 export * from "./fillPositionRequest";

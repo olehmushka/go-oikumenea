@@ -43,7 +43,7 @@ export interface IFinanceService {
      * IBAN is never listed. Gated by `finance.read`.
      *
      */
-    listAccounts(institutionId?: string | null, currency?: string | null, accountTypeId?: string | null, status?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAccountPage>;
+    listAccounts(institutionId?: string | null, currency?: string | null, accountTypeId?: string | null, status?: string | null, holderKind?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAccountPage>;
     /**
      * Facet distributions over the account registry — the dashboard half of the facet vocabulary
      * (M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)
@@ -63,7 +63,7 @@ export interface IFinanceService {
      * rejects a literal path segment that is a sibling of `{accountId}`.
      *
      */
-    accountStats(facets?: string | null, institutionId?: string | null, currency?: string | null, accountTypeId?: string | null, status?: string | null): Promise<IAccountStats>;
+    accountStats(facets?: string | null, institutionId?: string | null, currency?: string | null, accountTypeId?: string | null, status?: string | null, holderKind?: string | null): Promise<IAccountStats>;
     /** Returns the account with the decrypted IBAN for authorized callers. */
     getAccount(accountId: string): Promise<IAccount>;
     updateAccount(accountId: string, request: IUpdateAccountRequest): Promise<IAccount>;
@@ -202,7 +202,7 @@ export class FinanceService implements IFinanceService {
      * IBAN is never listed. Gated by `finance.read`.
      *
      */
-    public listAccounts(institutionId?: string | null, currency?: string | null, accountTypeId?: string | null, status?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAccountPage> {
+    public listAccounts(institutionId?: string | null, currency?: string | null, accountTypeId?: string | null, status?: string | null, holderKind?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAccountPage> {
         return this.bridge.call<IAccountPage>(
             "FinanceService",
             "listAccounts",
@@ -215,6 +215,7 @@ export class FinanceService implements IFinanceService {
                 "currency": currency,
                 "accountTypeId": accountTypeId,
                 "status": status,
+                "holderKind": holderKind,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
             },
@@ -243,7 +244,7 @@ export class FinanceService implements IFinanceService {
      * rejects a literal path segment that is a sibling of `{accountId}`.
      *
      */
-    public accountStats(facets?: string | null, institutionId?: string | null, currency?: string | null, accountTypeId?: string | null, status?: string | null): Promise<IAccountStats> {
+    public accountStats(facets?: string | null, institutionId?: string | null, currency?: string | null, accountTypeId?: string | null, status?: string | null, holderKind?: string | null): Promise<IAccountStats> {
         return this.bridge.call<IAccountStats>(
             "FinanceService",
             "accountStats",
@@ -257,6 +258,7 @@ export class FinanceService implements IFinanceService {
                 "currency": currency,
                 "accountTypeId": accountTypeId,
                 "status": status,
+                "holderKind": holderKind,
             },
             __undefined,
             __undefined,

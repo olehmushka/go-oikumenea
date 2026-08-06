@@ -35,6 +35,13 @@ type AccountFilter struct {
 
 	AccountTypeID *string
 	Status        *string
+
+	// HolderKind is `person` | `company` — the kind of the account's ACTIVE PRIMARY holder, matched
+	// through the finance_account_holders link. Supplying it requires finance.holder.read
+	// (facet.FilterReadCodes, enforced in the transport): who holds an account is a disclosure the
+	// holder endpoints already gate separately, and a filter over it would otherwise recover the same
+	// fact one value at a time.
+	HolderKind *string
 }
 
 // CardFilter is the card facet vocabulary, for the instance-wide registry M58 added (cards were
@@ -52,6 +59,9 @@ type CardFilter struct {
 // and its filter cannot drift apart.
 func (f AccountFilter) Validate() error {
 	if err := validateFacetEnum("account", "status", f.Status); err != nil {
+		return err
+	}
+	if err := validateFacetEnum("account", "holderKind", f.HolderKind); err != nil {
 		return err
 	}
 	for _, r := range []struct {

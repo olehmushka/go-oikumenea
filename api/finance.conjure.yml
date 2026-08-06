@@ -349,6 +349,14 @@ services:
             type: optional<string>
             param-type: query
             docs: Facet filter — `active` | `closed` | `frozen`.
+          holderKind:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — `person` | `company`, the kind of the account's ACTIVE PRIMARY holder
+              (`finance_account_holders`). GATED: supplying it requires `finance.holder.read`, the same
+              code `listAccountHolders` requires, and a caller without it gets a 403 rather than a
+              silently-ignored filter (D-ObjectFacets rule 2, list side). Omitting it gates nothing.
           pageSize:
             type: optional<integer>
             param-type: query
@@ -399,6 +407,14 @@ services:
             type: optional<string>
             param-type: query
             docs: Facet filter — `active` | `closed` | `frozen`.
+          holderKind:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — `person` | `company`, the kind of the account's ACTIVE PRIMARY holder
+              (`finance_account_holders`). GATED: supplying it requires `finance.holder.read`, the same
+              code `listAccountHolders` requires, and a caller without it gets a 403 rather than a
+              silently-ignored filter (D-ObjectFacets rule 2, list side). Omitting it gates nothing.
         returns: AccountStats
       getAccount:
         http: GET /accounts/{accountId}
