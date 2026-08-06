@@ -29,12 +29,34 @@ type LocationServiceClient interface {
 	// Soft-delete a location. Location:LocationInUse when an owner still references it.
 	DeleteLocation(ctx context.Context, authHeader bearertoken.Token, locationIdArg string) error
 	/*
-	   Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the
-	   address fields — no spatial window required), or a radius (lat + lng + radiusM, via
-	   ST_DWithin), or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired
-	   when none is given.
+	   Browse, spatial or text query, token-paginated. FOUR modes, selected by which arguments are
+	   present and resolved in this precedence (M58 ticket 6):
+
+	   1. `query` — case-insensitive match on the address fields (locality, admin areas, street,
+	      MGRS, raw address);
+	   2. a radius — `lat` + `lng` + `radiusM`, via ST_DWithin, nearest first;
+	   3. a bounding box — `minLat` + `minLng` + `maxLat` + `maxLng`;
+	   4. BROWSE — none of the above: the whole registry in RID order.
+
+	   Mode 4 is new; before it, no window meant Location:QueryWindowRequired, and there was no way
+	   to ask for "the locations" at all. That error is now vestigial (see its docs).
+
+	   `countryId` and `typeId` are FACET filters (D-ObjectFacets) and apply in EVERY mode — they
+	   narrow the window rather than replacing it. `locationStats` takes the same arguments and
+	   describes the same set.
 	*/
-	ListLocations(ctx context.Context, authHeader bearertoken.Token, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string) (LocationPage, error)
+	ListLocations(ctx context.Context, authHeader bearertoken.Token, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationPage, error)
+	/*
+	   Facet distributions over the location registry — the dashboard half of the location facet
+	   vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the arguments `listLocations`
+	   takes, minus paging, so a dashboard and a list are two renderings of one request state —
+	   INCLUDING the spatial window, which is a predicate over the listed table and therefore
+	   counts (see LocationStats).
+
+	   The path is `/stats/locations` rather than `/locations/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{locationId}`.
+	*/
+	LocationStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationStats, error)
 	// List the active place-type catalog.
 	ListLocationTypes(ctx context.Context, authHeader bearertoken.Token) (LocationTypeList, error)
 }
@@ -112,7 +134,7 @@ func (c *locationServiceClient) DeleteLocation(ctx context.Context, authHeader b
 	return nil
 }
 
-func (c *locationServiceClient) ListLocations(ctx context.Context, authHeader bearertoken.Token, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string) (LocationPage, error) {
+func (c *locationServiceClient) ListLocations(ctx context.Context, authHeader bearertoken.Token, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationPage, error) {
 	var returnVal *LocationPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListLocations"))
@@ -149,6 +171,12 @@ func (c *locationServiceClient) ListLocations(ctx context.Context, authHeader be
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
 	}
+	if countryIdArg != nil {
+		queryParams.Set("countryId", fmt.Sprint(*countryIdArg))
+	}
+	if typeIdArg != nil {
+		queryParams.Set("typeId", fmt.Sprint(*typeIdArg))
+	}
 	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
@@ -157,6 +185,58 @@ func (c *locationServiceClient) ListLocations(ctx context.Context, authHeader be
 	}
 	if returnVal == nil {
 		return *new(LocationPage), werror.ErrorWithContextParams(ctx, "listLocations response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *locationServiceClient) LocationStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationStats, error) {
+	var returnVal *LocationStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("LocationStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/location/v1/stats/locations"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if latArg != nil {
+		queryParams.Set("lat", fmt.Sprint(*latArg))
+	}
+	if lngArg != nil {
+		queryParams.Set("lng", fmt.Sprint(*lngArg))
+	}
+	if radiusMArg != nil {
+		queryParams.Set("radiusM", fmt.Sprint(*radiusMArg))
+	}
+	if minLatArg != nil {
+		queryParams.Set("minLat", fmt.Sprint(*minLatArg))
+	}
+	if minLngArg != nil {
+		queryParams.Set("minLng", fmt.Sprint(*minLngArg))
+	}
+	if maxLatArg != nil {
+		queryParams.Set("maxLat", fmt.Sprint(*maxLatArg))
+	}
+	if maxLngArg != nil {
+		queryParams.Set("maxLng", fmt.Sprint(*maxLngArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if countryIdArg != nil {
+		queryParams.Set("countryId", fmt.Sprint(*countryIdArg))
+	}
+	if typeIdArg != nil {
+		queryParams.Set("typeId", fmt.Sprint(*typeIdArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(LocationStats), werror.WrapWithContextParams(ctx, err, "locationStats failed")
+	}
+	if returnVal == nil {
+		return *new(LocationStats), werror.ErrorWithContextParams(ctx, "locationStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -194,12 +274,34 @@ type LocationServiceClientWithAuth interface {
 	// Soft-delete a location. Location:LocationInUse when an owner still references it.
 	DeleteLocation(ctx context.Context, locationIdArg string) error
 	/*
-	   Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the
-	   address fields — no spatial window required), or a radius (lat + lng + radiusM, via
-	   ST_DWithin), or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired
-	   when none is given.
+	   Browse, spatial or text query, token-paginated. FOUR modes, selected by which arguments are
+	   present and resolved in this precedence (M58 ticket 6):
+
+	   1. `query` — case-insensitive match on the address fields (locality, admin areas, street,
+	      MGRS, raw address);
+	   2. a radius — `lat` + `lng` + `radiusM`, via ST_DWithin, nearest first;
+	   3. a bounding box — `minLat` + `minLng` + `maxLat` + `maxLng`;
+	   4. BROWSE — none of the above: the whole registry in RID order.
+
+	   Mode 4 is new; before it, no window meant Location:QueryWindowRequired, and there was no way
+	   to ask for "the locations" at all. That error is now vestigial (see its docs).
+
+	   `countryId` and `typeId` are FACET filters (D-ObjectFacets) and apply in EVERY mode — they
+	   narrow the window rather than replacing it. `locationStats` takes the same arguments and
+	   describes the same set.
 	*/
-	ListLocations(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string) (LocationPage, error)
+	ListLocations(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationPage, error)
+	/*
+	   Facet distributions over the location registry — the dashboard half of the location facet
+	   vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the arguments `listLocations`
+	   takes, minus paging, so a dashboard and a list are two renderings of one request state —
+	   INCLUDING the spatial window, which is a predicate over the listed table and therefore
+	   counts (see LocationStats).
+
+	   The path is `/stats/locations` rather than `/locations/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{locationId}`.
+	*/
+	LocationStats(ctx context.Context, facetsArg *string, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationStats, error)
 	// List the active place-type catalog.
 	ListLocationTypes(ctx context.Context) (LocationTypeList, error)
 }
@@ -229,8 +331,12 @@ func (c *locationServiceClientWithAuth) DeleteLocation(ctx context.Context, loca
 	return c.client.DeleteLocation(ctx, c.authHeader, locationIdArg)
 }
 
-func (c *locationServiceClientWithAuth) ListLocations(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string) (LocationPage, error) {
-	return c.client.ListLocations(ctx, c.authHeader, latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, pageSizeArg, pageTokenArg, queryArg)
+func (c *locationServiceClientWithAuth) ListLocations(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationPage, error) {
+	return c.client.ListLocations(ctx, c.authHeader, latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, pageSizeArg, pageTokenArg, queryArg, countryIdArg, typeIdArg)
+}
+
+func (c *locationServiceClientWithAuth) LocationStats(ctx context.Context, facetsArg *string, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationStats, error) {
+	return c.client.LocationStats(ctx, c.authHeader, facetsArg, latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, queryArg, countryIdArg, typeIdArg)
 }
 
 func (c *locationServiceClientWithAuth) ListLocationTypes(ctx context.Context) (LocationTypeList, error) {
@@ -278,12 +384,20 @@ func (c *locationServiceClientWithTokenProvider) DeleteLocation(ctx context.Cont
 	return c.client.DeleteLocation(ctx, bearertoken.Token(token), locationIdArg)
 }
 
-func (c *locationServiceClientWithTokenProvider) ListLocations(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string) (LocationPage, error) {
+func (c *locationServiceClientWithTokenProvider) ListLocations(ctx context.Context, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(LocationPage), err
 	}
-	return c.client.ListLocations(ctx, bearertoken.Token(token), latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, pageSizeArg, pageTokenArg, queryArg)
+	return c.client.ListLocations(ctx, bearertoken.Token(token), latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, pageSizeArg, pageTokenArg, queryArg, countryIdArg, typeIdArg)
+}
+
+func (c *locationServiceClientWithTokenProvider) LocationStats(ctx context.Context, facetsArg *string, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(LocationStats), err
+	}
+	return c.client.LocationStats(ctx, bearertoken.Token(token), facetsArg, latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, queryArg, countryIdArg, typeIdArg)
 }
 
 func (c *locationServiceClientWithTokenProvider) ListLocationTypes(ctx context.Context) (LocationTypeList, error) {

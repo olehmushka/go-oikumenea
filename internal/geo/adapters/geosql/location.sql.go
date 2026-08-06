@@ -201,6 +201,99 @@ func (q *Queries) ListLocationTypes(ctx context.Context) ([]ListLocationTypesRow
 	return items, nil
 }
 
+const listLocations = `-- name: ListLocations :many
+SELECT id,
+  ST_Y(geom::geometry)::double precision AS latitude,
+  ST_X(geom::geometry)::double precision AS longitude,
+  mgrs, source_coordinate, country_id,
+  admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
+  type_id, created_at, updated_at
+FROM oikumenea.location_locations
+WHERE deleted_at IS NULL
+  AND ($1::uuid IS NULL OR country_id = $1::uuid)
+  AND ($2::uuid IS NULL OR type_id = $2::uuid)
+  AND ($3::text = '' OR id::text > $3::text)
+ORDER BY id
+LIMIT $4::int
+`
+
+type ListLocationsParams struct {
+	CountryID pgtype.Text
+	TypeID    pgtype.Text
+	After     string
+	Lim       int32
+}
+
+type ListLocationsRow struct {
+	ID               string
+	Latitude         float64
+	Longitude        float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+// The BROWSE mode (M58 ticket 6): the whole registry in RID order, keyset-paginated on id. Until this
+// query existed, `listLocations` had no unwindowed branch and returned Location:QueryWindowRequired
+// when given no radius, box or text — there was no way to ask for "the locations", which is why this
+// type had no list filters and no dashboard while every other M58 type did.
+//
+// Kept as its own statement rather than folded into ListLocationsInBbox behind a nullable envelope:
+// `(narg IS NULL OR ST_Intersects(...))` is not GiST-indexable, so one query for both modes would
+// have paid for the browse mode by regressing the spatial one (the R-21 lesson about nullable
+// trigram predicates, in geography).
+func (q *Queries) ListLocations(ctx context.Context, arg ListLocationsParams) ([]ListLocationsRow, error) {
+	rows, err := q.db.Query(ctx, listLocations,
+		arg.CountryID,
+		arg.TypeID,
+		arg.After,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLocationsRow
+	for rows.Next() {
+		var i ListLocationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Latitude,
+			&i.Longitude,
+			&i.Mgrs,
+			&i.SourceCoordinate,
+			&i.CountryID,
+			&i.AdminArea1,
+			&i.AdminArea2,
+			&i.Locality,
+			&i.Street,
+			&i.HouseNumber,
+			&i.PostalCode,
+			&i.RawAddress,
+			&i.TypeID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLocationsInBbox = `-- name: ListLocationsInBbox :many
 SELECT id,
   ST_Y(geom::geometry)::double precision AS latitude,
@@ -214,18 +307,22 @@ WHERE deleted_at IS NULL
         geom,
         ST_MakeEnvelope($1::double precision, $2::double precision,
                         $3::double precision, $4::double precision, 4326)::geography)
-  AND ($5::text = '' OR id::text > $5::text)
+  AND ($5::uuid IS NULL OR country_id = $5::uuid)
+  AND ($6::uuid IS NULL OR type_id = $6::uuid)
+  AND ($7::text = '' OR id::text > $7::text)
 ORDER BY id
-LIMIT $6::int
+LIMIT $8::int
 `
 
 type ListLocationsInBboxParams struct {
-	MinLng float64
-	MinLat float64
-	MaxLng float64
-	MaxLat float64
-	After  string
-	Lim    int32
+	MinLng    float64
+	MinLat    float64
+	MaxLng    float64
+	MaxLat    float64
+	CountryID pgtype.Text
+	TypeID    pgtype.Text
+	After     string
+	Lim       int32
 }
 
 type ListLocationsInBboxRow struct {
@@ -255,6 +352,8 @@ func (q *Queries) ListLocationsInBbox(ctx context.Context, arg ListLocationsInBb
 		arg.MinLat,
 		arg.MaxLng,
 		arg.MaxLat,
+		arg.CountryID,
+		arg.TypeID,
 		arg.After,
 		arg.Lim,
 	)
@@ -307,17 +406,21 @@ WHERE deleted_at IS NULL
         geom,
         ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography,
         $3::double precision)
-  AND ($4::text = ''
+  AND ($4::uuid IS NULL OR country_id = $4::uuid)
+  AND ($5::uuid IS NULL OR type_id = $5::uuid)
+  AND ($6::text = ''
        OR (ST_Distance(geom, ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography)::double precision,
-            id::text) > ($5::double precision, $4::text))
+            id::text) > ($7::double precision, $6::text))
 ORDER BY ST_Distance(geom, ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography), id
-LIMIT $6::int
+LIMIT $8::int
 `
 
 type ListLocationsNearParams struct {
 	Lng       float64
 	Lat       float64
 	RadiusM   float64
+	CountryID pgtype.Text
+	TypeID    pgtype.Text
 	AfterID   string
 	AfterDist float64
 	Lim       int32
@@ -356,6 +459,8 @@ func (q *Queries) ListLocationsNear(ctx context.Context, arg ListLocationsNearPa
 		arg.Lng,
 		arg.Lat,
 		arg.RadiusM,
+		arg.CountryID,
+		arg.TypeID,
 		arg.AfterID,
 		arg.AfterDist,
 		arg.Lim,
@@ -396,6 +501,356 @@ func (q *Queries) ListLocationsNear(ctx context.Context, arg ListLocationsNearPa
 	return items, nil
 }
 
+const locationStats = `-- name: LocationStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT l.country_id, l.type_id
+  FROM oikumenea.location_locations l
+  WHERE l.deleted_at IS NULL
+    AND ($1::uuid IS NULL OR l.country_id = $1::uuid)
+    AND ($2::uuid IS NULL OR l.type_id = $2::uuid)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $3::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $4::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'typeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $3::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.type_id::text AS k, count(*) AS n
+            FROM cand c WHERE $5::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+`
+
+type LocationStatsParams struct {
+	CountryID     pgtype.Text
+	TypeID        pgtype.Text
+	TopN          int32
+	WantCountryID bool
+	WantTypeID    bool
+}
+
+type LocationStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// ============================ location dashboards (M58 ticket 6 / D-ObjectFacets) ============================
+// FOUR arms — and the axis is the MODE, not visibility. A location carries no owner, no unit and no
+// public/shadow bit (D-Location: a referencing module owns the *meaning* of a place on its own link),
+// so `location.read` held anywhere is the whole gate and there is no second visibility arm for a
+// decision to be made in. That is languoid's shape, the ABSENCE of a decision, and NOT the audit
+// ledger's, which is a decision made entirely by which connection the query runs on; the two are not
+// interchangeable and this comment is the claim pkg/facet/statsparity_test.go reads.
+//
+// What IS four-way here is the window, because `listLocations` has four modes and each is a different
+// PLAN: a trigram bitmap scan (search), a GiST radius (near), a GiST envelope (bbox), and a plain
+// keyset scan (browse). Each list query therefore has exactly one aggregate twin carrying the same
+// filter block, which is what makes "the chart describes the list" structural rather than asserted —
+// a nullable spatial predicate would have collapsed the four into one query and lost the index in
+// three of them.
+//
+// Mode PRECEDENCE (query beats radius beats bbox) is not written here and must not be: it is resolved
+// ONCE, in the transport's shared filter builder, and both surfaces are handed the answer. Writing it
+// twice is exactly how a chart and a list come to read one URL differently.
+//
+// The aggregate half below is byte-identical across all four arms (statsparity_test.go), or an
+// unwindowed dashboard and a windowed one would bucket the same world differently.
+// The BROWSE arm: no spatial predicate at all, which is why it is a separate query rather than one of
+// the others with a disabled window.
+func (q *Queries) LocationStats(ctx context.Context, arg LocationStatsParams) ([]LocationStatsRow, error) {
+	rows, err := q.db.Query(ctx, locationStats,
+		arg.CountryID,
+		arg.TypeID,
+		arg.TopN,
+		arg.WantCountryID,
+		arg.WantTypeID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LocationStatsRow
+	for rows.Next() {
+		var i LocationStatsRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const locationStatsInBbox = `-- name: LocationStatsInBbox :many
+WITH cand AS MATERIALIZED (
+  SELECT l.country_id, l.type_id
+  FROM oikumenea.location_locations l
+  WHERE l.deleted_at IS NULL
+    AND ST_Intersects(
+          l.geom,
+          ST_MakeEnvelope($1::double precision, $2::double precision,
+                          $3::double precision, $4::double precision, 4326)::geography)
+    AND ($5::uuid IS NULL OR l.country_id = $5::uuid)
+    AND ($6::uuid IS NULL OR l.type_id = $6::uuid)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'typeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.type_id::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+`
+
+type LocationStatsInBboxParams struct {
+	MinLng        float64
+	MinLat        float64
+	MaxLng        float64
+	MaxLat        float64
+	CountryID     pgtype.Text
+	TypeID        pgtype.Text
+	TopN          int32
+	WantCountryID bool
+	WantTypeID    bool
+}
+
+type LocationStatsInBboxRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The BOUNDING-BOX arm. Carries ListLocationsInBbox's ST_Intersects envelope verbatim.
+func (q *Queries) LocationStatsInBbox(ctx context.Context, arg LocationStatsInBboxParams) ([]LocationStatsInBboxRow, error) {
+	rows, err := q.db.Query(ctx, locationStatsInBbox,
+		arg.MinLng,
+		arg.MinLat,
+		arg.MaxLng,
+		arg.MaxLat,
+		arg.CountryID,
+		arg.TypeID,
+		arg.TopN,
+		arg.WantCountryID,
+		arg.WantTypeID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LocationStatsInBboxRow
+	for rows.Next() {
+		var i LocationStatsInBboxRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const locationStatsNear = `-- name: LocationStatsNear :many
+WITH cand AS MATERIALIZED (
+  SELECT l.country_id, l.type_id
+  FROM oikumenea.location_locations l
+  WHERE l.deleted_at IS NULL
+    AND ST_DWithin(
+          l.geom,
+          ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography,
+          $3::double precision)
+    AND ($4::uuid IS NULL OR l.country_id = $4::uuid)
+    AND ($5::uuid IS NULL OR l.type_id = $5::uuid)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $7::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'typeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.type_id::text AS k, count(*) AS n
+            FROM cand c WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+`
+
+type LocationStatsNearParams struct {
+	Lng           float64
+	Lat           float64
+	RadiusM       float64
+	CountryID     pgtype.Text
+	TypeID        pgtype.Text
+	TopN          int32
+	WantCountryID bool
+	WantTypeID    bool
+}
+
+type LocationStatsNearRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The RADIUS arm. Carries ListLocationsNear's ST_DWithin verbatim; the distance is not projected,
+// because a dashboard counts a set and does not order it.
+func (q *Queries) LocationStatsNear(ctx context.Context, arg LocationStatsNearParams) ([]LocationStatsNearRow, error) {
+	rows, err := q.db.Query(ctx, locationStatsNear,
+		arg.Lng,
+		arg.Lat,
+		arg.RadiusM,
+		arg.CountryID,
+		arg.TypeID,
+		arg.TopN,
+		arg.WantCountryID,
+		arg.WantTypeID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LocationStatsNearRow
+	for rows.Next() {
+		var i LocationStatsNearRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const locationStatsSearch = `-- name: LocationStatsSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT l.country_id, l.type_id
+  FROM oikumenea.location_locations l
+  WHERE l.deleted_at IS NULL
+    AND l.search_text ILIKE '%' || $1::text || '%'
+    AND ($2::uuid IS NULL OR l.country_id = $2::uuid)
+    AND ($3::uuid IS NULL OR l.type_id = $3::uuid)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'countryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $4::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_id::text AS k, count(*) AS n
+            FROM cand c WHERE $5::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'typeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $4::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.type_id::text AS k, count(*) AS n
+            FROM cand c WHERE $6::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+`
+
+type LocationStatsSearchParams struct {
+	Query         string
+	CountryID     pgtype.Text
+	TypeID        pgtype.Text
+	TopN          int32
+	WantCountryID bool
+	WantTypeID    bool
+}
+
+type LocationStatsSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The TEXT arm. Carries SearchLocationsByText's ILIKE over the STORED search_text haystack, so a
+// searched list and its dashboard read one index.
+func (q *Queries) LocationStatsSearch(ctx context.Context, arg LocationStatsSearchParams) ([]LocationStatsSearchRow, error) {
+	rows, err := q.db.Query(ctx, locationStatsSearch,
+		arg.Query,
+		arg.CountryID,
+		arg.TypeID,
+		arg.TopN,
+		arg.WantCountryID,
+		arg.WantTypeID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LocationStatsSearchRow
+	for rows.Next() {
+		var i LocationStatsSearchRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchLocationsByText = `-- name: SearchLocationsByText :many
 SELECT id,
   ST_Y(geom::geometry)::double precision AS latitude,
@@ -406,15 +861,19 @@ SELECT id,
 FROM oikumenea.location_locations
 WHERE deleted_at IS NULL
   AND search_text ILIKE '%' || $1::text || '%'
-  AND ($2::text = '' OR id::text > $2::text)
+  AND ($2::uuid IS NULL OR country_id = $2::uuid)
+  AND ($3::uuid IS NULL OR type_id = $3::uuid)
+  AND ($4::text = '' OR id::text > $4::text)
 ORDER BY id
-LIMIT $3::int
+LIMIT $5::int
 `
 
 type SearchLocationsByTextParams struct {
-	Query string
-	After string
-	Lim   int32
+	Query     string
+	CountryID pgtype.Text
+	TypeID    pgtype.Text
+	After     string
+	Lim       int32
 }
 
 type SearchLocationsByTextRow struct {
@@ -441,7 +900,13 @@ type SearchLocationsByTextRow struct {
 // over locality, the admin areas, street, mgrs, and the raw address, folded into the STORED search_text
 // haystack that the location_locations_search_trgm GIN index serves as a bitmap scan.
 func (q *Queries) SearchLocationsByText(ctx context.Context, arg SearchLocationsByTextParams) ([]SearchLocationsByTextRow, error) {
-	rows, err := q.db.Query(ctx, searchLocationsByText, arg.Query, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, searchLocationsByText,
+		arg.Query,
+		arg.CountryID,
+		arg.TypeID,
+		arg.After,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

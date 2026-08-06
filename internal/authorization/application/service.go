@@ -30,6 +30,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -86,6 +87,10 @@ type Service struct {
 	// effectively unknown — a disabled module's codes are not grantable, though they stay structurally
 	// valid in the closed catalog (so the module re-enables by a config flip, no data change).
 	disabledPrefixes []string
+	// labeler resolves ref-bucket RIDs to display names for the assignment dashboard (M58 ticket 6 /
+	// D-ObjectFacets), wired at the composition root. Every assignment facet but `scope` is a ref, so
+	// without it the whole dashboard reads as RID tails.
+	labeler stats.Labeler
 }
 
 // SetDisabledModulePrefixes records which disabled modules' code prefixes are non-grantable
@@ -112,6 +117,10 @@ func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.S
 		newPrincipalRepo: newPrincipalRepo,
 	}
 }
+
+// SetBucketLabeler injects the dashboard's ref-bucket name resolver (M58 ticket 6 / D-ObjectFacets),
+// wired at the composition root.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // BindPrincipalDirectory late-binds identity-federation's registry (the established seam pattern —
 // cf. SetLocationLookup / SetWatchlistLookup). main.go calls it after identityfederation.Register
@@ -567,18 +576,66 @@ func (s *Service) RevokeAssignment(ctx context.Context, id, revokedBy string) (d
 	return out, err
 }
 
-// ListAssignmentsBySubject / ByUnit return keyset-paginated pages of active assignments.
-func (s *Service) ListAssignmentsBySubject(ctx context.Context, subjectPersonID string, pageSize int, pageToken string) (AssignmentPage, error) {
+// ListAssignments returns a keyset-paginated page of ACTIVE assignments under the facet filter
+// (M58 ticket 6 / D-ObjectFacets).
+//
+// readerPersonID is the CALLER, not the grants' subject (`f.SubjectPersonID` is that, and is just a
+// filter): an instance admin passes isAdmin and sees everything, anyone else sees only grants on
+// units within their `assignment.read` reach. The trim is not optional and not a post-page filter —
+// it is folded into the SQL, so a trimmed page is a full page rather than a short one carrying a
+// nextPageToken (review-2026-07 R-06).
+//
+// A non-admin with no subject reads NOTHING rather than everything: that is the same rule
+// stats.Compute writes down for the aggregates, applied here by hand because a list has no kernel to
+// own it. A machine principal has no person identity and therefore no reach (M51).
+func (s *Service) ListAssignments(ctx context.Context, f domain.AssignmentFilter, readerPersonID string, isAdmin bool, pageSize int, pageToken string) (AssignmentPage, error) {
+	reader := readerPersonID
+	switch {
+	case isAdmin:
+		reader = "" // the admin arm carries no reach predicate
+	case reader == "":
+		return AssignmentPage{}, nil // no identity, no reach, no rows — never the admin arm
+	}
+	dense := false
+	if reader != "" {
+		var err error
+		dense, err = s.assignmentReachIsDense(ctx, reader)
+		if err != nil {
+			return AssignmentPage{}, err
+		}
+	}
 	return s.listAssignments(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Assignment, error) {
-		return s.newRepo(s.pool).ListAssignmentsBySubject(ctx, subjectPersonID, after, limit)
+		return s.newRepo(s.pool).ListAssignments(ctx, f, reader, dense, after, limit)
 	})
 }
 
-func (s *Service) ListAssignmentsByUnit(ctx context.Context, targetUnitID string, pageSize int, pageToken string) (AssignmentPage, error) {
-	return s.listAssignments(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Assignment, error) {
-		return s.newRepo(s.pool).ListAssignmentsByUnit(ctx, targetUnitID, after, limit)
+// AssignmentStats is the dashboard aggregate over the SAME candidate set ListAssignments pages under
+// the same filter (M58 ticket 6 / D-ObjectFacets). It takes BOTH the reader and the admin flag rather
+// than deriving one from the other: stats.Compute owns the arm convention, so a machine principal
+// (no subject, not an admin) reads nothing rather than everything.
+func (s *Service) AssignmentStats(ctx context.Context, f domain.AssignmentFilter, readerPersonID string, isAdmin bool, sel stats.Selection) (stats.Result, error) {
+	repo := s.newRepo(s.pool)
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, readerPersonID, func(reader string) ([]stats.Group, error) {
+		return repo.AssignmentStats(ctx, f, reader, sel)
 	})
 }
+
+// assignmentReachIsDense picks the reach plan shape for the scoped list, on the capped count. Same
+// dispatch and same threshold as the membership/order/document lists (migration 0017 §2 measured why
+// neither shape is safe alone); the aggregate does NOT dispatch, because it has no early-terminating
+// LIMIT for the set form to lose.
+func (s *Service) assignmentReachIsDense(ctx context.Context, readerPersonID string) (bool, error) {
+	n, err := s.newRepo(s.pool).CountAssignmentReachCapped(ctx, readerPersonID, denseReachThreshold+1)
+	if err != nil {
+		return false, err
+	}
+	return n > denseReachThreshold, nil
+}
+
+// denseReachThreshold splits the two reach plan shapes, the same value and for the same measured
+// reason as membership's (review-2026-07 R-02.1): at or below it materializing the reach set and
+// semi-joining wins, above it the per-row point probe does.
+const denseReachThreshold = 1000
 
 // ============================ instance admins ============================
 

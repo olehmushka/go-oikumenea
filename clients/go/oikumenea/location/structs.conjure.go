@@ -51,6 +51,83 @@ func (o *CoordinateInput) UnmarshalYAML(unmarshal func(interface{}) error) error
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — for both location facets a RID —
+and is exactly what you pass back as the corresponding list filter. Two synthetic keys
+never name a real value: `(unknown)` is the NULL bucket and `(other)` a top-N facet's
+collapsed tail; neither is a usable filter value.
+
+`label` carries the object's display name as a locale → text map (D-i18n) and is present
+only for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name
+carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// One facet's buckets, in chart order — descending by count, with `(other)`/`(unknown)` last.
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A shared place — a precise coordinate, an app-derived MGRS, and a structured postal address.
 type Location struct {
 	// The location's RID (location service); what owning modules reference by FK.
@@ -132,6 +209,65 @@ func (o LocationPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *LocationPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listLocations` returns under the same arguments —
+the dashboard half of the location facet vocabulary (M58 ticket 6 / D-ObjectFacets).
+
+ONE visibility arm, and no subject: a location carries no owner, no unit and no
+public/shadow bit (D-Location — a referencing module owns the *meaning* of a place on its
+own link), so `location.read` held anywhere is the whole gate and there is no second arm
+for a visibility decision to make. That is languoid's shape — the ABSENCE of a decision —
+and NOT the audit ledger's, which is a decision made entirely by which connection the
+query runs on.
+
+THE SPATIAL WINDOW COUNTS. Unlike a tree-walk arg, a radius or bounding box is a predicate
+over the listed table itself, so it narrows this aggregate exactly as it narrows the list
+and the same mode precedence applies (`query` beats radius beats bbox). `totalCount`
+therefore equals the rows exhaustively paging `listLocations` under these arguments would
+return, in every one of the four modes.
+*/
+type LocationStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o LocationStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpLocationStats LocationStats
+	return safejson.Marshal(_tmpLocationStats(o))
+}
+
+func (o *LocationStats) UnmarshalJSON(data []byte) error {
+	type _tmpLocationStats LocationStats
+	var rawLocationStats _tmpLocationStats
+	if err := safejson.Unmarshal(data, &rawLocationStats); err != nil {
+		return err
+	}
+	if rawLocationStats.Facets == nil {
+		rawLocationStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = LocationStats(rawLocationStats)
+	return nil
+}
+
+func (o LocationStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LocationStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

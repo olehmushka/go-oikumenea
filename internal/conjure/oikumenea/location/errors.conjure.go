@@ -311,6 +311,156 @@ func (e *CoordinateRequired) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type invalid struct {
+	Reason string `json:"reason"`
+}
+
+func (o invalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *invalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewInvalid returns new instance of Invalid error.
+func NewInvalid(reasonArg string) *Invalid {
+	return &Invalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), invalid: invalid{Reason: reasonArg}}
+}
+
+// WrapWithInvalid returns new instance of Invalid error wrapping an existing error.
+func WrapWithInvalid(err error, reasonArg string) *Invalid {
+	return &Invalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, invalid: invalid{Reason: reasonArg}}
+}
+
+// Invalid is an error type.
+// The request names an undeclared facet key or an otherwise malformed argument.
+type Invalid struct {
+	errorInstanceID uuid.UUID
+	invalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsInvalid returns true if err is an instance of Invalid.
+func IsInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*Invalid)
+	return ok
+}
+
+func (e *Invalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Location:Invalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *Invalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *Invalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *Invalid) Message() string {
+	return "INVALID_ARGUMENT Location:Invalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *Invalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *Invalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *Invalid) Name() string {
+	return "Location:Invalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *Invalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *Invalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *Invalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *Invalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *Invalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *Invalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e Invalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.invalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Location:Invalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *Invalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters invalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.invalid = parameters
+	return nil
+}
+
 type locationInUse struct {
 	LocationId string `json:"locationId"`
 }
@@ -639,7 +789,12 @@ func WrapWithQueryWindowRequired(err error) *QueryWindowRequired {
 }
 
 // QueryWindowRequired is an error type.
-// A list query requires either a radius (lat/lng/radiusM) or a bounding box (minLat/minLng/maxLat/maxLng).
+/*
+VESTIGIAL since M58 ticket 6 and no longer returned by any endpoint: `listLocations` gained
+an unwindowed browse mode, so "no window given" is now a valid request rather than an
+error. Retained because the contract is expand-only — removing a declared error is a wire
+break for any client that switches on its name.
+*/
 type QueryWindowRequired struct {
 	errorInstanceID uuid.UUID
 	queryWindowRequired
@@ -761,6 +916,7 @@ func (e *QueryWindowRequired) UnmarshalJSON(data []byte) error {
 func init() {
 	conjureerrors.RegisterErrorType("Location:CoordinateInvalid", reflect.TypeOf(CoordinateInvalid{}))
 	conjureerrors.RegisterErrorType("Location:CoordinateRequired", reflect.TypeOf(CoordinateRequired{}))
+	conjureerrors.RegisterErrorType("Location:Invalid", reflect.TypeOf(Invalid{}))
 	conjureerrors.RegisterErrorType("Location:LocationInUse", reflect.TypeOf(LocationInUse{}))
 	conjureerrors.RegisterErrorType("Location:LocationNotFound", reflect.TypeOf(LocationNotFound{}))
 	conjureerrors.RegisterErrorType("Location:QueryWindowRequired", reflect.TypeOf(QueryWindowRequired{}))

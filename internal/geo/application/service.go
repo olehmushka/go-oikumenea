@@ -14,6 +14,7 @@ import (
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // RepositoryFactory binds a domain.Repository to a command surface — the pool for reads, or a caller's
@@ -27,6 +28,7 @@ type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
+	labeler stats.Labeler
 }
 
 // NewService wires the service with the pool, the repository factory, and the audit service every
@@ -34,6 +36,11 @@ type Service struct {
 func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service) *Service {
 	return &Service{pool: pool, newRepo: newRepo, audit: audit}
 }
+
+// SetBucketLabeler injects the dashboard's ref-bucket name resolver (M58 ticket 6 / D-ObjectFacets),
+// wired at the composition root. Both location facets are `ref`, so unlike languoid's this labeler is
+// load-bearing: without it the country and place-type axes would read as RID tails.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // ListCountries returns the active countries in display order.
 func (s *Service) ListCountries(ctx context.Context) ([]domain.Country, error) {

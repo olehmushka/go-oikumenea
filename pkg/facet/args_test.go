@@ -126,6 +126,16 @@ func checkClass(t *testing.T, o ObjectType, n NonFacetArg, a ArgSpec) {
 		requireDrivesResolves(t, o, n)
 	case ClassTraversal:
 		requireDrivesResolves(t, o, n)
+	case ClassWindow:
+		// A window is a CONTINUOUS predicate, which is the whole reason it is not a facet: there is no
+		// bucket order for a chart. Pinning the contract type to `double` is what keeps the class from
+		// becoming a place to hide an arg that could perfectly well have been bucketed — an enum or a
+		// RID window is a facet, not a window.
+		if a.Type != "double" {
+			t.Errorf("%s arg %q is classified window but is %s in the contract, want double — a "+
+				"discrete window is a facet", o.Type, a.Name, a.Type)
+		}
+		requireDrivesResolves(t, o, n)
 	case ClassSuperseded:
 		requireSupersededByFacet(t, o, n, a)
 	default:

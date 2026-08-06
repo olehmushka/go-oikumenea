@@ -634,6 +634,12 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// would be axis-labelled with RID tails.
 	companySvc.SetBucketLabeler(statsLabeler)
 	educationSvc.SetBucketLabeler(statsLabeler)
+	// The last two M58 types (ticket 6). Both are load-bearing: every location facet and every
+	// assignment facet but `scope` is a ref, so an unwired labeler would leave both dashboards reading
+	// as RID tails. locSvc is passed to bucketLabeler above AND labels these too — the localization
+	// service overlays the i18n store onto the same catalogs this charts.
+	geoSvc.SetBucketLabeler(statsLabeler)
+	authzSvc.SetBucketLabeler(statsLabeler)
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.

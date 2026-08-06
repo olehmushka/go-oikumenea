@@ -65,6 +65,14 @@ func refLabelSources() []struct{ typ, table, col, entity string } {
 		{"legal_form", "company_legal_forms", "name", "company_legal_form"},
 		{"industry_class", "company_industry_classes", "name", "company_industry_class"},
 		{"institution_kind", "education_institution_kinds", "name", "education_institution_kind"},
+		// M58 ticket 6 — the location and assignment dashboards. `country`, `unit` and `person` are
+		// already above and are REUSED: a location's country is the same D-Geo catalog every other
+		// module names, and a grant's target unit and subject are the same directory rows the tenant
+		// and person dashboards name. Only three resolvers are new, and all three are catalogs that
+		// were simply never charted before.
+		{"location_type", "location_location_types", "name", "location_type"},
+		{"role", "authz_roles", "name", "role"},
+		{"graph", "tenant_graphs", "name", "graph"},
 	}
 }
 

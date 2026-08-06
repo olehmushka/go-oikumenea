@@ -126,6 +126,48 @@ types:
         fields:
           locations: list<Location>
           nextPageToken: optional<string>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — for both location facets a RID —
+          and is exactly what you pass back as the corresponding list filter. Two synthetic keys
+          never name a real value: `(unknown)` is the NULL bucket and `(other)` a top-N facet's
+          collapsed tail; neither is a usable filter value.
+
+          `label` carries the object's display name as a locale → text map (D-i18n) and is present
+          only for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name
+          carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — descending by count, with `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      LocationStats:
+        docs: |
+          Facet distributions over the SAME set `listLocations` returns under the same arguments —
+          the dashboard half of the location facet vocabulary (M58 ticket 6 / D-ObjectFacets).
+
+          ONE visibility arm, and no subject: a location carries no owner, no unit and no
+          public/shadow bit (D-Location — a referencing module owns the *meaning* of a place on its
+          own link), so `location.read` held anywhere is the whole gate and there is no second arm
+          for a visibility decision to make. That is languoid's shape — the ABSENCE of a decision —
+          and NOT the audit ledger's, which is a decision made entirely by which connection the
+          query runs on.
+
+          THE SPATIAL WINDOW COUNTS. Unlike a tree-walk arg, a radius or bounding box is a predicate
+          over the listed table itself, so it narrows this aggregate exactly as it narrows the list
+          and the same mode precedence applies (`query` beats radius beats bbox). `totalCount`
+          therefore equals the rows exhaustively paging `listLocations` under these arguments would
+          return, in every one of the four modes.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       LocationType:
         docs: An instance-admin catalog label classifying a place (building/address/online); descriptive only.
         fields:
@@ -155,7 +197,17 @@ types:
       QueryWindowRequired:
         namespace: Location
         code: INVALID_ARGUMENT
-        docs: A list query requires either a radius (lat/lng/radiusM) or a bounding box (minLat/minLng/maxLat/maxLng).
+        docs: |
+          VESTIGIAL since M58 ticket 6 and no longer returned by any endpoint: `listLocations` gained
+          an unwindowed browse mode, so "no window given" is now a valid request rather than an
+          error. Retained because the contract is expand-only — removing a declared error is a wire
+          break for any client that switches on its name.
+      Invalid:
+        namespace: Location
+        code: INVALID_ARGUMENT
+        docs: The request names an undeclared facet key or an otherwise malformed argument.
+        safe-args:
+          reason: string
       LocationNotFound:
         namespace: Location
         code: NOT_FOUND
@@ -216,10 +268,21 @@ services:
       listLocations:
         http: GET /locations
         docs: |
-          Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the
-          address fields — no spatial window required), or a radius (lat + lng + radiusM, via
-          ST_DWithin), or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired
-          when none is given.
+          Browse, spatial or text query, token-paginated. FOUR modes, selected by which arguments are
+          present and resolved in this precedence (M58 ticket 6):
+
+          1. `query` — case-insensitive match on the address fields (locality, admin areas, street,
+             MGRS, raw address);
+          2. a radius — `lat` + `lng` + `radiusM`, via ST_DWithin, nearest first;
+          3. a bounding box — `minLat` + `minLng` + `maxLat` + `maxLng`;
+          4. BROWSE — none of the above: the whole registry in RID order.
+
+          Mode 4 is new; before it, no window meant Location:QueryWindowRequired, and there was no way
+          to ask for "the locations" at all. That error is now vestigial (see its docs).
+
+          `countryId` and `typeId` are FACET filters (D-ObjectFacets) and apply in EVERY mode — they
+          narrow the window rather than replacing it. `locationStats` takes the same arguments and
+          describes the same set.
         args:
           lat:
             type: optional<double>
@@ -252,7 +315,75 @@ services:
             type: optional<string>
             param-type: query
             docs: Case-insensitive substring match on locality, admin areas, street, MGRS, or raw address.
+          countryId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — the country's RID (geo_countries). Applies in every mode.
+          typeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — the place-type's RID (location_location_types). Applies in every mode.
         returns: LocationPage
+      locationStats:
+        http: GET /stats/locations
+        docs: |
+          Facet distributions over the location registry — the dashboard half of the location facet
+          vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the arguments `listLocations`
+          takes, minus paging, so a dashboard and a list are two renderings of one request state —
+          INCLUDING the spatial window, which is a predicate over the listed table and therefore
+          counts (see LocationStats).
+
+          The path is `/stats/locations` rather than `/locations/stats` because the server's router
+          rejects a literal path segment that is a sibling of `{locationId}`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`countryId,typeId`). Omitted or empty =
+              every facet the caller may read; an explicit list of nothing (`facets=,`) returns
+              `totalCount` alone. An undeclared facet key is a Location:Invalid.
+          lat:
+            type: optional<double>
+            param-type: query
+            docs: Spatial window — see `listLocations`.
+          lng:
+            type: optional<double>
+            param-type: query
+            docs: Spatial window — see `listLocations`.
+          radiusM:
+            type: optional<double>
+            param-type: query
+            docs: Spatial window — see `listLocations`.
+          minLat:
+            type: optional<double>
+            param-type: query
+            docs: Spatial window — see `listLocations`.
+          minLng:
+            type: optional<double>
+            param-type: query
+            docs: Spatial window — see `listLocations`.
+          maxLat:
+            type: optional<double>
+            param-type: query
+            docs: Spatial window — see `listLocations`.
+          maxLng:
+            type: optional<double>
+            param-type: query
+            docs: Spatial window — see `listLocations`.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listLocations`.
+          countryId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listLocations`.
+          typeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listLocations`.
+        returns: LocationStats
       listLocationTypes:
         http: GET /location/types
         docs: List the active place-type catalog.

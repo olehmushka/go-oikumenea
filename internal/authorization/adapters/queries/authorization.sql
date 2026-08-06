@@ -95,23 +95,228 @@ WHERE id = @id AND revoked_at IS NULL
 RETURNING id, subject_person_id, role_id, target_unit_id, scope, graph_id,
           granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at;
 
--- name: ListAssignmentsBySubject :many
+-- ============================ the assignment list (M58 ticket 6 / D-ObjectFacets) ============================
+-- GET /assignments. THREE shapes, ONE filter block, byte-identical between them: the admin path and
+-- the two reach-scoped paths must select the same rows for the same filters, differing ONLY by how
+-- reach is applied. sqlparity_test.go proves the block is present in all of them with no database.
+--
+-- This replaces ListAssignmentsBySubject / ListAssignmentsByUnit, which were not two filters but two
+-- ENDPOINTS wearing one name: exactly one of them had to be supplied, so there was no way to ask for
+-- the grants. Both are now ordinary predicates in the block below.
+--
+-- ACTIVE ONLY, and unlike the top-level membership list this default STANDS (decided M58 ticket 3):
+-- an ended membership is ordinary directory history, while a revoked grant is a security artefact
+-- whose reachability is an authz read-surface decision rather than a facet-vocabulary one. The
+-- consequence is written into the contract — totalCount counts ACTIVE grants — and there is no
+-- `active` facet, because a distribution whose every row is active is a chart with one bar.
+--
+-- REACH IS ASKED FOR `assignment.read` AND NOTHING ELSE. Every other module's scoped list trims with
+-- authz_readable_units(subject), which asks whether the subject holds ANY '%.read' code on the unit;
+-- that is right there, where the endpoint has already checked its own read code and reach is only
+-- narrowing rows. Here it would WIDEN: generic read-reach is a strict superset of assignment.read
+-- reach, so a caller holding `person.read` over a unit and `assignment.read` somewhere else would be
+-- handed grants that today's per-unit arm refuses them. The 0023 `_with` functions ask the narrow
+-- question; passing anything but 'assignment.read' at the call sites is what
+-- assignment_reach_test.go refuses.
+--
+-- The `sqlc.narg('x')::type IS NULL OR col = ...` style is deliberate and load-bearing: R-21 BANS the
+-- `(@arg = '' OR ...)` sentinel because the planner cannot prove the arg non-empty under a generic
+-- prepared plan and sequential-scans.
+
+-- name: ListAssignments :many
+-- Instance-admin path: every active grant, keyset-paginated by RID.
 SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
        granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
-FROM oikumenea.authz_role_assignments
-WHERE subject_person_id = @subject_person_id AND revoked_at IS NULL
-  AND (sqlc.arg('after')::text = '' OR id::text > sqlc.arg('after')::text)
-ORDER BY id
+FROM oikumenea.authz_role_assignments a
+WHERE a.revoked_at IS NULL
+  AND (sqlc.arg('after')::text = '' OR a.id::text > sqlc.arg('after')::text)
+  AND (sqlc.narg('subject_person_id')::uuid IS NULL OR a.subject_person_id = sqlc.narg('subject_person_id')::uuid)
+  AND (sqlc.narg('target_unit_id')::uuid IS NULL OR a.target_unit_id = sqlc.narg('target_unit_id')::uuid)
+  AND (sqlc.narg('role_id')::uuid IS NULL OR a.role_id = sqlc.narg('role_id')::uuid)
+  AND (sqlc.narg('scope')::text IS NULL OR a.scope = sqlc.narg('scope')::text)
+  AND (sqlc.narg('graph_id')::uuid IS NULL OR a.graph_id = sqlc.narg('graph_id')::uuid)
+ORDER BY a.id
 LIMIT @lim;
 
--- name: ListAssignmentsByUnit :many
+-- name: ListAssignmentsForSubject :many
+-- SPARSE-reach path: the same set intersected with the subject's assignment.read reach. The reach set
+-- is UNCORRELATED — it reads only @subject_person_id and @permission — so the planner evaluates it
+-- once and probes a hash rather than re-deriving the closure per candidate row.
 SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
        granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
-FROM oikumenea.authz_role_assignments
-WHERE target_unit_id = @target_unit_id AND revoked_at IS NULL
-  AND (sqlc.arg('after')::text = '' OR id::text > sqlc.arg('after')::text)
-ORDER BY id
+FROM oikumenea.authz_role_assignments a
+WHERE a.revoked_at IS NULL
+  AND (sqlc.arg('after')::text = '' OR a.id::text > sqlc.arg('after')::text)
+  AND (sqlc.narg('subject_person_id')::uuid IS NULL OR a.subject_person_id = sqlc.narg('subject_person_id')::uuid)
+  AND (sqlc.narg('target_unit_id')::uuid IS NULL OR a.target_unit_id = sqlc.narg('target_unit_id')::uuid)
+  AND (sqlc.narg('role_id')::uuid IS NULL OR a.role_id = sqlc.narg('role_id')::uuid)
+  AND (sqlc.narg('scope')::text IS NULL OR a.scope = sqlc.narg('scope')::text)
+  AND (sqlc.narg('graph_id')::uuid IS NULL OR a.graph_id = sqlc.narg('graph_id')::uuid)
+  AND a.target_unit_id IN (SELECT oikumenea.authz_readable_units_with(@reader_person_id, @permission))
+ORDER BY a.id
 LIMIT @lim;
+
+-- name: ListAssignmentsForSubjectDense :many
+-- DENSE-reach plan shape of the query above, byte-identical in its filter block and differing ONLY in
+-- how reach is applied: a per-row point probe instead of a materialized reach set. The adapter
+-- dispatches on the capped count (0017 §2 measured why neither shape wins everywhere).
+SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
+       granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
+FROM oikumenea.authz_role_assignments a
+WHERE a.revoked_at IS NULL
+  AND (sqlc.arg('after')::text = '' OR a.id::text > sqlc.arg('after')::text)
+  AND (sqlc.narg('subject_person_id')::uuid IS NULL OR a.subject_person_id = sqlc.narg('subject_person_id')::uuid)
+  AND (sqlc.narg('target_unit_id')::uuid IS NULL OR a.target_unit_id = sqlc.narg('target_unit_id')::uuid)
+  AND (sqlc.narg('role_id')::uuid IS NULL OR a.role_id = sqlc.narg('role_id')::uuid)
+  AND (sqlc.narg('scope')::text IS NULL OR a.scope = sqlc.narg('scope')::text)
+  AND (sqlc.narg('graph_id')::uuid IS NULL OR a.graph_id = sqlc.narg('graph_id')::uuid)
+  AND oikumenea.authz_unit_readable_with(a.target_unit_id, @reader_person_id, @permission)
+ORDER BY a.id
+LIMIT @lim;
+
+-- name: CountAssignmentReadableUnitsCapped :one
+-- The capped reach-cardinality probe the sparse/dense dispatch reads, for assignment.read.
+SELECT oikumenea.authz_readable_unit_count_with(@reader_person_id, @permission, @cap::integer) AS n;
+
+-- ============================ assignment dashboard (M58 ticket 6 / D-ObjectFacets) ============================
+-- TWO arms, {instance-admin, reach-scoped}, and no search twin: authz_role_assignments carries no
+-- search_text haystack (a grant has no name of its own — its parts are all RIDs), so there is nothing
+-- for an R-21 split to split.
+--
+-- The scoped arm uses the SET form only. M57 measured that a scoped AGGREGATE, unlike a scoped LIST,
+-- has no early-terminating LIMIT to lose: it must visit every candidate row whatever the reach size,
+-- so the point probe's dense-reach advantage does not exist and a dense twin would be two plans for
+-- one answer.
+--
+-- The aggregate half is byte-identical across both arms (statsparity_test.go), or an admin and a
+-- scoped caller would be shown different distributions of the same world.
+
+-- name: AssignmentStats :many
+-- The INSTANCE-ADMIN arm: no reach predicate at all, which is why it is a separate query rather than
+-- the scoped one with a flag.
+WITH cand AS MATERIALIZED (
+  SELECT a.subject_person_id, a.role_id, a.target_unit_id, a.scope, a.graph_id
+  FROM oikumenea.authz_role_assignments a
+  WHERE a.revoked_at IS NULL
+    AND (sqlc.narg('subject_person_id')::uuid IS NULL OR a.subject_person_id = sqlc.narg('subject_person_id')::uuid)
+    AND (sqlc.narg('target_unit_id')::uuid IS NULL OR a.target_unit_id = sqlc.narg('target_unit_id')::uuid)
+    AND (sqlc.narg('role_id')::uuid IS NULL OR a.role_id = sqlc.narg('role_id')::uuid)
+    AND (sqlc.narg('scope')::text IS NULL OR a.scope = sqlc.narg('scope')::text)
+    AND (sqlc.narg('graph_id')::uuid IS NULL OR a.graph_id = sqlc.narg('graph_id')::uuid)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'subjectPersonId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.subject_person_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_subject_person_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'roleId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.role_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_role_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'targetUnitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.target_unit_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_target_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'scope'::text, c.scope::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_scope')::boolean GROUP BY 2
+UNION ALL
+SELECT 'graphId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.graph_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_graph_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2;
+
+-- name: AssignmentStatsForSubject :many
+-- The reach-scoped arm. Identical but for the reach predicate, which is the same set form
+-- ListAssignmentsForSubject uses and asks for the same one permission.
+WITH cand AS MATERIALIZED (
+  SELECT a.subject_person_id, a.role_id, a.target_unit_id, a.scope, a.graph_id
+  FROM oikumenea.authz_role_assignments a
+  WHERE a.revoked_at IS NULL
+    AND (sqlc.narg('subject_person_id')::uuid IS NULL OR a.subject_person_id = sqlc.narg('subject_person_id')::uuid)
+    AND (sqlc.narg('target_unit_id')::uuid IS NULL OR a.target_unit_id = sqlc.narg('target_unit_id')::uuid)
+    AND (sqlc.narg('role_id')::uuid IS NULL OR a.role_id = sqlc.narg('role_id')::uuid)
+    AND (sqlc.narg('scope')::text IS NULL OR a.scope = sqlc.narg('scope')::text)
+    AND (sqlc.narg('graph_id')::uuid IS NULL OR a.graph_id = sqlc.narg('graph_id')::uuid)
+    AND a.target_unit_id IN (SELECT oikumenea.authz_readable_units_with(@reader_person_id, @permission))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'subjectPersonId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.subject_person_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_subject_person_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'roleId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.role_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_role_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'targetUnitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.target_unit_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_target_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'scope'::text, c.scope::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_scope')::boolean GROUP BY 2
+UNION ALL
+SELECT 'graphId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.graph_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_graph_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2;
 
 -- name: ActiveGrantsForSubject :many
 -- The subject's active assignments joined with each role's permission codes and the graph code, for

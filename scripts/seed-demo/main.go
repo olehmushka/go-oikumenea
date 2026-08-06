@@ -122,6 +122,15 @@ func run(ctx context.Context, dsn, configPath string, seed int64, reset bool) er
 			if err := s.spreadOrgFacets(); err != nil {
 				return fmt.Errorf("refresh org facets: %w", err)
 			}
+			// M58 ticket 6, both on this path for the reason above: every demo location carried the
+			// same country and no place type, and there were NO role assignments at all, so neither of
+			// that ticket's dashboards had a population to describe.
+			if err := s.spreadLocationFacets(); err != nil {
+				return fmt.Errorf("refresh location facets: %w", err)
+			}
+			if err := s.seedGrantSpread(); err != nil {
+				return fmt.Errorf("refresh grant spread: %w", err)
+			}
 			if err := tx.Commit(ctx); err != nil {
 				return fmt.Errorf("commit: %w", err)
 			}
@@ -146,6 +155,15 @@ func run(ctx context.Context, dsn, configPath string, seed int64, reset bool) er
 	}
 	if err := s.phaseEEncrypted(); err != nil {
 		return fmt.Errorf("phase E (encrypted): %w", err)
+	}
+	// The facet spreads run LAST on a full seed as well as on the refresh path: they are passes over
+	// rows the phases above have just written, and running them here rather than inside each phase
+	// keeps one definition of each spread instead of two that can drift.
+	if err := s.spreadLocationFacets(); err != nil {
+		return fmt.Errorf("location facet spread: %w", err)
+	}
+	if err := s.seedGrantSpread(); err != nil {
+		return fmt.Errorf("grant spread: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

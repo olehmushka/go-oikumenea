@@ -11,6 +11,8 @@ package domain
 
 import (
 	"context"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Country is one entry in the ISO-3166-1 registry. ID is the RID (the reference key other modules
@@ -69,8 +71,13 @@ type Repository interface {
 	GetLocation(ctx context.Context, id string) (Location, error)
 	UpdateLocation(ctx context.Context, id string, w LocationWrite) (Location, error)
 	SoftDeleteLocation(ctx context.Context, id string) (int64, error)
-	ListLocationsNear(ctx context.Context, lat, lng, radiusM, afterDist float64, afterID string, limit int) ([]Location, error)
-	ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, after string, limit int) ([]Location, error)
-	SearchLocationsByText(ctx context.Context, query, after string, limit int) ([]Location, error)
+	// ListLocations pages one listing mode (M58 ticket 6). The mode is resolved in the transport and
+	// carried on the filter, so this port dispatches rather than deciding: browse and bbox keyset on
+	// id, near keysets on the (distance, id) pair, text on id.
+	ListLocations(ctx context.Context, f LocationFilter, afterDist float64, afterID string, limit int) ([]Location, error)
+	// LocationStats is the dashboard aggregate over the SAME candidate set ListLocations pages under
+	// the same filter — INCLUDING its window, which is a predicate over the listed table and therefore
+	// counts (unlike a tree-walk arg, which selects a mode and is counted by nothing).
+	LocationStats(ctx context.Context, f LocationFilter, sel stats.Selection) ([]stats.Group, error)
 	ListLocationTypes(ctx context.Context) ([]LocationType, error)
 }

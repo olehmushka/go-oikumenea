@@ -48,7 +48,9 @@ export type EntityKind =
   | "cardNetwork"
   | "legalForm"
   | "industryClass"
-  | "institutionKind";
+  | "institutionKind"
+  | "locationType"
+  | "graph";
 
 type Option = { id: string; label: string; hint?: string };
 
@@ -291,6 +293,30 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
       // The classification SYSTEM (NACE / ISIC / KVED) is the disambiguator here: two systems can
       // carry the same code for different activities.
       hint: [str(c.system), str(c.code)].filter(Boolean).join(" "),
+    }),
+  },
+  // M58 ticket 6. Both are small instance-level catalogs with no server-side search param — a page of
+  // 200 covers three place types and a handful of graphs many times over, so the client-side filter
+  // EntitySelect falls back to is honest here in a way it was not for the person directory.
+  locationType: {
+    path: "/location/v1/location/types",
+    pick: (d) => (d as { locationTypes?: unknown[] })?.locationTypes ?? [],
+    toOption: (t, locale) => ({
+      id: str(t.id) ?? "",
+      label: pickLabel(map(t.name), locale) || str(t.code) || str(t.id) || "",
+      hint: str(t.code),
+    }),
+  },
+  // Without `org` this returns the instance-global graphs only; the assignment filter wants every
+  // graph a grant could name, so it passes no org and accepts that an org-local graph is filterable
+  // by clicking its bar rather than by picking it from this list.
+  graph: {
+    path: "/tenant/v1/graphs",
+    pick: (d) => (d as { graphs?: unknown[] })?.graphs ?? [],
+    toOption: (g, locale) => ({
+      id: str(g.id) ?? "",
+      label: pickLabel(map(g.name), locale) || str(g.code) || str(g.id) || "",
+      hint: str(g.code),
     }),
   },
   institutionKind: {

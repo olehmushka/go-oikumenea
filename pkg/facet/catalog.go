@@ -21,7 +21,7 @@ func catalog() []ObjectType {
 	return []ObjectType{
 		personType(), unitType(), organizationType(), membershipType(), orderType(), documentType(),
 		auditType(), externalOrgType(), taxonType(), languoidType(), vehicleType(), accountType(),
-		cardType(), companyType(), institutionType(),
+		cardType(), companyType(), institutionType(), locationType(), assignmentType(),
 	}
 }
 
@@ -253,6 +253,17 @@ func unitType() ObjectType {
 		NonFacetArgs: []NonFacetArg{
 			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
 			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+			{
+				Arg:   "query",
+				Class: ClassSearch,
+				Why: "free-text code/name substring against the STORED search_text haystack (migration " +
+					"0022, extending R-21 to the unit tree), and it ships on the stats endpoint too so a " +
+					"searched list and its dashboard describe one set. CLASSIFIED LATE, in M58 ticket 6: " +
+					"the arg shipped with the unit-picker fix but pkg/facet/args_gen.go was not " +
+					"regenerated, so the mirror the two-direction guard reads did not know the arg " +
+					"existed and both directions passed over it. The guard was fine; its input was stale",
+				Drives: "SearchUnits",
+			},
 			{
 				Arg:    "graph",
 				Class:  ClassTraversal,
@@ -1423,6 +1434,230 @@ func institutionType() ObjectType {
 			{Arg: "query", Class: ClassSearch, Why: "case-insensitive code/name substring match", Drives: "SearchInstitutions"},
 			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
 			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── location ─────────────────────────────────────────────────────────────────
+//
+// M58 ticket 6, and the type that had NO LIST MODE. `listLocations` was a three-way switch — text,
+// radius, bounding box — that returned Location:QueryWindowRequired when given none of them, so there
+// was no way to ask for "the locations" and therefore nothing for a filter or a dashboard to describe.
+// The browse mode is this ticket's; the error is now vestigial.
+//
+// ONE visibility arm and no subject. A location carries no owner, no unit and no public/shadow bit
+// (D-Location — a referencing module owns the *meaning* of a place on its own link, so one shared row
+// can be referenced by several owners with different sensitivities). `location.read` held anywhere is
+// the whole gate, and the search fan-in registers this type under the CATALOG scope, which trims
+// nothing. That is languoid's and vehicle's shape: the ABSENCE of a visibility decision, not the
+// audit ledger's (where the single arm IS the decision, made by which connection the query runs on).
+//
+// The four aggregate arms are the four listing MODES, not two axes of one: each mode is a distinct
+// plan (trigram bitmap / GiST radius / GiST envelope / plain keyset), and folding them into one query
+// behind nullable predicates would have lost the index in three of them.
+//
+// `hasCoordinate` is CATALOGUED IN facets.md AND DROPPED. `location_locations.geom` is NOT NULL — the
+// coordinate is the required spine and address-only records are out of scope (D-Location) — so the
+// facet is constant-true and the geocoded-vs-not tile it was catalogued for would always read 100%.
+// A distribution with one bucket holding every row is not a chart; recorded here so it is not
+// re-proposed from the catalog table.
+//
+// Every faceted column is pii:none. So are the six address parts and type_id itself — but only as of
+// migration 0023: the sweep found them unclassified, which is the fifth such gap in six tickets.
+func locationType() ObjectType {
+	return ObjectType{
+		Type: "location",
+		// The Go package is `geo`, not `location`: this module owns BOTH the country/gazetteer registry
+		// (D-Geo, D-GeoPlaces) and the location model (D-Location), and Module names the DIRECTORY the
+		// guards read queries/*.sql from. The doc, the RID service and the table prefix all say
+		// `location`; only the package says `geo`.
+		Module:        "geo",
+		ListEndpoint:  "LocationService.listLocations",
+		StatsEndpoint: "LocationService.locationStats",
+		Facets: []Facet{
+			{
+				Key:     "countryId",
+				Kind:    KindRef,
+				Table:   "oikumenea.location_locations",
+				Column:  "country_id",
+				RefType: "country",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "-> oikumenea.geo_countries (D-Geo), the same catalog and the same resolver that " +
+					"names a country everywhere else. NOT NULL, so no (unknown) bucket: an address is " +
+					"normalized over the country registry on the way in.",
+			},
+			{
+				Key:     "typeId",
+				Kind:    KindRef,
+				Table:   "oikumenea.location_locations",
+				Column:  "type_id",
+				RefType: "location_type",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "-> oikumenea.location_location_types (building / address / online), an " +
+					"instance-admin catalog that classifies a place and is never branched on. Nullable " +
+					"and OFTEN null — a classification is optional — so IncludeUnknown is mandatory and " +
+					"the (unknown) bucket is the honest majority rather than missing data.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{
+				Arg:   "pageToken",
+				Class: ClassPaging,
+				Why: "keyset cursor (pkg/listing codec). TWO shapes behind one opaque token: the radius " +
+					"mode keys on the (distance, id) pair it sorts by, every other mode on id alone",
+			},
+			{
+				Arg:    "query",
+				Class:  ClassSearch,
+				Why:    "free-text substring against the STORED search_text haystack over locality/admin areas/street/MGRS/raw address — a separate plan shape from the structural filters (R-21 List/Search split), and it SHIPS on the stats endpoint so a searched list and its dashboard describe one set",
+				Drives: "SearchLocationsByText",
+			},
+			{
+				Arg:    "lat",
+				Class:  ClassWindow,
+				Why:    "radius window centre (with lng + radiusM); ST_DWithin over the GiST index. A window, not a traversal: it selects a SUBSET OF THE SAME POPULATION, so the aggregate carries it and the chart moves with the list",
+				Drives: "ListLocationsNear",
+			},
+			{
+				Arg:    "lng",
+				Class:  ClassWindow,
+				Why:    "radius window centre (with lat + radiusM)",
+				Drives: "ListLocationsNear",
+			},
+			{
+				Arg:    "radiusM",
+				Class:  ClassWindow,
+				Why:    "radius window extent in metres; continuous, so there is nothing to bucket — a facet would need a chart order a continuum does not have",
+				Drives: "ListLocationsNear",
+			},
+			{
+				Arg:    "minLat",
+				Class:  ClassWindow,
+				Why:    "bounding-box corner (with minLng/maxLat/maxLng); ST_Intersects against ST_MakeEnvelope",
+				Drives: "ListLocationsInBbox",
+			},
+			{
+				Arg:    "minLng",
+				Class:  ClassWindow,
+				Why:    "bounding-box corner (with minLat/maxLat/maxLng)",
+				Drives: "ListLocationsInBbox",
+			},
+			{
+				Arg:    "maxLat",
+				Class:  ClassWindow,
+				Why:    "bounding-box corner (with minLat/minLng/maxLng)",
+				Drives: "ListLocationsInBbox",
+			},
+			{
+				Arg:    "maxLng",
+				Class:  ClassWindow,
+				Why:    "bounding-box corner (with minLat/minLng/maxLat)",
+				Drives: "ListLocationsInBbox",
+			},
+		},
+	}
+}
+
+// ── assignment (link__has_role) ──────────────────────────────────────────────
+//
+// M58 ticket 6, and the SECOND faceted reified link (D-Ontology) after link__member_of. A grant is a
+// relationship with its own identity, attributes and history, so it lists and filters like an object;
+// the token carries the link__ prefix because that is what rid.TokenOf and the console's ontology
+// registry are keyed by.
+//
+// It had no unconditional list either: `listAssignments` required exactly one of
+// subjectPersonId/targetUnitId — two endpoints wearing one name — so the grant table could be
+// interrogated one person or one unit at a time and never described. Both are now ordinary filters,
+// which is what `subjectPersonId` being a FACET below means; the catalog table in facets.md never
+// classified it, and a fifth facet is the honest answer, since "who holds the most grants" is a real
+// question of this population and the column is pii:basic exactly like targetUnitId, which the table
+// did catalogue.
+//
+// TWO arms, {instance-admin, reach-scoped}, and the reach is asked for `assignment.read` ALONE. Every
+// other scoped list in the codebase trims with the generic '%.read' family, which is right where the
+// endpoint has already checked its own read code; here it would WIDEN the surface, because generic
+// read-reach is a strict superset and this endpoint's per-unit arm has always demanded the narrow one.
+// Migration 0023 adds the `_with` functions that ask the narrow question.
+//
+// ACTIVE ONLY, and that default STANDS (decided M58 ticket 3, not re-litigated here) — which is why
+// `active` and `expiresAt` are STRUCK from the catalogued facet set rather than declared: a
+// distribution whose every row is active is a chart with one bar. The consequence is written into the
+// contract instead: totalCount counts ACTIVE grants.
+//
+// No search arg: a grant has no name of its own — every part of it is a RID — so there is no
+// search_text haystack and nothing for an R-21 split to split.
+func assignmentType() ObjectType {
+	return ObjectType{
+		Type:          "link__has_role",
+		Module:        "authorization",
+		ListEndpoint:  "AuthorizationService.listAssignments",
+		StatsEndpoint: "AuthorizationService.assignmentStats",
+		Facets: []Facet{
+			{
+				Key:     "subjectPersonId",
+				Kind:    KindRef,
+				Table:   "oikumenea.authz_role_assignments",
+				Column:  "subject_person_id",
+				RefType: "person",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "The person the authority is granted TO. A facet rather than a classified arg: it " +
+					"was already an arg (the old by-subject arm), and 'who holds the most grants' is a " +
+					"real question of the grant population. pii:basic, like targetUnitId, so no " +
+					"ReadPermission beyond the endpoint's own assignment.read. NOT NULL.",
+			},
+			{
+				Key:     "roleId",
+				Kind:    KindRef,
+				Table:   "oikumenea.authz_role_assignments",
+				Column:  "role_id",
+				RefType: "role",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "-> oikumenea.authz_roles. NOT NULL. The distribution a grant review is actually " +
+					"read for: which roles are handed out, and how often.",
+			},
+			{
+				Key:     "targetUnitId",
+				Kind:    KindRef,
+				Table:   "oikumenea.authz_role_assignments",
+				Column:  "target_unit_id",
+				RefType: "unit",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "EXACT match, NOT subtree-expanding — the same rule membership.unitId carries. A " +
+					"grant's `scope` says whether its AUTHORITY cascades; the grant itself sits on one " +
+					"unit, and a filter that quietly expanded would count a subtree grant once per " +
+					"descendant. NOT NULL (an organization RID can never appear here — the FK is to " +
+					"tenant_units, which is what made organization reach empty by construction until " +
+					"M58 ticket 4 derived it).",
+			},
+			{
+				Key:     "scope",
+				Kind:    KindEnum,
+				Table:   "oikumenea.authz_role_assignments",
+				Column:  "scope",
+				Values:  []string{"unit", "subtree"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The per-assignment cascade rule (D-Inherit): `unit` grants its target and its " +
+					"children NOTHING, not even read; `subtree` cascades over the closure. Declared " +
+					"narrow-then-wide rather than by frequency, because that is the order the two are " +
+					"reasoned about.",
+			},
+			{
+				Key:     "graphId",
+				Kind:    KindRef,
+				Table:   "oikumenea.authz_role_assignments",
+				Column:  "graph_id",
+				RefType: "graph",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "The cascade graph a subtree grant descends (command / operational / …). NULL " +
+					"exactly when scope='unit' — authz_role_assignments_graph_scope CHECKs the " +
+					"biconditional — so the (unknown) bucket is not missing data but the unit-scope " +
+					"count under another name, and reads correctly beside the scope chart.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor over the assignment RID (pkg/listing codec)"},
 		},
 	}
 }

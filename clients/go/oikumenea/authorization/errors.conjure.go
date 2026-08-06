@@ -196,7 +196,12 @@ func WrapWithAssignmentInvalid(err error, reasonArg string) *AssignmentInvalid {
 }
 
 // AssignmentInvalid is an error type.
-// The assignment request is malformed or references an unknown subject/role/unit/graph.
+/*
+The assignment request is malformed or references an unknown subject/role/unit/graph, or a
+list/stats request named an undeclared facet key. It is NO LONGER returned for "provide
+exactly one of subjectPersonId or targetUnitId" — since M58 ticket 6 `listAssignments`
+needs neither.
+*/
 type AssignmentInvalid struct {
 	errorInstanceID uuid.UUID
 	assignmentInvalid

@@ -36,6 +36,39 @@ type Location struct {
 	DistanceM float64
 }
 
+// LocationMode names which of `listLocations`' four listing modes a request selected (M58 ticket 6).
+// It is resolved ONCE, in the transport, and carried on the filter — so the list and the dashboard
+// are handed the same answer rather than each re-deriving it from the raw arguments.
+type LocationMode string
+
+const (
+	// LocationModeBrowse is the whole registry in RID order — the mode this type had no way to ask for
+	// before M58 ticket 6, which is why it had no filters and no dashboard.
+	LocationModeBrowse LocationMode = "browse"
+	// LocationModeText matches the address haystack (search_text) — the R-21 trigram twin.
+	LocationModeText LocationMode = "text"
+	// LocationModeRadius is ST_DWithin around (Lat,Lng), nearest first.
+	LocationModeRadius LocationMode = "radius"
+	// LocationModeBbox is ST_Intersects against the envelope.
+	LocationModeBbox LocationMode = "bbox"
+)
+
+// LocationFilter is one listing request: the resolved mode, its window, and the structural facet
+// filters (D-ObjectFacets). CountryID/TypeID apply in EVERY mode — they narrow the window rather than
+// replacing it — which is what lets the dashboard describe a windowed list rather than the registry.
+type LocationFilter struct {
+	Mode  LocationMode
+	Query string
+
+	// Radius window (Mode == LocationModeRadius).
+	Lat, Lng, RadiusM float64
+	// Bounding-box window (Mode == LocationModeBbox).
+	MinLat, MinLng, MaxLat, MaxLng float64
+
+	CountryID *string
+	TypeID    *string
+}
+
 // LocationType is an instance-admin catalog label classifying a place (building/address/online);
 // descriptive only, never branched on. Name is the default-locale value (the transport overlays the
 // i18n store into a locale->text map).

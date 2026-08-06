@@ -46,8 +46,37 @@ type AuthorizationServiceClient interface {
 	GrantAssignment(ctx context.Context, authHeader bearertoken.Token, requestArg GrantAssignmentRequest) (Assignment, error)
 	// Revoke an assignment (reversible flip; assignment.revoke).
 	RevokeAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) (Assignment, error)
-	// List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read).
-	ListAssignments(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg *string, targetUnitIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error)
+	/*
+	   List ACTIVE assignments, token-paginated. Gated on `assignment.read` held anywhere, and
+	   reach-trimmed: an instance admin sees every grant, anyone else sees only grants whose
+	   target unit is within their `assignment.read` reach.
+
+	   Every argument is an optional FACET filter (M58 ticket 6 / D-ObjectFacets). Until then this
+	   endpoint required exactly one of `subjectPersonId`/`targetUnitId` and there was no way to
+	   ask for "the grants"; Assignment:AssignmentInvalid is no longer returned for that reason.
+
+	   Two things this changed rather than added, both deliberate:
+	   - the `subjectPersonId` arm used to be gated on `assignment.read` held ANYWHERE with no
+	     trim, so one grant anywhere enumerated any person's authority everywhere. It is now
+	     trimmed like every other arm, so it can only narrow.
+	   - the `targetUnitId` arm used to 403 when the caller could not reach the named unit; it now
+	     returns an empty page. The row set is identical.
+
+	   ACTIVE ONLY, and that default stands: `revokedAt` rows are never returned, so there is no
+	   `active` or `expiresAt` filter (a distribution whose every row is active is a chart with
+	   one bar).
+	*/
+	ListAssignments(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error)
+	/*
+	   Facet distributions over the active grant population — the dashboard half of the assignment
+	   facet vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the filter args
+	   `listAssignments` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/assignments` rather than `/assignments/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{assignmentId}`.
+	*/
+	AssignmentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string) (AssignmentStats, error)
 	// Grant instance-admin (instance.admin.manage). Returns Authorization:InstanceAdminConflict if already active.
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdmin, error)
 	// Revoke instance-admin (instance.admin.manage; reversible flip).
@@ -256,7 +285,7 @@ func (c *authorizationServiceClient) RevokeAssignment(ctx context.Context, authH
 	return *returnVal, nil
 }
 
-func (c *authorizationServiceClient) ListAssignments(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg *string, targetUnitIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error) {
+func (c *authorizationServiceClient) ListAssignments(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error) {
 	var returnVal *AssignmentPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAssignments"))
@@ -268,6 +297,15 @@ func (c *authorizationServiceClient) ListAssignments(ctx context.Context, authHe
 	}
 	if targetUnitIdArg != nil {
 		queryParams.Set("targetUnitId", fmt.Sprint(*targetUnitIdArg))
+	}
+	if roleIdArg != nil {
+		queryParams.Set("roleId", fmt.Sprint(*roleIdArg))
+	}
+	if scopeArg != nil {
+		queryParams.Set("scope", fmt.Sprint(*scopeArg))
+	}
+	if graphIdArg != nil {
+		queryParams.Set("graphId", fmt.Sprint(*graphIdArg))
 	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
@@ -283,6 +321,43 @@ func (c *authorizationServiceClient) ListAssignments(ctx context.Context, authHe
 	}
 	if returnVal == nil {
 		return *new(AssignmentPage), werror.ErrorWithContextParams(ctx, "listAssignments response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *authorizationServiceClient) AssignmentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string) (AssignmentStats, error) {
+	var returnVal *AssignmentStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("AssignmentStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/authorization/v1/stats/assignments"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if subjectPersonIdArg != nil {
+		queryParams.Set("subjectPersonId", fmt.Sprint(*subjectPersonIdArg))
+	}
+	if targetUnitIdArg != nil {
+		queryParams.Set("targetUnitId", fmt.Sprint(*targetUnitIdArg))
+	}
+	if roleIdArg != nil {
+		queryParams.Set("roleId", fmt.Sprint(*roleIdArg))
+	}
+	if scopeArg != nil {
+		queryParams.Set("scope", fmt.Sprint(*scopeArg))
+	}
+	if graphIdArg != nil {
+		queryParams.Set("graphId", fmt.Sprint(*graphIdArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AssignmentStats), werror.WrapWithContextParams(ctx, err, "assignmentStats failed")
+	}
+	if returnVal == nil {
+		return *new(AssignmentStats), werror.ErrorWithContextParams(ctx, "assignmentStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -410,8 +485,37 @@ type AuthorizationServiceClientWithAuth interface {
 	GrantAssignment(ctx context.Context, requestArg GrantAssignmentRequest) (Assignment, error)
 	// Revoke an assignment (reversible flip; assignment.revoke).
 	RevokeAssignment(ctx context.Context, assignmentIdArg string) (Assignment, error)
-	// List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read).
-	ListAssignments(ctx context.Context, subjectPersonIdArg *string, targetUnitIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error)
+	/*
+	   List ACTIVE assignments, token-paginated. Gated on `assignment.read` held anywhere, and
+	   reach-trimmed: an instance admin sees every grant, anyone else sees only grants whose
+	   target unit is within their `assignment.read` reach.
+
+	   Every argument is an optional FACET filter (M58 ticket 6 / D-ObjectFacets). Until then this
+	   endpoint required exactly one of `subjectPersonId`/`targetUnitId` and there was no way to
+	   ask for "the grants"; Assignment:AssignmentInvalid is no longer returned for that reason.
+
+	   Two things this changed rather than added, both deliberate:
+	   - the `subjectPersonId` arm used to be gated on `assignment.read` held ANYWHERE with no
+	     trim, so one grant anywhere enumerated any person's authority everywhere. It is now
+	     trimmed like every other arm, so it can only narrow.
+	   - the `targetUnitId` arm used to 403 when the caller could not reach the named unit; it now
+	     returns an empty page. The row set is identical.
+
+	   ACTIVE ONLY, and that default stands: `revokedAt` rows are never returned, so there is no
+	   `active` or `expiresAt` filter (a distribution whose every row is active is a chart with
+	   one bar).
+	*/
+	ListAssignments(ctx context.Context, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error)
+	/*
+	   Facet distributions over the active grant population — the dashboard half of the assignment
+	   facet vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the filter args
+	   `listAssignments` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/assignments` rather than `/assignments/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{assignmentId}`.
+	*/
+	AssignmentStats(ctx context.Context, facetsArg *string, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string) (AssignmentStats, error)
 	// Grant instance-admin (instance.admin.manage). Returns Authorization:InstanceAdminConflict if already active.
 	GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdmin, error)
 	// Revoke instance-admin (instance.admin.manage; reversible flip).
@@ -483,8 +587,12 @@ func (c *authorizationServiceClientWithAuth) RevokeAssignment(ctx context.Contex
 	return c.client.RevokeAssignment(ctx, c.authHeader, assignmentIdArg)
 }
 
-func (c *authorizationServiceClientWithAuth) ListAssignments(ctx context.Context, subjectPersonIdArg *string, targetUnitIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error) {
-	return c.client.ListAssignments(ctx, c.authHeader, subjectPersonIdArg, targetUnitIdArg, pageSizeArg, pageTokenArg)
+func (c *authorizationServiceClientWithAuth) ListAssignments(ctx context.Context, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error) {
+	return c.client.ListAssignments(ctx, c.authHeader, subjectPersonIdArg, targetUnitIdArg, roleIdArg, scopeArg, graphIdArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *authorizationServiceClientWithAuth) AssignmentStats(ctx context.Context, facetsArg *string, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string) (AssignmentStats, error) {
+	return c.client.AssignmentStats(ctx, c.authHeader, facetsArg, subjectPersonIdArg, targetUnitIdArg, roleIdArg, scopeArg, graphIdArg)
 }
 
 func (c *authorizationServiceClientWithAuth) GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdmin, error) {
@@ -596,12 +704,20 @@ func (c *authorizationServiceClientWithTokenProvider) RevokeAssignment(ctx conte
 	return c.client.RevokeAssignment(ctx, bearertoken.Token(token), assignmentIdArg)
 }
 
-func (c *authorizationServiceClientWithTokenProvider) ListAssignments(ctx context.Context, subjectPersonIdArg *string, targetUnitIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error) {
+func (c *authorizationServiceClientWithTokenProvider) ListAssignments(ctx context.Context, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(AssignmentPage), err
 	}
-	return c.client.ListAssignments(ctx, bearertoken.Token(token), subjectPersonIdArg, targetUnitIdArg, pageSizeArg, pageTokenArg)
+	return c.client.ListAssignments(ctx, bearertoken.Token(token), subjectPersonIdArg, targetUnitIdArg, roleIdArg, scopeArg, graphIdArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *authorizationServiceClientWithTokenProvider) AssignmentStats(ctx context.Context, facetsArg *string, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string) (AssignmentStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AssignmentStats), err
+	}
+	return c.client.AssignmentStats(ctx, bearertoken.Token(token), facetsArg, subjectPersonIdArg, targetUnitIdArg, roleIdArg, scopeArg, graphIdArg)
 }
 
 func (c *authorizationServiceClientWithTokenProvider) GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdmin, error) {

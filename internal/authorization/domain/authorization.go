@@ -8,6 +8,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Sentinel errors mapped to Conjure SerializableErrors by the transport layer. The DB constraints
@@ -116,6 +118,21 @@ type Assignment struct {
 	UpdatedAt       time.Time
 }
 
+// AssignmentFilter is one listing request over the ACTIVE grant population (M58 ticket 6 /
+// D-ObjectFacets). Every field is an optional facet filter; nil means the criterion is disabled.
+//
+// There is no `active` or `expiresAt` field on purpose. The list returns active grants and keeps that
+// default (decided M58 ticket 3): a revoked grant is a security artefact whose reachability is an
+// authz read-surface decision, not a facet-vocabulary one — and a distribution whose every row is
+// active is a chart with one bar.
+type AssignmentFilter struct {
+	SubjectPersonID *string
+	TargetUnitID    *string
+	RoleID          *string
+	Scope           *string
+	GraphID         *string
+}
+
 // Active reports whether the assignment is currently in force: not revoked and not expired
 // (D-TimeBoundGrants — silent, decision-time expiry).
 func (a Assignment) Active(now time.Time) bool {
@@ -208,8 +225,16 @@ type Repository interface {
 	InsertAssignment(ctx context.Context, g GrantInput, graphID string) (Assignment, error)
 	GetAssignment(ctx context.Context, id string) (Assignment, error)
 	RevokeAssignment(ctx context.Context, id, revokedBy string) (Assignment, error)
-	ListAssignmentsBySubject(ctx context.Context, subjectPersonID, after string, limit int) ([]Assignment, error)
-	ListAssignmentsByUnit(ctx context.Context, targetUnitID, after string, limit int) ([]Assignment, error)
+	// ListAssignments pages the ACTIVE grant population under the facet filter (M58 ticket 6). The
+	// reader is the caller, NOT the grants' subject: an empty readerPersonID is the instance-admin arm
+	// (no reach predicate), any other value trims to that reader's `assignment.read` reach. `dense`
+	// picks the point-probe plan shape over the reach-set one (0017 §2).
+	ListAssignments(ctx context.Context, f AssignmentFilter, readerPersonID string, dense bool, after string, limit int) ([]Assignment, error)
+	// CountAssignmentReachCapped is the capped reach-cardinality probe the sparse/dense dispatch reads.
+	CountAssignmentReachCapped(ctx context.Context, readerPersonID string, cap int) (int64, error)
+	// AssignmentStats is the dashboard aggregate over the SAME candidate set ListAssignments pages
+	// under the same filter, with the reach trim folded INTO the count.
+	AssignmentStats(ctx context.Context, f AssignmentFilter, readerPersonID string, sel stats.Selection) ([]stats.Group, error)
 	// ActiveGrantsForSubject returns the subject's active (not revoked) assignments joined with each
 	// role's permission codes, grouped into ActiveGrants. Decision-time expiry is applied by the PDP.
 	ActiveGrantsForSubject(ctx context.Context, subjectPersonID string) ([]ActiveGrant, error)

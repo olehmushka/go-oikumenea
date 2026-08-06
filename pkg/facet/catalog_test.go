@@ -30,10 +30,14 @@ func TestDefaultRegistryBuilds(t *testing.T) {
 	// Ticket 5 added `company` and `institution`, the first two PROFILE types: sidecar rows keyed by a
 	// tenant organization's RID (M41 / D-UnifiedOrgGraph), so their token is `organization` and neither
 	// has one of its own.
+	// Ticket 6 added the last two, both of which had NO LIST MODE to declare facets over until it made
+	// one: `location` (three windowed branches and a 400 when given none, hence the first ClassWindow
+	// args) and `link__has_role` (exactly one of subjectPersonId/targetUnitId required, hence a reach
+	// trim asked for ONE permission code rather than the '%.read' family).
 	want := []string{
 		"person", "unit", "organization", "link__member_of", "order", "document", "audit",
 		"external_organization", "taxon", "languoid", "vehicle", "account", "card",
-		"company", "institution",
+		"company", "institution", "location", "link__has_role",
 	}
 	for _, w := range want {
 		o, ok := Default.Get(w)
