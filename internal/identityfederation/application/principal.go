@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // The service-principal registry (M51 / D-ServiceIdentities): the machine counterpart of the

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/olegamysk/go-oikumenea/clients/go/internal/conjureerrors"
+	"github.com/olehmushka/go-oikumenea/clients/go/internal/conjureerrors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
 	"github.com/palantir/pkg/safejson"
 	"github.com/palantir/pkg/safeyaml"

@@ -22,8 +22,8 @@ import (
 	"context"
 	"time"
 
-	connectorapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/connector"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	connectorapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/connector"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"

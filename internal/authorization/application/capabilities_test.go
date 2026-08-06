@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // adminFakeService reuses the authority test harness but with the instance-admin flag set.

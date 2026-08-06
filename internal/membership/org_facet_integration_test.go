@@ -32,8 +32,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/membership/application"
-	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
+	"github.com/olehmushka/go-oikumenea/internal/membership/application"
+	"github.com/olehmushka/go-oikumenea/internal/membership/domain"
 )
 
 // mOrgWorld is two organizations, each with one unit holding one membership, and a reader whose

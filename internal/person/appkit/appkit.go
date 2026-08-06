@@ -19,8 +19,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 

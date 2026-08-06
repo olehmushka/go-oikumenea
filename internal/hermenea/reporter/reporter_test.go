@@ -7,8 +7,8 @@ import (
 	"context"
 	"testing"
 
-	connectorapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/connector"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	connectorapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/connector"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 	"github.com/palantir/pkg/bearertoken"
 )
 

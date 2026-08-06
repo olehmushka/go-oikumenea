@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // SupplementalMapper reads a staged CLDR directory (supplementalData.xml + iso-639-3.tab) and emits

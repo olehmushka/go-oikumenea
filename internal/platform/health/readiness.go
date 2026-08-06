@@ -11,7 +11,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // requiredExtensions are the operator-DB prerequisites the spatial features need: PostGIS for the WOF

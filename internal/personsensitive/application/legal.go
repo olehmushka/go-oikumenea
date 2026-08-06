@@ -15,8 +15,8 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/crypto"
 )
 
 // ListLegalRecords returns a person's decrypted category-level legal records. Suppressed rows are

@@ -15,12 +15,12 @@ package personsensitive
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/internal/personsensitive/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/personsensitive/application"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/personsensitive/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/personsensitive/application"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/crypto"
 )
 
 // Register builds the personsensitive application service over the platform pool, the audit service

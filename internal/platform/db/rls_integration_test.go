@@ -38,7 +38,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // rowQuerier is the QueryRow surface shared by *pgxpool.Pool and *pgxpool.Conn.

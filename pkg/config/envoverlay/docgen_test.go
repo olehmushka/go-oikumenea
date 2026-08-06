@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	hconfig "github.com/olegamysk/go-oikumenea/internal/hermenea/config"
-	config "github.com/olegamysk/go-oikumenea/internal/platform/config"
-	"github.com/olegamysk/go-oikumenea/pkg/config/envoverlay"
+	hconfig "github.com/olehmushka/go-oikumenea/internal/hermenea/config"
+	config "github.com/olehmushka/go-oikumenea/internal/platform/config"
+	"github.com/olehmushka/go-oikumenea/pkg/config/envoverlay"
 )
 
 // updateGolden regenerates docs/reference/env-vars.md instead of asserting it (run:

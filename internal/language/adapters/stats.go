@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/language/adapters/languagesql"
-	"github.com/olegamysk/go-oikumenea/internal/language/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/language/adapters/languagesql"
+	"github.com/olehmushka/go-oikumenea/internal/language/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // textPtr maps an optional filter value onto a sqlc narg: nil is SQL NULL, which each predicate reads

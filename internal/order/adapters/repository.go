@@ -19,9 +19,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/order/adapters/ordersql"
-	"github.com/olegamysk/go-oikumenea/internal/order/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/order/adapters/ordersql"
+	"github.com/olehmushka/go-oikumenea/internal/order/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // isoDate is the calendar-date wire format (a day, not an instant).

@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/application"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/ipintel"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/application"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/ipintel"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // newAccount makes an account (with an initial external identity) for personID and returns its ID.

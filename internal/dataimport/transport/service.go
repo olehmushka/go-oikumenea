@@ -11,10 +11,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	dataimportapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/dataimport"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/application"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	dataimportapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/dataimport"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/application"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/domain"
 	conjureerrors "github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
 	"github.com/palantir/pkg/bearertoken"
 )

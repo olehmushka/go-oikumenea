@@ -15,7 +15,7 @@ package orderevents
 import (
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/events"
+	"github.com/olehmushka/go-oikumenea/pkg/events"
 )
 
 // Event-type dispatch keys (events.Event.Type()).

@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/order/application"
-	"github.com/olegamysk/go-oikumenea/internal/order/domain"
+	"github.com/olehmushka/go-oikumenea/internal/order/application"
+	"github.com/olehmushka/go-oikumenea/internal/order/domain"
 )
 
 func osp(s string) *string    { return &s }

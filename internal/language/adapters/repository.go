@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/language/adapters/languagesql"
-	"github.com/olegamysk/go-oikumenea/internal/language/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/language/adapters/languagesql"
+	"github.com/olehmushka/go-oikumenea/internal/language/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // Repository is the pgx/sqlc-backed implementation of domain.Repository, bound to a single db.DBTX

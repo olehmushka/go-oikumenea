@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/adapters/accountsql"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/adapters/accountsql"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
 )
 
 // The service-principal registry side of the adapter (M51 / D-ServiceIdentities): the machine

@@ -7,7 +7,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/education/domain"
+	"github.com/olehmushka/go-oikumenea/internal/education/domain"
 )
 
 // Reference-layer orchestration (M20 extension): audited CRUD for the curriculum/research/governance/

@@ -31,13 +31,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	"github.com/olegamysk/go-oikumenea/internal/membership/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/membership/application"
-	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	auditadapters "github.com/olehmushka/go-oikumenea/internal/audit/adapters"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/internal/membership/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/membership/application"
+	"github.com/olehmushka/go-oikumenea/internal/membership/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
-	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/membership/domain"
+	persondomain "github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 // facetArgs binds the PERSON facet block (M56 / D-ObjectFacets) to pgx wire types for membership's

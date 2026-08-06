@@ -10,7 +10,7 @@ import (
 	"context"
 	"testing"
 
-	dataimportapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/dataimport"
+	dataimportapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/dataimport"
 	"github.com/palantir/pkg/bearertoken"
 )
 

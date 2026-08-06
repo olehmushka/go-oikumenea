@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/adapters/authzsql"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/adapters/authzsql"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
 )
 
 // The machine-subject authority plane over oikumenea.authz_principal_grants (M51 /

@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // fakeStore embeds domain.Store so the test implements only the methods the streaming path touches;

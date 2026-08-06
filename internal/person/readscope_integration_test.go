@@ -19,15 +19,15 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	membershipadapters "github.com/olegamysk/go-oikumenea/internal/membership/adapters"
-	membershipapp "github.com/olegamysk/go-oikumenea/internal/membership/application"
-	membershipdomain "github.com/olegamysk/go-oikumenea/internal/membership/domain"
-	"github.com/olegamysk/go-oikumenea/internal/person/application"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	auditadapters "github.com/olehmushka/go-oikumenea/internal/audit/adapters"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	membershipadapters "github.com/olehmushka/go-oikumenea/internal/membership/adapters"
+	membershipapp "github.com/olehmushka/go-oikumenea/internal/membership/application"
+	membershipdomain "github.com/olehmushka/go-oikumenea/internal/membership/domain"
+	"github.com/olehmushka/go-oikumenea/internal/person/application"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // membershipReader builds the membership application service over the same pool and binds it as the

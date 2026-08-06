@@ -11,10 +11,10 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	"github.com/olehmushka/go-oikumenea/internal/geo/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // RepositoryFactory binds a domain.Repository to a command surface — the pool for reads, or a caller's

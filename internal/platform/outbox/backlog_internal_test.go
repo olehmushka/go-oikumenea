@@ -13,7 +13,7 @@ import (
 	"os"
 	"testing"
 
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 	"github.com/palantir/pkg/metrics"
 )
 

@@ -18,7 +18,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // Sentinel errors. The adapter maps Postgres constraint violations to these; the transport maps them

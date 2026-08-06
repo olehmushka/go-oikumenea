@@ -18,8 +18,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/application"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/application"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/domain"
 )
 
 // diffWofBase reserves a synthetic WOF-id range no real dataset uses, so the test owns its rows.

@@ -11,7 +11,7 @@ package ipintel
 import (
 	"context"
 
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
 )
 
 // Resolver turns a client IP into an IPIntel overlay. Implementations MUST be best-effort and cheap:

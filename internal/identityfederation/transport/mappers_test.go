@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	identityapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/identityfederation"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
+	identityapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/identityfederation"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
 )
 
 // mapErrorContract pins the HTTP classification of every identity-federation domain error mapError

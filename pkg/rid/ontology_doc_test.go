@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 // TestOntologyMappingCitesOnlyRealTypes is the markdown-coherence check for R-28 (review-2026-09):

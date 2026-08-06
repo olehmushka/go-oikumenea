@@ -19,9 +19,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	personprofilesql "github.com/olegamysk/go-oikumenea/internal/personprofile/adapters/personprofilesql"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	personprofilesql "github.com/olehmushka/go-oikumenea/internal/personprofile/adapters/personprofilesql"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // Repository is the personprofile pgx/sqlc-backed persistence adapter, bound to a single db.DBTX — the

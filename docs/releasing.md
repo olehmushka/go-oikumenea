@@ -4,7 +4,7 @@ This deployment publishes **three artifacts**, and they are versioned **independ
 
 | Artifact | Where it goes | Version lives in | Released by |
 |---|---|---|---|
-| **Container images** — `oikumenea`, `hermenea`, `oikumenea-console` | `ghcr.io/olehmushka/*` **and** `docker.io/olehmushka/*` | the tag alone | tag `v1.2.3` |
+| **Container images** — `oikumenea`, `hermenea`, `oikumenea-console` | `ghcr.io/olehmushka/*` **and** `docker.io/olegamysk/*` | the tag alone | tag `v1.2.3` |
 | **Go SDK** — the nested `clients/go` module | nothing is uploaded; the module proxy serves the tag | the tag alone | tag `clients/go/v1.2.3` |
 | **TypeScript SDK** — `oikumenea-client` | npmjs.com (public) | `clients/typescript/package.json` | tag `ts/v1.2.3` |
 
@@ -77,12 +77,12 @@ scripts/release.sh go-sdk 0.4.0 --push     # …and pushes it
 A Go module release **is** the tag — nothing is uploaded, and `proxy.golang.org` serves it within
 minutes. The tag form `clients/go/vX.Y.Z` is fixed by the nested module's path and is not a choice.
 
-> **BLOCKED today.** The module declares `github.com/olegamysk/go-oikumenea/clients/go`, and that path
-> returns 404 — the repository lives at `github.com/olehmushka/go-oikumenea`. The proxy fetches a
-> module by its **go.mod path**, not by the repo you tagged, so tagging now would publish a module
-> that `go get` cannot install, and the version number would be spent. `release.sh go-sdk` refuses
-> for exactly this reason. Resolve it by renaming the module path to match the repository (go.mod,
-> clients/go/go.mod and every import), or by making the declared path resolve.
+> **The module path must match where the repo lives.** It did not until this was set up: go.mod
+> declared `github.com/olegamysk/…` while the repository is `github.com/olehmushka/…`, so the declared
+> path 404'd. A module is fetched by its **go.mod path**, not by the repo that was tagged — tagging
+> would have published something `go get` could not install, with the version number spent and nothing
+> to roll back. `release.sh go-sdk` checks it on every release, because that is the moment the mistake
+> becomes permanent.
 
 The command refuses to proceed when `clients/go` is byte-identical to the last release, when the
 version does not move forward, when the IR-derived mirrors are stale against the contract, or when
@@ -120,7 +120,7 @@ CI needs three repository secrets; the built-in `GITHUB_TOKEN` covers GHCR.
 
 | Secret | Used for |
 |---|---|
-| `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` | pushing to `docker.io/olehmushka/*` |
+| `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` | pushing to `docker.io/olegamysk/*` — note the namespaces DIFFER: GHCR's is the GitHub owner, Docker Hub's is the account you signed up as |
 | `NPM_TOKEN` | publishing `oikumenea-client` (an **automation** token, so 2FA does not block CI) |
 
 Locally, `docker login ghcr.io`, `docker login docker.io` and `npm login` are enough — the script

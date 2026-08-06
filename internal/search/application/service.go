@@ -17,8 +17,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/scope"
-	"github.com/olegamysk/go-oikumenea/internal/search/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/scope"
+	"github.com/olehmushka/go-oikumenea/internal/search/domain"
 )
 
 const (

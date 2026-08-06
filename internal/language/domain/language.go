@@ -13,8 +13,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // ErrInvalidLanguoid is the languoid filter/facet sentinel (M58 ticket 4); the transport maps it to

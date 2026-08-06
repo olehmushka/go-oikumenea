@@ -14,11 +14,11 @@ package personprofile
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/internal/personprofile/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/personprofile/application"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/personprofile/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/personprofile/application"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // Register builds the personprofile application service over the platform pool and the audit service

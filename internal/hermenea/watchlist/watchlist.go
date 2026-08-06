@@ -13,8 +13,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // Hit is one provider's partial screening outcome for a query. The Service aggregates hits across

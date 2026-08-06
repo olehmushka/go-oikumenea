@@ -12,9 +12,9 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/listing"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/listing"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // noExclude is the zero UUID used as the "exclude nothing" argument to the code-conflict counts on a

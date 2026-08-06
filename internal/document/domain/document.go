@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // ISODate is the wire/calendar date format (a day, not an instant) for issued/expires dates.

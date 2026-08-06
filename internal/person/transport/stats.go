@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 
-	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	personapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/person"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 )
 

@@ -6,8 +6,8 @@ package transport
 import (
 	"context"
 
-	educationapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/education"
-	"github.com/olegamysk/go-oikumenea/internal/education/domain"
+	educationapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/education"
+	"github.com/olehmushka/go-oikumenea/internal/education/domain"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 )

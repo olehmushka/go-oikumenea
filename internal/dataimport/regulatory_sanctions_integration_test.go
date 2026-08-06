@@ -23,10 +23,10 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/application"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/application"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 func newRegSanctionsService(t *testing.T, pool *pgxpool.Pool) *application.Service {

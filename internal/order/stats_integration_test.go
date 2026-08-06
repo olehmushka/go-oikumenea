@@ -22,9 +22,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/order/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/order/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 func orderSel(t *testing.T) stats.Selection {

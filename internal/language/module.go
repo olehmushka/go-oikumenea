@@ -11,14 +11,14 @@ package language
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	languageapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/language"
-	"github.com/olegamysk/go-oikumenea/internal/language/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/language/application"
-	"github.com/olegamysk/go-oikumenea/internal/language/domain"
-	"github.com/olegamysk/go-oikumenea/internal/language/transport"
-	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	languageapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/language"
+	"github.com/olehmushka/go-oikumenea/internal/language/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/language/application"
+	"github.com/olehmushka/go-oikumenea/internal/language/domain"
+	"github.com/olehmushka/go-oikumenea/internal/language/transport"
+	locapp "github.com/olehmushka/go-oikumenea/internal/localization/application"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )

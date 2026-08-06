@@ -20,9 +20,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/tenant/application"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/application"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 func TestUnitSearch_Integration(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
+	"github.com/olehmushka/go-oikumenea/internal/membership/domain"
 )
 
 // membershipFilter assembles the listMemberships query args into the one MembershipFilter both list

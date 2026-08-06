@@ -12,7 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/religion/domain"
+	"github.com/olehmushka/go-oikumenea/internal/religion/domain"
 )
 
 // ---- affiliation types ----

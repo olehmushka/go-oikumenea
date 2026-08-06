@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	rankapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/rank"
-	"github.com/olegamysk/go-oikumenea/internal/rank/domain"
+	rankapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/rank"
+	"github.com/olehmushka/go-oikumenea/internal/rank/domain"
 )
 
 // mapErrorContract pins the HTTP classification of every rank domain error `mapError` translates. Like

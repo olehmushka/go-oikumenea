@@ -21,10 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/externalorg/application"
-	"github.com/olegamysk/go-oikumenea/internal/externalorg/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/externalorg/application"
+	"github.com/olehmushka/go-oikumenea/internal/externalorg/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 func allOrgFacets(t *testing.T) stats.Selection {

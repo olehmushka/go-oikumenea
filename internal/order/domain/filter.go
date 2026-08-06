@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 // ISODate is the calendar-date layout every facet date bound is carried in on the wire. Conjure's

@@ -24,10 +24,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/membership/application"
-	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/membership/application"
+	"github.com/olehmushka/go-oikumenea/internal/membership/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // statsSel is the selection a dashboard makes by default: every facet the caller may read.

@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 
-	financeapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/finance"
-	"github.com/olegamysk/go-oikumenea/internal/finance/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	financeapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/finance"
+	"github.com/olehmushka/go-oikumenea/internal/finance/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 )
 

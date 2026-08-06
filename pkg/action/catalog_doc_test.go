@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 // TestCatalogMatchesDoc is the R-29 coherence gate (same spirit as R-28's ontology-doc test): the

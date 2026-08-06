@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"time"
 
-	externalorgapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/externalorg"
-	"github.com/olegamysk/go-oikumenea/internal/externalorg/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	externalorgapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/externalorg"
+	"github.com/olehmushka/go-oikumenea/internal/externalorg/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 )

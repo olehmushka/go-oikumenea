@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/geo/adapters/geosql"
-	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
+	"github.com/olehmushka/go-oikumenea/internal/geo/adapters/geosql"
+	"github.com/olehmushka/go-oikumenea/internal/geo/domain"
 )
 
 // Location adapter methods (D-Location, M19). They translate between the domain Location shape and the

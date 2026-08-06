@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 type temporalTier int

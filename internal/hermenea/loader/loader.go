@@ -15,8 +15,8 @@ import (
 	"context"
 	"time"
 
-	dataimportapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/dataimport"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	dataimportapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/dataimport"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	"github.com/palantir/pkg/bearertoken"
 )

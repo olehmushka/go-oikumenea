@@ -284,7 +284,7 @@ cmd_images() {
 # path in go.mod, NOT by the repo you tagged. If the two disagree the tag publishes cleanly and
 # `go get` 404s, with nothing to roll back: a version number is spent and the module is uninstallable.
 #
-# That is the live case here. go.mod says github.com/olegamysk/go-oikumenea while the repo is at
+# That is the live case here. go.mod says github.com/olehmushka/go-oikumenea while the repo is at
 # github.com/olehmushka/go-oikumenea, so the declared path does not exist. Checked at RELEASE time
 # rather than in CI, because it is exactly the moment the mistake becomes permanent.
 require_module_path_resolves() {

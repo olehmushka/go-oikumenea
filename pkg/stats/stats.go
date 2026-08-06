@@ -36,7 +36,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
 )
 
 // Labeler resolves a batch of ONE object type's RIDs to display names, each a locale→text map

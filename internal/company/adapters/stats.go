@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/company/adapters/companysql"
-	"github.com/olegamysk/go-oikumenea/internal/company/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/company/adapters/companysql"
+	"github.com/olehmushka/go-oikumenea/internal/company/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // The company dashboard aggregate (M58 ticket 5 / D-ObjectFacets): every selected facet's

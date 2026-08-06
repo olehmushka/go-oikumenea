@@ -6,7 +6,7 @@ package domain
 import (
 	"context"
 
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // Repository is the external-organizations persistence port (implemented by adapters over raw pgx). It

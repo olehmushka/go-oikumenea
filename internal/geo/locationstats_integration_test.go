@@ -22,10 +22,10 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/geo/application"
-	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/geo/application"
+	"github.com/olehmushka/go-oikumenea/internal/geo/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // The spread's anchor point and text tag. The coordinates are arbitrary but FIXED, because the tests

@@ -35,7 +35,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olehmushka/go-oikumenea/pkg/crypto"
 )
 
 func main() {

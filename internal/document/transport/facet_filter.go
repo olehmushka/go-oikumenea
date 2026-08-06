@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/document/domain"
+	"github.com/olehmushka/go-oikumenea/internal/document/domain"
 )
 
 // documentFilter assembles the listDocuments query args into the one DocumentFilter both list paths

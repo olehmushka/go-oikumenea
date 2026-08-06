@@ -10,14 +10,14 @@ package localization
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	locapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/localization"
-	"github.com/olegamysk/go-oikumenea/internal/localization/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/localization/application"
-	"github.com/olegamysk/go-oikumenea/internal/localization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/localization/transport"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	locapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/localization"
+	"github.com/olehmushka/go-oikumenea/internal/localization/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/localization/application"
+	"github.com/olehmushka/go-oikumenea/internal/localization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/localization/transport"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )

@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/education/adapters/educationsql"
-	"github.com/olegamysk/go-oikumenea/internal/education/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/education/adapters/educationsql"
+	"github.com/olehmushka/go-oikumenea/internal/education/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // The institution dashboard aggregate (M58 ticket 5 / D-ObjectFacets): every selected facet's

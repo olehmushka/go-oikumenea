@@ -15,14 +15,14 @@ package transport
 import (
 	"context"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	wiringapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/wiring"
-	connectordomain "github.com/olegamysk/go-oikumenea/internal/connector/domain"
-	geodomain "github.com/olegamysk/go-oikumenea/internal/geo/domain"
-	langdomain "github.com/olegamysk/go-oikumenea/internal/language/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/catalog"
-	"github.com/olegamysk/go-oikumenea/pkg/authn"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	wiringapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/wiring"
+	connectordomain "github.com/olehmushka/go-oikumenea/internal/connector/domain"
+	geodomain "github.com/olehmushka/go-oikumenea/internal/geo/domain"
+	langdomain "github.com/olehmushka/go-oikumenea/internal/language/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/catalog"
+	"github.com/olehmushka/go-oikumenea/pkg/authn"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 )

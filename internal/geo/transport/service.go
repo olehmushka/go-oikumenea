@@ -13,12 +13,12 @@ package transport
 import (
 	"context"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	geoapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/geo"
-	"github.com/olegamysk/go-oikumenea/internal/geo/application"
-	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
-	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	geoapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/geo"
+	"github.com/olehmushka/go-oikumenea/internal/geo/application"
+	"github.com/olehmushka/go-oikumenea/internal/geo/domain"
+	locapp "github.com/olehmushka/go-oikumenea/internal/localization/application"
 	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 )

@@ -22,14 +22,14 @@ package transport
 import (
 	"context"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
-	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
-	"github.com/olegamysk/go-oikumenea/internal/person/application"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	profileapp "github.com/olegamysk/go-oikumenea/internal/personprofile/application"
-	sensitiveapp "github.com/olegamysk/go-oikumenea/internal/personsensitive/application"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	personapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/person"
+	locapp "github.com/olehmushka/go-oikumenea/internal/localization/application"
+	"github.com/olehmushka/go-oikumenea/internal/person/application"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	profileapp "github.com/olehmushka/go-oikumenea/internal/personprofile/application"
+	sensitiveapp "github.com/olehmushka/go-oikumenea/internal/personsensitive/application"
 	"github.com/palantir/pkg/bearertoken"
 )
 

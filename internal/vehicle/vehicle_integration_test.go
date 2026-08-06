@@ -24,14 +24,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	platformcatalog "github.com/olegamysk/go-oikumenea/internal/platform/catalog"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/internal/vehicle/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/vehicle/application"
-	"github.com/olegamysk/go-oikumenea/internal/vehicle/domain"
+	auditadapters "github.com/olehmushka/go-oikumenea/internal/audit/adapters"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	platformcatalog "github.com/olehmushka/go-oikumenea/internal/platform/catalog"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/vehicle/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/vehicle/application"
+	"github.com/olehmushka/go-oikumenea/internal/vehicle/domain"
 )
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"

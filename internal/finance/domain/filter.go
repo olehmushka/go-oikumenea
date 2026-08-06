@@ -6,8 +6,8 @@ package domain
 import (
 	"fmt"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 // The finance facet vocabulary in Go (M58 ticket 3 / D-ObjectFacets), shared verbatim by each list

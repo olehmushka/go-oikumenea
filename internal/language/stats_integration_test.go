@@ -30,12 +30,12 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/language/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/language/application"
-	"github.com/olegamysk/go-oikumenea/internal/language/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/language/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/language/application"
+	"github.com/olehmushka/go-oikumenea/internal/language/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 func TestWithAdvisoryLockMutualExclusion(t *testing.T) {

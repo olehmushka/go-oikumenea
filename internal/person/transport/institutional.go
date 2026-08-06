@@ -10,8 +10,8 @@ import (
 	"context"
 	"time"
 
-	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	personapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/person"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 )

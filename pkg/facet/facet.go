@@ -30,7 +30,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 //go:generate sh -c "cd ../.. && scripts/gen-action-params.sh"

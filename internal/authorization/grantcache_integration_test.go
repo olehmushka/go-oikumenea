@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 func TestAuthorityFetchedOncePerGuardedRequest(t *testing.T) {

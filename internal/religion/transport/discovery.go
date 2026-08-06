@@ -10,8 +10,8 @@ package transport
 import (
 	"context"
 
-	religionapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/religion"
-	"github.com/olegamysk/go-oikumenea/internal/religion/domain"
+	religionapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/religion"
+	"github.com/olehmushka/go-oikumenea/internal/religion/domain"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 )

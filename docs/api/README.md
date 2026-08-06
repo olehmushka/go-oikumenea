@@ -11,11 +11,11 @@ derived from that **same** contract, so neither can drift from the running serve
 ## Go client SDK
 
 A typed Go client is generated client-only into the nested module
-[`clients/go/`](../../clients/go/README.md) (module path `github.com/olegamysk/go-oikumenea/clients/go`) by a second
+[`clients/go/`](../../clients/go/README.md) (module path `github.com/olehmushka/go-oikumenea/clients/go`) by a second
 `conjure-plugin` project (`godel/config/conjure-plugin.yml`). External code imports it directly:
 
 ```bash
-go get github.com/olegamysk/go-oikumenea/clients/go@latest
+go get github.com/olehmushka/go-oikumenea/clients/go@latest
 ```
 
 ```go

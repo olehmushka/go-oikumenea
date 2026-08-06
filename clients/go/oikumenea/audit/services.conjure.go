@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/olegamysk/go-oikumenea/clients/go/internal/conjureerrors"
+	"github.com/olehmushka/go-oikumenea/clients/go/internal/conjureerrors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"

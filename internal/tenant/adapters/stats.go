@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/adapters/tenantsql"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/adapters/tenantsql"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // UnitStats is the unit dashboard aggregate (M57 / D-ObjectFacets): every selected facet's

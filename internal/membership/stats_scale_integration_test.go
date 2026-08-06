@@ -25,11 +25,11 @@ import (
 	"testing"
 	"time"
 
-	documentdomain "github.com/olegamysk/go-oikumenea/internal/document/domain"
-	membershipdomain "github.com/olegamysk/go-oikumenea/internal/membership/domain"
-	orderdomain "github.com/olegamysk/go-oikumenea/internal/order/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	documentdomain "github.com/olehmushka/go-oikumenea/internal/document/domain"
+	membershipdomain "github.com/olehmushka/go-oikumenea/internal/membership/domain"
+	orderdomain "github.com/olehmushka/go-oikumenea/internal/order/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // ticket2StatsBudget is the per-request budget for a whole-register dashboard at this scale. A

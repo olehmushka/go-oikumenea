@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/fetcher"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/wikidataorgs"
 )
 
 func TestLiveWikidataFetch(t *testing.T) {

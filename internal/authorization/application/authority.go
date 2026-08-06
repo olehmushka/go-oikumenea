@@ -16,8 +16,8 @@ package application
 import (
 	"context"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // AuthoritySnapshot is the subject's authority state at request start.

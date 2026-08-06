@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olehmushka/go-oikumenea/pkg/crypto"
 )
 
 const rewrapDefaultDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"

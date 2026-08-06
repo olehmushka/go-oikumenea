@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/listing"
 )
 
 // The page token is the opaque encoding of the keyset cursor (created_at, id) of the last entry on

@@ -27,7 +27,7 @@ the [Atlas CLI](https://atlasgo.io/getting-started#installation), and `make`. Th
 wrapper (`./godelw`) needs no install. (Node.js is only needed for the optional web console.)
 
 ```bash
-git clone https://github.com/olegamysk/go-oikumenea && cd go-oikumenea
+git clone https://github.com/olehmushka/go-oikumenea && cd go-oikumenea
 cp .env.example .env          # local defaults; tweak ports/DSNs if 5432 is taken
 
 make dev-up                   # start Postgres + a local Keycloak (OIDC IdP) in Docker
@@ -271,9 +271,9 @@ typed **Go SDK** ([`clients/go/`](clients/go/README.md)), a **TypeScript SDK**
 most server releases change nothing in a contract-derived client. Installing them:
 
 ```bash
-go get github.com/olegamysk/go-oikumenea/clients/go@latest   # Go SDK (the go.mod path)
+go get github.com/olehmushka/go-oikumenea/clients/go@latest   # Go SDK
 npm i oikumenea-client                                        # TypeScript SDK
-docker pull ghcr.io/olehmushka/oikumenea:latest               # server image (also on Docker Hub)
+docker pull ghcr.io/olehmushka/oikumenea:latest               # server image (also docker.io/olegamysk)
 ```
 
 Publishing them is [`docs/releasing.md`](docs/releasing.md).

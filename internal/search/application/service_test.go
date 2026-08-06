@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/scope"
-	"github.com/olegamysk/go-oikumenea/internal/search/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/scope"
+	"github.com/olehmushka/go-oikumenea/internal/search/domain"
 )
 
 // fakeProvider serves `ids` in order, `limit` per call, keyset by numeric index encoded in the

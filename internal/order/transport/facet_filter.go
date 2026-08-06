@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/order/domain"
+	"github.com/olehmushka/go-oikumenea/internal/order/domain"
 )
 
 // orderFilter assembles the listOrders query args into the one OrderFilter both list paths take

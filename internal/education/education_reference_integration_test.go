@@ -16,8 +16,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/education/domain"
-	personadapters "github.com/olegamysk/go-oikumenea/internal/person/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/education/domain"
+	personadapters "github.com/olehmushka/go-oikumenea/internal/person/adapters"
 )
 
 // TestEducationReferenceVertical drives the reference-layer slice in one ordered scenario.

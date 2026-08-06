@@ -65,7 +65,7 @@ func TestPageTokenCodecsDelegateToListing(t *testing.T) {
 		if len(declared) == 0 {
 			return
 		}
-		if !imports(file, "github.com/olegamysk/go-oikumenea/pkg/listing") {
+		if !imports(file, "github.com/olehmushka/go-oikumenea/pkg/listing") {
 			t.Errorf("%s declares page-token codec(s) %v without importing pkg/listing — "+
 				"the codec is shared (M56); do not re-implement it", path, declared)
 		}
@@ -86,7 +86,7 @@ func TestPageSizeClampsDelegateToListing(t *testing.T) {
 		if len(declared) == 0 {
 			return
 		}
-		if !imports(file, "github.com/olegamysk/go-oikumenea/pkg/listing") {
+		if !imports(file, "github.com/olehmushka/go-oikumenea/pkg/listing") {
 			t.Errorf("%s declares page-size clamp(s) %v without importing pkg/listing — "+
 				"use listing.PageSize with the module's own Default/Max", path, declared)
 		}

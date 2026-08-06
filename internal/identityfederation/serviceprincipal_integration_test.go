@@ -25,7 +25,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
 )
 
 func newPrincipal(t *testing.T, code, issuer, subject string) domain.ServicePrincipal {

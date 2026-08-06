@@ -1,4 +1,4 @@
-module github.com/olegamysk/go-oikumenea
+module github.com/olehmushka/go-oikumenea
 
 go 1.26.3
 
