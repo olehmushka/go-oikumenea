@@ -422,6 +422,21 @@ instance-scope only. Guards against privilege escalation: granting an assignment
 
 ## Open seams / future
 
+- **Facets & dashboards (M58 ticket 6, BUILT).**
+  [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope):
+  `listAssignments` no longer requires exactly one of `subjectPersonId`/`targetUnitId` — both are
+  ordinary facet filters now, alongside `roleId`, `scope` and `graphId` — and
+  `GET /authorization/v1/stats/assignments` is the dashboard half. **ACTIVE grants only**, and that
+  default stands (M58 ticket 3), so `totalCount` counts active grants rather than rows.
+  **The reach trim asks for `assignment.read` specifically**, not the generic `'%.read'` family every
+  other scoped list uses: generic read-reach is a strict superset, and this endpoint's per-unit arm has
+  always demanded the narrow question, so borrowing the family would have widened the surface.
+  Migration 0023 adds `authz_readable_units_with` and its two siblings for that. Two gates moved with
+  it, both narrower — the `targetUnitId` arm returns an empty page rather than a 403 where the caller
+  cannot reach the unit, and the `subjectPersonId` arm, which applied no trim at all, is now trimmed
+  like everything else. Browsing moved to `/explore/link__has_role`; `/roles` keeps granting and
+  revoking. Catalogued in [facets.md](../architecture/facets.md).
+
 - **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
   for this module's listable types: `GET /assignments/stats` over `roleId`, `targetUnitId`, `scope`, `graphId`, active-vs-revoked and `expiresAt` — the expiring-soon tile is the governance number D-TimeBoundGrants implies but nothing surfaces today.
   Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).

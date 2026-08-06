@@ -115,7 +115,14 @@ export type RefControl =
   // (M41), so `org` already names them; what these three add are their CATALOGS.
   | "legalForm"
   | "industryClass"
-  | "institutionKind";
+  | "institutionKind"
+  // M58 ticket 6. `person`, `unit` and `country` are already above and are REUSED by the location and
+  // assignment filters — a grant's subject is the same directory row the person filter picks. What is
+  // new is one catalog per type plus `role`, which had an EntitySelect kind since M0 and no filter to
+  // use it until this ticket gave assignments a list.
+  | "locationType"
+  | "role"
+  | "graph";
 
 /**
  * One filterable dimension of an object type — the console half of a `pkg/facet` Facet.
@@ -837,10 +844,17 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     labelPlural: "Assignments",
     module: "authorization",
     requires: "assignment.read", // not role.read — assignments are gated separately from role definitions
-    blurb: "Reified (person, role, target_unit, scope) link — the PDP's grant. scope∈{unit|subtree}.",
-    // NOTE: listAssignments requires exactly one of subjectPersonId/targetUnitId (scoped, like orders &
-    // memberships) — so no unconditional global list. Browse them scoped on the Roles & access page,
-    // or from a person/unit object view.
+    blurb: "Reified (person, role, target_unit, scope) link — the PDP's grant. scope∈{unit|subtree}. ACTIVE grants only: a revoked one is history the list does not return.",
+    // M58 ticket 6 gave this type an unconditional list. Until then `listAssignments` required exactly
+    // one of subjectPersonId/targetUnitId, so grants could be interrogated one person or one unit at a
+    // time and never described; both are now ordinary filters. The rows are reach-trimmed server-side
+    // (assignment.read specifically, not the generic read family), so a non-admin's list and chart
+    // both show only grants on units they reach.
+    list: {
+      path: "/authorization/v1/assignments",
+      search: "?pageSize=50",
+      parse: pageParse("assignments"),
+    },
     title: (a) => `${ridTail(s(a.subjectPersonId)!)} → ${ridTail(s(a.targetUnitId)!)}`,
     subtitle: (a) => s(a.scope),
     columns: [
@@ -850,6 +864,36 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { key: "scope", header: "Scope", value: (a) => s(a.scope), render: "pill", tone: (a) => (a.scope === "subtree" ? "indigo" : "slate") },
       { key: "status", header: "Status", value: (a) => (a.revokedAt ? "revoked" : "active"), render: "pill", tone: (a) => (a.revokedAt ? "red" : "green") },
     ],
+    filters: [
+      { key: "subjectPersonId", kind: "ref", label: "Subject", params: ["subjectPersonId"], control: "person" },
+      { key: "roleId", kind: "ref", label: "Role", params: ["roleId"], control: "role" },
+      { key: "targetUnitId", kind: "ref", label: "Target unit", params: ["targetUnitId"], control: "unit",
+        hint: "EXACT match, not subtree-expanding: a subtree grant is listed on the unit it was made at, not on every unit it reaches." },
+      {
+        key: "scope", kind: "enum", label: "Scope", params: ["scope"],
+        values: [
+          { value: "unit", label: "Unit only" },
+          { value: "subtree", label: "Subtree" },
+        ],
+      },
+      { key: "graphId", kind: "ref", label: "Cascade graph", params: ["graphId"], control: "graph",
+        hint: "Subtree grants only — a unit-scope grant cascades nowhere and names no graph." },
+    ],
+    // There is no `active` filter and no expiring-soon tile: the endpoint returns active grants and
+    // keeps that default (M58 ticket 3), so every row here is active and a chart of it would have one
+    // bar. `status` stays as a COLUMN because a point read can still show a revoked grant.
+    dashboard: {
+      path: "/authorization/v1/stats/assignments",
+      charts: [
+        { key: "roleId", title: "Grants per role", form: "bar", facet: "roleId", orientation: "horizontal" },
+        { key: "scope", title: "Cascade", form: "donut", facet: "scope",
+          note: "A `unit` grant reaches its target and its children nothing — not even read." },
+        { key: "targetUnitId", title: "Top target units", form: "bar", facet: "targetUnitId", orientation: "horizontal" },
+        { key: "subjectPersonId", title: "Most-granted people", form: "bar", facet: "subjectPersonId", orientation: "horizontal" },
+        { key: "graphId", title: "Cascade graphs", form: "bar", facet: "graphId", orientation: "horizontal",
+          note: "(unknown) is the unit-scope grants: graph_id is NULL exactly when scope is `unit`." },
+      ],
+    },
     properties: [
       { label: "Subject person", value: (a) => s(a.subjectPersonId), render: "mono" },
       { label: "Role", value: (a) => s(a.roleId), render: "mono" },
@@ -1366,9 +1410,18 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     label: "Location",
     labelPlural: "Locations",
     module: "location",
-    blurb: "A shared, standalone place: a coordinate + an app-derived MGRS + a structured address. Browse from the Locations page (a spatial query is required).",
-    // No unconditional list (listLocations needs a radius/bbox window) — get/properties so the object
-    // view & graph badges work; the Locations page is the browse/create surface.
+    blurb: "A shared, standalone place: a coordinate + an app-derived MGRS + a structured address. It carries no owner and no visibility — a referencing module owns the meaning of a place on its own link.",
+    // M58 ticket 6 gave this type a BROWSE mode. Until then `listLocations` required a radius, a box
+    // or a text query and 400'd otherwise, so there was no unconditional list and this entry had only
+    // get/properties; the Locations page was the sole browse surface. It still owns creating a
+    // location and the radius search (a map query the explorer has no control for) — browsing moved
+    // here.
+    list: {
+      path: "/location/v1/locations",
+      search: "?pageSize=50",
+      searchParam: "query",
+      parse: pageParse("locations"),
+    },
     get: (id) => `/location/v1/locations/${id}`,
     title: (l) => s(l.mgrs) || s(l.locality) || ridTail(l.id),
     subtitle: (l) => (l.latitude != null && l.longitude != null ? `${s(l.latitude)}, ${s(l.longitude)}` : undefined),
@@ -1378,6 +1431,24 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { key: "lat", header: "Lat", value: (l) => s(l.latitude), render: "mono", align: "right" },
       { key: "lng", header: "Lng", value: (l) => s(l.longitude), render: "mono", align: "right" },
     ],
+    filters: [
+      { key: "countryId", kind: "ref", label: "Country", params: ["countryId"], control: "country" },
+      { key: "typeId", kind: "ref", label: "Place type", params: ["typeId"], control: "locationType",
+        hint: "Optional on a location and often unset — the (unknown) bucket on the chart is usually the largest." },
+    ],
+    // The spatial window (lat/lng/radiusM, or the four bbox corners) is NOT a filter control here.
+    // The API accepts it on both the list and the stats endpoint, and the dashboard honours it — a
+    // radius narrows the chart exactly as it narrows the list — but a continuum has no bucket to
+    // click, and picking a centre point wants a map rather than four number boxes. The Locations page
+    // keeps that control; a URL carrying one still works on both surfaces.
+    dashboard: {
+      path: "/location/v1/stats/locations",
+      charts: [
+        { key: "countryId", title: "By country", form: "bar", facet: "countryId", orientation: "horizontal" },
+        { key: "typeId", title: "Place types", form: "donut", facet: "typeId",
+          note: "A place type is optional, so (unknown) is unclassified places, not missing data." },
+      ],
+    },
     properties: [
       { label: "Latitude", value: (l) => s(l.latitude), render: "mono" },
       { label: "Longitude", value: (l) => s(l.longitude), render: "mono" },

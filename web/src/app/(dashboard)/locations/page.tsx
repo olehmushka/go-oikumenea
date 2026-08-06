@@ -1,9 +1,17 @@
 "use client";
 
-// Locations workspace (M19 / D-Location). The browse/create surface for the shared place entity:
-// create a location from a coordinate in any supported format (the server converts it to WGS84 and
-// derives the MGRS in the application), and run a radius (ST_DWithin) search. A location has no global
-// list (a spatial window is required), so this page is its home; the per-object view lives at /o/<id>.
+// Locations workspace (M19 / D-Location). Create a location from a coordinate in any supported format
+// (the server converts it to WGS84 and derives the MGRS in the application), and run a radius
+// (ST_DWithin) search.
+//
+// M58 ticket 6 moved BROWSING out. Until then a location had no unconditional list at all — a spatial
+// window was required — so this page was its only home; /explore/location is now the reader, with
+// country and place-type filters, keyset paging and a dashboard over the same filter set.
+//
+// The RADIUS SEARCH stays here, and that is not an oversight: it is a map query, and a centre point
+// is picked on a map rather than typed into three number boxes. The API accepts the same window on
+// both the list and the stats endpoint, so a URL carrying one works in the explorer too — there is
+// simply no control there to build one.
 
 import Link from "next/link";
 import { useState } from "react";
@@ -19,6 +27,11 @@ export default function LocationsPage() {
       <PageHeader
         title={<T>Locations</T>}
         description={<T>The shared place entity (D-Location): a precise coordinate with a structured address. The coordinate can be entered in several formats (lat/lon, MGRS, UTM, СК-42); the server converts it to WGS84 and derives the MGRS in the application.</T>}
+        action={
+          <Link href="/explore/location" className="text-xs text-indigo-600 hover:underline">
+            <T>Browse, filter and chart every location →</T>
+          </Link>
+        }
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <CreateLocation />

@@ -1,5 +1,6 @@
 import { IAssignment } from "./assignment";
 import { IAssignmentPage } from "./assignmentPage";
+import { IAssignmentStats } from "./assignmentStats";
 import { IAuthorizeRequest } from "./authorizeRequest";
 import { IAuthorizeResponse } from "./authorizeResponse";
 import { IBatchAuthorizeRequest } from "./batchAuthorizeRequest";
@@ -55,8 +56,39 @@ export interface IAuthorizationService {
     grantAssignment(request: IGrantAssignmentRequest): Promise<IAssignment>;
     /** Revoke an assignment (reversible flip; assignment.revoke). */
     revokeAssignment(assignmentId: string): Promise<IAssignment>;
-    /** List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read). */
-    listAssignments(subjectPersonId?: string | null, targetUnitId?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAssignmentPage>;
+    /**
+     * List ACTIVE assignments, token-paginated. Gated on `assignment.read` held anywhere, and
+     * reach-trimmed: an instance admin sees every grant, anyone else sees only grants whose
+     * target unit is within their `assignment.read` reach.
+     *
+     * Every argument is an optional FACET filter (M58 ticket 6 / D-ObjectFacets). Until then this
+     * endpoint required exactly one of `subjectPersonId`/`targetUnitId` and there was no way to
+     * ask for "the grants"; Assignment:AssignmentInvalid is no longer returned for that reason.
+     *
+     * Two things this changed rather than added, both deliberate:
+     * - the `subjectPersonId` arm used to be gated on `assignment.read` held ANYWHERE with no
+     *   trim, so one grant anywhere enumerated any person's authority everywhere. It is now
+     *   trimmed like every other arm, so it can only narrow.
+     * - the `targetUnitId` arm used to 403 when the caller could not reach the named unit; it now
+     *   returns an empty page. The row set is identical.
+     *
+     * ACTIVE ONLY, and that default stands: `revokedAt` rows are never returned, so there is no
+     * `active` or `expiresAt` filter (a distribution whose every row is active is a chart with
+     * one bar).
+     *
+     */
+    listAssignments(subjectPersonId?: string | null, targetUnitId?: string | null, roleId?: string | null, scope?: string | null, graphId?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAssignmentPage>;
+    /**
+     * Facet distributions over the active grant population — the dashboard half of the assignment
+     * facet vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the filter args
+     * `listAssignments` takes, minus paging, so a dashboard and a list are two renderings of one
+     * request state.
+     *
+     * The path is `/stats/assignments` rather than `/assignments/stats` because the server's
+     * router rejects a literal path segment that is a sibling of `{assignmentId}`.
+     *
+     */
+    assignmentStats(facets?: string | null, subjectPersonId?: string | null, targetUnitId?: string | null, roleId?: string | null, scope?: string | null, graphId?: string | null): Promise<IAssignmentStats>;
     /** Grant instance-admin (instance.admin.manage). Returns Authorization:InstanceAdminConflict if already active. */
     grantInstanceAdmin(request: IGrantInstanceAdminRequest): Promise<IInstanceAdmin>;
     /** Revoke instance-admin (instance.admin.manage; reversible flip). */
@@ -262,8 +294,28 @@ export class AuthorizationService implements IAuthorizationService {
         );
     }
 
-    /** List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read). */
-    public listAssignments(subjectPersonId?: string | null, targetUnitId?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAssignmentPage> {
+    /**
+     * List ACTIVE assignments, token-paginated. Gated on `assignment.read` held anywhere, and
+     * reach-trimmed: an instance admin sees every grant, anyone else sees only grants whose
+     * target unit is within their `assignment.read` reach.
+     *
+     * Every argument is an optional FACET filter (M58 ticket 6 / D-ObjectFacets). Until then this
+     * endpoint required exactly one of `subjectPersonId`/`targetUnitId` and there was no way to
+     * ask for "the grants"; Assignment:AssignmentInvalid is no longer returned for that reason.
+     *
+     * Two things this changed rather than added, both deliberate:
+     * - the `subjectPersonId` arm used to be gated on `assignment.read` held ANYWHERE with no
+     *   trim, so one grant anywhere enumerated any person's authority everywhere. It is now
+     *   trimmed like every other arm, so it can only narrow.
+     * - the `targetUnitId` arm used to 403 when the caller could not reach the named unit; it now
+     *   returns an empty page. The row set is identical.
+     *
+     * ACTIVE ONLY, and that default stands: `revokedAt` rows are never returned, so there is no
+     * `active` or `expiresAt` filter (a distribution whose every row is active is a chart with
+     * one bar).
+     *
+     */
+    public listAssignments(subjectPersonId?: string | null, targetUnitId?: string | null, roleId?: string | null, scope?: string | null, graphId?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAssignmentPage> {
         return this.bridge.call<IAssignmentPage>(
             "AuthorizationService",
             "listAssignments",
@@ -274,8 +326,43 @@ export class AuthorizationService implements IAuthorizationService {
             {
                 "subjectPersonId": subjectPersonId,
                 "targetUnitId": targetUnitId,
+                "roleId": roleId,
+                "scope": scope,
+                "graphId": graphId,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions over the active grant population — the dashboard half of the assignment
+     * facet vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the filter args
+     * `listAssignments` takes, minus paging, so a dashboard and a list are two renderings of one
+     * request state.
+     *
+     * The path is `/stats/assignments` rather than `/assignments/stats` because the server's
+     * router rejects a literal path segment that is a sibling of `{assignmentId}`.
+     *
+     */
+    public assignmentStats(facets?: string | null, subjectPersonId?: string | null, targetUnitId?: string | null, roleId?: string | null, scope?: string | null, graphId?: string | null): Promise<IAssignmentStats> {
+        return this.bridge.call<IAssignmentStats>(
+            "AuthorizationService",
+            "assignmentStats",
+            "GET",
+            "/authorization/v1/stats/assignments",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "subjectPersonId": subjectPersonId,
+                "targetUnitId": targetUnitId,
+                "roleId": roleId,
+                "scope": scope,
+                "graphId": graphId,
             },
             __undefined,
             __undefined,

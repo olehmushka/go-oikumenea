@@ -137,6 +137,33 @@ ancestor back to the candidate set confines the buckets to taxa strictly inside 
 where a bucket's subtree is contained in the candidate set and rule 4 holds at every depth. At the
 top level every ancestor is a candidate anyway, so the rule is uniform rather than conditional.
 
+### The third class of non-facet arg (M58 ticket 6)
+
+Every query arg on a faceted list must be either a **facet** or a **classified** non-facet arg, and
+the classification is checked rather than merely present. There were three classes —
+`paging`/`search`/`traversal`, plus `superseded` for a filter its own facet's args replaced — and
+`location`'s spatial window fits none of them.
+
+| Class | What it says | Ships on `/stats`? | Grouped by an aggregate? |
+|---|---|---|---|
+| `paging` | keyset page size / cursor | **no** — an aggregate has no page, and a paged count would be a lie about the total | no |
+| `search` | free-text against a trigram haystack; a separate plan shape (R-21) | yes | no |
+| `traversal` | selects a listing MODE — a tree walk — rather than describing the registry | no | no |
+| `window` | a CONTINUOUS predicate over the listed table: a radius, a bounding box | **yes** | no |
+
+The distinction that matters is between `traversal` and `window`, because both are "not a facet" and
+they say opposite things about the aggregate. An exact-parent arg switches the listing to a hierarchy
+walk and describes nothing about the population, so no aggregate should count it. A radius selects a
+**subset of the same population**, so an aggregate that ignored it would describe a different world
+than the list beside it — with both numbers looking reasonable on their own, which is the failure this
+vocabulary exists to prevent.
+
+So `ClassWindow` carries one rule and one restriction. It **ships on the stats endpoint** —
+`statsargs_test.go` requires it, exactly as for `ClassSearch` — and its contract type is pinned to
+`double`, which is what stops the class becoming a place to hide an arg that could perfectly well have
+been bucketed. An enum or a RID window is a facet; a continuum has no chart order, and that is the
+whole reason it is not one.
+
 ---
 
 ## Catalog
@@ -288,9 +315,9 @@ Facets and components in brief; each is expanded to the table form above when it
 | **enrollment** (`person_education_enrollments`) | `institutionId`, `degreeLevelId`, `status`, `effectiveFrom`(range) | Enrollments per intake histogram · degree-level bar (ISCED-ordered, **not** count-ordered) · status tiles. ⚠️ **Defect (M58 ticket-2 survey):** `programId` and `startedOn` name columns that do not exist — the nearest are `field_of_study` (free TEXT, so a `code` facet at best) and `effective_from`. Corrected above. Also has **no top-level list**: only `GET /education/v1/persons/{personId}/enrollments` |
 
 
-| **location** (`location_locations`) | `countryId`, `typeId` | Locations per country bar · type mix bar. ⚠️ **Defect (M58 ticket-2 survey):** `hasCoordinate` is DEGENERATE — `location_locations.geom` is `NOT NULL`, so the facet is constant-true and the geocoded-vs-not tile would always read 100%. Dropped above. Also: `listLocations` REQUIRES a spatial window (`Location:QueryWindowRequired`), so this type needs an unwindowed list mode before it can have a dashboard at all |
+| ~~**location**~~ | — | **BUILT (M58 ticket 6)** — see below |
 | ~~**languoid**~~ | — | **BUILT (M58 ticket 4)** — see below |
-| **assignment** (`authz_role_assignments`) | `roleId`, `targetUnitId`, `scope`, `graphId`, ~~`active`~~, ~~`expiresAt`~~ | Grants per role bar · unit-vs-subtree donut. ⚠️ `listAssignments` returns only ACTIVE assignments and **keeps** that default (decided in ticket 3 — see [open seams](#open-seams)), so `active` and `expiresAt` are **struck** along with the expiring-soon tile and the active-vs-revoked tiles: a distribution whose every row is active is a chart with one bar. Also has **no unconditional list** — it requires exactly one of `subjectPersonId`/`targetUnitId` |
+| ~~**assignment**~~ | — | **BUILT (M58 ticket 6)** as `link__has_role` — see below |
 
 #### `audit` — [audit](../modules/audit.md) · `audit_log` — **BUILT (M58 ticket 1)**
 
@@ -649,6 +676,94 @@ those are separate types reached per institution rather than columns on this row
 > the one organization gate; a gated-out row is `NotFound`, never a 403, because `shadow` hides
 > existence.
 
+#### `location` — [location](../modules/location.md) · `location_locations` — **BUILT (M58 ticket 6)**
+
+The type with **no list mode**. `listLocations` was a three-way switch — a text `query`, a radius, or
+a bounding box — that returned `Location:QueryWindowRequired` when given none of them. There was no
+way to ask for "the locations", which is why this type had no filters and no dashboard while every
+other M58 type did. Ticket 6 added a fourth mode, BROWSE, and `QueryWindowRequired` is now vestigial
+(retained: the contract is expand-only, and removing a declared error breaks any client switching on
+its name).
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `countryId` | ref | `country_id` → `geo_countries` | NOT NULL — an address is normalized over the country registry on the way in — so no `(unknown)` |
+| `typeId` | ref | `type_id` → `location_location_types` | nullable and OFTEN null: classifying a place is optional, so `(unknown)` is the honest majority rather than missing data |
+
+**Components.** ① **By country** bar. ② **Place types** donut.
+
+**One visibility arm, and no subject.** A location carries no owner, no unit and no public/shadow bit
+(D-Location — a referencing module owns the *meaning* of a place on its own link, so one shared row
+can be referenced by several owners with different sensitivities). `location.read` held anywhere is
+the whole gate, and the search fan-in registers this type under the CATALOG scope, which trims
+nothing. That is languoid's and vehicle's shape — the ABSENCE of a decision — and deliberately not
+the audit ledger's, where the single arm IS the decision, made by which connection the query runs on.
+
+**Four aggregate arms, and the axis is the listing MODE.** This is the first type whose arms are not
+{admin, scoped} or {plain, search}: each of the four modes is a different plan (plain keyset / GiST
+radius / GiST envelope / trigram bitmap), and folding them behind nullable predicates would have lost
+the index in three of them. Each list query therefore has exactly one aggregate twin carrying the same
+filter block — which is what makes "the chart describes the list" structural rather than asserted.
+
+> **`hasCoordinate` was catalogued and is DROPPED.** `location_locations.geom` is `NOT NULL` — the
+> coordinate is the required spine and address-only records are out of scope (D-Location) — so the
+> facet is constant-true and the geocoded-vs-not tile it was catalogued for would always read 100%.
+> Recorded here so it is not re-proposed from the tranche table.
+
+> **The spatial window COUNTS, and that is what `ClassWindow` is for** (see
+> [the third class of non-facet arg](#the-third-class-of-non-facet-arg-m58-ticket-6)). It is also why
+> the radius search stays on the `/locations` page rather than moving into the explorer: a centre
+> point is picked on a map, not typed into three number boxes. The API accepts the window on both
+> endpoints, so a URL carrying one works in the explorer too — there is simply no control there to
+> build one.
+
+#### `assignment` (token `link__has_role`) — [authorization](../modules/authorization.md) · `authz_role_assignments` — **BUILT (M58 ticket 6)**
+
+The **second faceted reified link** after `link__member_of`, and the other type with no unconditional
+list: `listAssignments` required exactly one of `subjectPersonId`/`targetUnitId` — two endpoints
+wearing one name — so the grant table could be interrogated one person or one unit at a time and never
+described. Both are now ordinary filters.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `subjectPersonId` | ref | `subject_person_id` → `person_persons` | the person authority is granted TO. NOT NULL |
+| `roleId` | ref | `role_id` → `authz_roles` | NOT NULL. The distribution a grant review is actually read for |
+| `targetUnitId` | ref | `target_unit_id` → `tenant_units` | EXACT match, **not** subtree-expanding — `scope` says whether AUTHORITY cascades; the grant itself sits on one unit |
+| `scope` | enum | `scope` | `unit`/`subtree`, declared narrow-then-wide because that is the order the two are reasoned about |
+| `graphId` | ref | `graph_id` → `tenant_graphs` | NULL exactly when `scope='unit'` (the `authz_role_assignments_graph_scope` CHECK is a biconditional), so `(unknown)` is the unit-scope count under another name |
+
+**Components.** ① **Grants per role** bar. ② **Cascade** donut. ③ **Top target units** bar. ④
+**Most-granted people** bar. ⑤ **Cascade graphs** bar.
+
+**`subjectPersonId` is a facet, and the tranche table never said so.** It was already a query arg (the
+old by-subject arm), the column is `pii:basic` exactly like `targetUnitId` — which the table *did*
+catalogue — and "who holds the most grants" is a real question of this population. Declaring it a
+fifth facet corrects the catalog rather than working around it.
+
+> **The reach trim asks for `assignment.read` and nothing else.** Every other scoped list in the
+> codebase trims with `authz_readable_units(subject)`, which asks whether the subject holds ANY
+> `'%.read'` code on the unit. That is right where the endpoint has already checked its own read code
+> and reach is only narrowing rows. Here it would **widen**: generic read-reach is a strict superset,
+> and this endpoint's per-unit arm has always demanded the narrow question. Migration 0023 adds the
+> `authz_readable_units_with` / `authz_unit_readable_with` / `authz_readable_unit_count_with` trio,
+> which take the permission as a parameter and compare it by **equality** — a LIKE-pattern argument
+> would make `'%'` expressible by a typo. Measured live on the demo data: the two reaches differ by
+> one unit and one grant, so borrowing the generic family would have shown a grant that must not be
+> shown, and would have looked like a working feature.
+
+> **ACTIVE ONLY, and that default stands** (decided M58 ticket 3, not re-litigated). `active` and
+> `expiresAt` are **struck** rather than declared: a distribution whose every row is active is a chart
+> with one bar. The consequence is written into the contract instead — `totalCount` counts ACTIVE
+> grants, not rows in the grant table. Expiry is a DECISION-time rule (D-TimeBoundGrants) and is
+> deliberately NOT a listing predicate: an expired grant is still a row, and one an administrator most
+> wants to find.
+
+> **Two gates moved, both narrower.** The `targetUnitId` arm used to gate with `pep.Require(…, unit)`
+> and now returns an empty page instead of a 403 where the caller cannot reach the unit — the same
+> rows, disclosing less. The `subjectPersonId` arm used to gate with `RequireAnywhere` and apply **no
+> trim at all**, so one grant anywhere enumerated any person's authority across the whole instance; it
+> is now trimmed like everything else.
+
 ### The raw-pgx arm of the parity guards (M58 ticket 2)
 
 `sqlparity_test.go` and `statsparity_test.go` prove a type's list and its dashboard see one world by
@@ -782,10 +897,40 @@ arg; and that the console's `buckets:` declaration matches the catalog's bucket 
 the click-through inverts a bucket key back into a filter and the inverse of an age band is not the
 inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures.
 
+M58 ticket 6 adds five guard files, because two of its properties live where no existing guard looks.
+
+- **`internal/authorization/adapters/assignmentreach_test.go`** — the reach-scoped assignment queries
+  must call the narrow `_with` reach functions and must NOT call the generic `'%.read'` family, and
+  the Go that calls them must pass `PermAssignmentReadCode` rather than a literal. Two checks because
+  neither sees the other's half: the permission is a bind parameter, so SQL naming the right function
+  proves nothing about the code passed to it. A coverage floor refuses a new reach-scoped query that
+  is not listed.
+- **`internal/authorization/adapters/activeonly_test.go`** — every listing and aggregate filters
+  `revoked_at IS NULL`, and none filters `expires_at`. There is no `active` facet to catch drift the
+  usual way — the whole decision is that such a facet would be a one-bar chart — so the predicate is
+  pinned directly.
+- **`internal/authorization/transport/reachgate_test.go`** — the trim is applied per HANDLER, so it
+  gets a transport-shaped guard: each assignment read handler must resolve `pep.SubjectAuthority` and
+  pass both results down, must not pass a bool literal, and must not re-add the per-unit `pep.Require`
+  the ticket collapsed. This is M58 ticket 4's lesson applied in advance — the obvious behavioural
+  test stayed green there when the leak was reintroduced, because an application-layer test has no
+  handler to lose a gate from.
+- **`internal/geo/transport/filterparity_test.go`** — both location surfaces must build their filter
+  through `locationFilterFrom`, and that resolver must be able to produce all four modes. The mode
+  PRECEDENCE is written once and shared rather than compared between two copies; this guard is what
+  makes "only one copy" checkable.
+- **`pkg/facet/statsargs_test.go`** gains `TestWindowArgsShipOnStats`, the rule `ClassWindow` carries,
+  with a non-vacuity floor that fails if no window arg is declared anywhere.
+
 ## Open seams
 
-- **`assignment` keeps its implicit active-only filter, and DROPS two catalogued facets.** Decided
-  ahead of its ticket (M58 ticket 3), so the ticket does not re-litigate it. `listAssignments` returns
+- ~~**`assignment` keeps its implicit active-only filter, and DROPS two catalogued facets.**~~
+  **HONOURED (M58 ticket 6).** The decision below stood: the list and the dashboard both describe the
+  ACTIVE grant population, the two facets are struck rather than declared, and the contract says so —
+  `totalCount` counts active grants. `activeonly_test.go` pins the predicate on every surface, and the
+  integration fixture revokes a grant so that "the list returns active grants" is demonstrated rather
+  than true of an empty set. Original entry, unchanged: decided
+  ahead of its ticket (M58 ticket 3), so the ticket did not re-litigate it. `listAssignments` returns
   only ACTIVE assignments, which is a hidden default of exactly the shape M56 rejected for
   `link__member_of` — and the tranche table above catalogues `active` and `expiresAt` facets that
   cannot coexist with it, since a distribution over `active` whose every row is active is a chart with
@@ -931,3 +1076,14 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
   aggregate ships one, because the set form beat the point probe at every reach once the `LIMIT` was
   gone (8.3 / 79.8 / 7 144 ms against 12 926 / 17 066 / 24 869 ms). If a future stats endpoint ever
   paginates its buckets, that reasoning lapses and the dispatch comes back.
+- **A ref facet's labels are not unique, and one chart makes that visible.** `assignment.graphId`
+  renders three separate bars all reading **Command**: per-org cascade graphs are distinct rows with
+  distinct RIDs and the same `name`, and the labeler resolves a RID to its own name (M58 ticket 6,
+  seen in the live run). The buckets are correct and each clicks through to exactly its own rows — the
+  chart is honest and hard to read at the same time. The general fix is org-qualified labels across
+  every ref labeler, which is wider than one facet and wider than one ticket; recorded rather than
+  patched here, because a bespoke join for this one chart would put the rule in a second place.
+- **`enrollment` is the last M58 type without a list.** `GET /education/v1/persons/{personId}/enrollments`
+  is per-person only, so like `location` and `assignment` before ticket 6 it needs a list mode invented
+  before it can carry facets. Ticket 6 was scoped to the two the stage board named; this one is
+  outstanding, and the tranche table above still carries its (corrected) facet row.

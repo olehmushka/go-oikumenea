@@ -129,6 +129,19 @@ Type-catalog writes are instance-scope (`location.types.manage`).
 
 ## Open seams / future
 
+- **Facets & dashboards (M58 ticket 6, BUILT).**
+  [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope):
+  `listLocations` gained `countryId`/`typeId` filters and, more importantly, a **BROWSE mode** — until
+  this ticket a list required a text query, a radius or a bounding box, and returned
+  `Location:QueryWindowRequired` otherwise, so there was no way to ask for "the locations" and this
+  type had neither filters nor a dashboard. That error is now vestigial (retained: the contract is
+  expand-only). `GET /location/v1/stats/locations` is the dashboard half and **honours the spatial
+  window**, so a chart above a windowed list describes that list rather than the registry; the four
+  aggregate arms are the four listing MODES rather than visibility arms, because a location carries no
+  owner and no public/shadow bit. Browsing moved to `/explore/location`; the `/locations` page keeps
+  creation and the radius search, which wants a map rather than three number boxes. Facets and charts
+  are catalogued in [facets.md](../architecture/facets.md).
+
 - **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
   for this module's listable types: `GET /locations/stats` over `countryId`, `typeId` and a `hasCoordinate` bool. The existing radius/bbox window args stay traversal modes, not facets.
   Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).

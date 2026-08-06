@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { oikumenea } from "@/lib/api/server";
 import {
   Card,
@@ -45,9 +46,17 @@ export default async function RolesPage({
   if (assignmentFilter) {
     try {
       const ok = await oikumenea();
+      // Positional SDK args, and the endpoint gained three filters between targetUnitId and pageSize
+      // in M58 ticket 6 (roleId / scope / graphId) — hence the explicit undefineds. They are spelled
+      // out rather than dropped because a positional call that silently shifts is how `50` became a
+      // roleId: the compiler caught it here, and the /audit page's version of this same mistake is
+      // what ticket 1 retired.
       assignments = await ok.authorization.listAssignments(
         assignmentFilter[0] === "subjectPersonId" ? assignmentFilter[1] : undefined,
         assignmentFilter[0] === "targetUnitId" ? assignmentFilter[1] : undefined,
+        undefined, // roleId — the explorer's filter, not this page's
+        undefined, // scope
+        undefined, // graphId
         50,
       );
     } catch (e) {
@@ -122,7 +131,15 @@ export default async function RolesPage({
       </div>
 
       {/* Assignments */}
-      <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900"><T>Assignments</T></h2>
+      <div className="mb-3 mt-8 flex items-center gap-3">
+        <h2 className="text-sm font-semibold text-slate-900"><T>Assignments</T></h2>
+        <Link href="/explore/link__has_role" className="ml-auto text-xs text-indigo-600 hover:underline">
+          <T>Browse, filter and chart every grant →</T>
+        </Link>
+      </div>
+      <p className="mb-4 text-xs text-slate-500">
+        <T>This is the GRANT surface: pick a subject or a unit to see what to revoke, and grant below. Browsing the whole grant population — filtered by role, scope or cascade graph, with charts over the same filters — is the explorer&apos;s job since M58 ticket 6.</T>
+      </p>
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
         <LookupForm
           basePath="/roles"
@@ -142,7 +159,7 @@ export default async function RolesPage({
       {assignmentError ? <ErrorNotice error={assignmentError} /> : null}
       {!assignmentFilter ? (
         <EmptyState>
-          <T>Pick a subject person or a target unit (exactly one) to list assignments.</T>
+          <T>Pick a subject person or a target unit to list the grants you might revoke — or browse them all in the explorer.</T>
         </EmptyState>
       ) : assignments && assignments.assignments.length > 0 ? (
         <Table

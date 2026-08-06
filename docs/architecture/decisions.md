@@ -2771,6 +2771,32 @@ implementation and recorded so the remaining tickets do not re-litigate them:
   must be a *range* facet over the *same* column, must not itself bind the arg, and must take the
   same Conjure type.
 
+- **A CONTINUOUS filter is a fifth non-facet class (`ClassWindow`), and it SHIPS on `/stats`.**
+  `location`'s radius and bounding box are predicates over the listed table, so they select a subset
+  of the same population — unlike a tree walk, which selects a listing MODE and describes nothing
+  about the registry. An aggregate that ignored a window would therefore describe a different world
+  than the list beside it, with both numbers looking reasonable alone. So the class carries the
+  opposite rule to `traversal`: it must appear on the stats endpoint (checked, as for `search`), and
+  it is grouped by nothing, because a continuum has no chart order. Its contract type is pinned to
+  `double`, which is what stops it becoming a place to hide an arg that could have been bucketed — an
+  enum or a RID window is a facet (M58 ticket 6).
+- **The aggregate ARMS of a type need not be visibility arms.** `location` has no owner and no
+  public/shadow bit, so it has no scoped arm at all — but it ships FOUR aggregate queries, one per
+  listing mode, because each mode is a different plan (plain keyset / GiST radius / GiST envelope /
+  trigram bitmap) and a nullable spatial predicate is not index-served. `statsparity_test.go`'s
+  byte-identity requirement applies unchanged: what the arms differ by is the candidate CTE, never the
+  GROUP BY half (M58 ticket 6).
+- **A reach trim may need a NARROWER reach than `authz_readable_units`.** Every scoped list before
+  `assignment` trimmed with the generic `'%.read'` family, which is right where the endpoint has
+  already checked its own read code and reach is only narrowing rows. On the grant table it would
+  **widen**: generic read-reach is a strict superset of `assignment.read` reach, and `listAssignments`'
+  per-unit arm has always demanded the narrow question, so borrowing the family would have shown
+  grants that arm refuses. Migration 0023 adds permission-parameterised siblings of the 0017 trio
+  (`authz_readable_units_with` and friends) which compare the code by **equality** — a LIKE-pattern
+  argument would make `'%'`, i.e. every permission, expressible by a typo at a call site. The 0017
+  trio is untouched: its plans are measured, and the differential test holds the family to one answer
+  (M58 ticket 6).
+
 The **filter half** of "counts are computed inside the visibility predicate" is now real: one
 `PersonFilter` drives both list paths, folded into the SQL of all five queries, because a Go-side
 re-filter after the page is cut returns a short page with a `nextPageToken` (the R-06 failure). The
