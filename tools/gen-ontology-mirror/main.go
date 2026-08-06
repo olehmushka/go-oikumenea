@@ -26,7 +26,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 func main() {

@@ -4,13 +4,21 @@
 # connects as the non-superuser app role (D-RLSDefenseInDepth). See docker-compose.yml.
 
 # ---- build ----
-FROM golang:1.26-bookworm AS build
+# --platform=$BUILDPLATFORM pins the build stage to the BUILDER's architecture and cross-compiles
+# from there, instead of running an emulated toolchain. pgx is pure Go and CGO is already off, so a
+# cross-compile is free — where emulating the whole Go toolchain under QEMU is minutes per arch, and
+# needs binfmt registered on the host at all (a bare `docker buildx build --platform linux/arm64`
+# fails with `exec format error` without it). TARGETARCH/TARGETOS are supplied by buildx.
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 # Module graph first for layer caching.
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/oikumenea ./cmd/oikumenea
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/oikumenea ./cmd/oikumenea
 
 # ---- runtime ----
 FROM gcr.io/distroless/static-debian12:nonroot

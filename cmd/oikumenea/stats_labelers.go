@@ -20,10 +20,10 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	linksapp "github.com/olegamysk/go-oikumenea/internal/links/application"
-	localizationapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	linksapp "github.com/olehmushka/go-oikumenea/internal/links/application"
+	localizationapp "github.com/olehmushka/go-oikumenea/internal/localization/application"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // refLabelSources is one row per ref-facet target type: where its display text lives and which i18n

@@ -10,7 +10,7 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/migrations"
+	"github.com/olehmushka/go-oikumenea/migrations"
 	werror "github.com/palantir/witchcraft-go-error"
 )
 

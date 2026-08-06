@@ -16,10 +16,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/listing"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/internal/geo/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/listing"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 

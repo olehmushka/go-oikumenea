@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
 )
 
 // The GATED-FILTER gate for the account vocabulary (M59 / D-ObjectFacets rule 2, list side). Same

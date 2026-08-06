@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/olegamysk/go-oikumenea/internal/audit/application"
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	auditapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/audit"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/audit/application"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	auditapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/audit"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 )

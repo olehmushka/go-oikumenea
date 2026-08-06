@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
-	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/events"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
+	personevents "github.com/olehmushka/go-oikumenea/internal/person/events"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/events"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 

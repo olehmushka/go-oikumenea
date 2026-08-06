@@ -22,7 +22,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // ObjectType is the oikumenea import object-type this mapper feeds.

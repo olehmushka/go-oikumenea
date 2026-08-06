@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/person/application"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/person/application"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 func sp(s string) *string    { return &s }

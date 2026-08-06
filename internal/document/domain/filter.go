@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 // DocumentFilter is the document facet vocabulary in Go (M56 ticket 3 / D-ObjectFacets), shared

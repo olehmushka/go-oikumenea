@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/application"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/application"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 

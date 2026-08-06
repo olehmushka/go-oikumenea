@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	tenantapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/tenant"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	tenantapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/tenant"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 )
 

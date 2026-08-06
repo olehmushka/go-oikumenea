@@ -28,9 +28,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // statsBudget is the per-request budget for a whole-directory dashboard at 10^6 persons. A dashboard

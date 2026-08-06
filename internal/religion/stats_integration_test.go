@@ -30,10 +30,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/religion/application"
-	"github.com/olegamysk/go-oikumenea/internal/religion/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/religion/application"
+	"github.com/olehmushka/go-oikumenea/internal/religion/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 func rptr(v string) *string { return &v }

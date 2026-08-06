@@ -63,7 +63,18 @@ export default function FinancePage() {
   // below reports. Filtering is deliberately not offered here; it is the explorer's job now.
   function reload() {
     api.finance
-      .listAccounts(undefined, undefined, undefined, undefined, EDIT_PAGE)
+      // Positional, and the positions MOVED: M59 inserted the gated `holderKind` filter before
+      // `pageSize`, so the old five-argument call silently passed EDIT_PAGE as holderKind. The
+      // undefineds are spelled out per parameter rather than counted, so the next inserted arg is a
+      // type error here instead of a page size landing in a filter.
+      .listAccounts(
+        /* institutionId */ undefined,
+        /* currency */ undefined,
+        /* accountTypeId */ undefined,
+        /* status */ undefined,
+        /* holderKind */ undefined,
+        /* pageSize */ EDIT_PAGE,
+      )
       .then((r) => {
         setAccounts((r.accounts ?? []) as unknown as Account[]);
         setTruncated(Boolean(r.nextPageToken));

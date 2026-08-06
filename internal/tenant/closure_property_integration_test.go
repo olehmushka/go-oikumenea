@@ -29,9 +29,9 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/application"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/application"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/domain"
 )
 
 // closurePropertySeeds/-Ops control the differential run; override the seed count with

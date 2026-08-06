@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // oneChunk is the normalized single-shot chunk every direct handler invocation uses (Import maps an

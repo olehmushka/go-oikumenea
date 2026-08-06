@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 func TestAssertMatchesAgainstSeed(t *testing.T) {

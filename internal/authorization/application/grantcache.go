@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
 	"github.com/palantir/pkg/metrics"
 	"golang.org/x/sync/singleflight"
 )

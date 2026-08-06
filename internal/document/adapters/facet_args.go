@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/document/domain"
+	"github.com/olehmushka/go-oikumenea/internal/document/domain"
 )
 
 // documentFacetArgsT is the document facet block bound to pgx wire types — ONE mapping used by BOTH

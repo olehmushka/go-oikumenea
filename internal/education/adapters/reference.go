@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/education/adapters/educationsql"
-	"github.com/olegamysk/go-oikumenea/internal/education/domain"
+	"github.com/olehmushka/go-oikumenea/internal/education/adapters/educationsql"
+	"github.com/olehmushka/go-oikumenea/internal/education/domain"
 )
 
 // Reference-layer persistence (M20 extension). Mirrors repository.go: domain values ↔ educationsql

@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	languageapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/language"
-	"github.com/olegamysk/go-oikumenea/internal/language/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	languageapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/language"
+	"github.com/olehmushka/go-oikumenea/internal/language/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 )

@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 
-	religionapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/religion"
-	"github.com/olegamysk/go-oikumenea/internal/religion/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	religionapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/religion"
+	"github.com/olehmushka/go-oikumenea/internal/religion/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 )
 

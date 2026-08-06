@@ -1,8 +1,8 @@
 // Publishable Go client SDK for go-oikumenea — a nested module so external code can
-// `go get github.com/olegamysk/go-oikumenea/clients/go`. The package tree under oikumenea/<module> is
+// `go get github.com/olehmushka/go-oikumenea/clients/go`. The package tree under oikumenea/<module> is
 // generated from the same api/*.conjure.yml contract as the server (D-Conjure), so it cannot drift.
 // Tag releases as clients/go/vX.Y.Z. See clients/go/README.md.
-module github.com/olegamysk/go-oikumenea/clients/go
+module github.com/olehmushka/go-oikumenea/clients/go
 
 go 1.26.0
 

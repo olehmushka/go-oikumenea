@@ -27,7 +27,7 @@ import (
 	"errors"
 	"testing"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
 )
 
 // stubPrincipals satisfies the cross-module PrincipalDirectory port without dragging the

@@ -27,9 +27,9 @@ import (
 	"context"
 	"testing"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 func allAssignmentFacets(t *testing.T) stats.Selection {

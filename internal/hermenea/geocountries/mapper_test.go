@@ -6,7 +6,7 @@ package geocountries
 import (
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // TestMap covers the raw ISO-3166 array -> canonical record mapping: alpha2 -> code (upper-cased),

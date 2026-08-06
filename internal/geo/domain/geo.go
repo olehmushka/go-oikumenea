@@ -12,7 +12,7 @@ package domain
 import (
 	"context"
 
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // Country is one entry in the ISO-3166-1 registry. ID is the RID (the reference key other modules

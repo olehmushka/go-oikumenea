@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/order/adapters/ordersql"
-	"github.com/olegamysk/go-oikumenea/internal/order/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/order/adapters/ordersql"
+	"github.com/olehmushka/go-oikumenea/internal/order/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // OrderStats is the order-register dashboard aggregate (M57 / D-ObjectFacets): every selected facet's

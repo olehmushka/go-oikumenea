@@ -11,11 +11,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/action"
-	"github.com/olegamysk/go-oikumenea/pkg/listing"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/action"
+	"github.com/olehmushka/go-oikumenea/pkg/listing"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // MaxPageSize caps a client-requested page size (API conventions: token pagination, bounded pages).

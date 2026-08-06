@@ -11,7 +11,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 // UpsertAddress adds an address (or replaces one when a.ID is set). Defaults the attribution and the

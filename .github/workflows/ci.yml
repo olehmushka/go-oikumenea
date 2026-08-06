@@ -90,3 +90,34 @@ jobs:
             -c "CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;"
       - name: Integration tests
         run: go test -tags integration ./...
+
+  console:
+    name: console (SDK from source + typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The SDK is REBUILT FROM SOURCE first, and that order is the whole point of this job. The
+      # console consumes oikumenea-client as a `file:` dependency, so a local `tsc --noEmit` resolves
+      # it to whatever dist/ happens to be lying around — which is how M59 shipped a console calling
+      # listAccounts positionally past a newly inserted argument: every local check was green against
+      # a stale dist, and only the container build (which rebuilds the SDK) caught it. This job is
+      # that build's cheap half, run on every PR instead of only at release time.
+      - name: build the TypeScript SDK from source
+        run: |
+          npm --prefix clients/typescript ci
+          npm --prefix clients/typescript run build
+      - name: install + typecheck + build the console
+        run: |
+          npm --prefix web ci
+          npm --prefix web run typecheck --if-present
+          npm --prefix web run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          # A build-time placeholder for a RUNTIME setting: next build collects page data for every
+          # route, and lib/api/server.ts requires API_BASE_URL at module scope. The same value is set
+          # in web/Dockerfile's build stage and in neither runner — the address is the operator's to
+          # supply, and the container still fails fast without it.
+          API_BASE_URL: https://api.invalid

@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/geo/adapters/geosql"
-	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/geo/adapters/geosql"
+	"github.com/olehmushka/go-oikumenea/internal/geo/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // The location dashboard aggregate (M58 ticket 6 / D-ObjectFacets): every selected facet's

@@ -10,6 +10,7 @@
     "dev": "next dev -p 8445",
     "prebuild": "npm run build --prefix ../clients/typescript",
     "build": "next build",
+    "typecheck": "tsc --noEmit",
     "start": "next start -p 8445",
     "lint": "next lint"
   },

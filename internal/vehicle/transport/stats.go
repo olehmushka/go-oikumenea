@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 
-	vehicleapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/vehicle"
-	"github.com/olegamysk/go-oikumenea/internal/vehicle/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	vehicleapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/vehicle"
+	"github.com/olehmushka/go-oikumenea/internal/vehicle/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 )
 

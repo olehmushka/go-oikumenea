@@ -30,8 +30,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/internal/watchlistclient"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/watchlistclient"
 )
 
 // fakeWatchlist is a deterministic WatchlistLookup stand-in for the hermenea seam. It records the last

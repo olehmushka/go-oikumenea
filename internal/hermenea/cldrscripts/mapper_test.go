@@ -6,7 +6,7 @@ package cldrscripts
 import (
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // TestMap covers the CLDR language→script mapping: iso639_3 lower-cased, writingSystem pass-through,

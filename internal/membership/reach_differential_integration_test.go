@@ -33,17 +33,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	authzadapters "github.com/olegamysk/go-oikumenea/internal/authorization/adapters"
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	membershipadapters "github.com/olegamysk/go-oikumenea/internal/membership/adapters"
-	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
-	tenantadapters "github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
-	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
-	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	auditadapters "github.com/olehmushka/go-oikumenea/internal/audit/adapters"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	authzadapters "github.com/olehmushka/go-oikumenea/internal/authorization/adapters"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	membershipadapters "github.com/olehmushka/go-oikumenea/internal/membership/adapters"
+	persondomain "github.com/olehmushka/go-oikumenea/internal/person/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
+	tenantadapters "github.com/olehmushka/go-oikumenea/internal/tenant/adapters"
+	tenantapp "github.com/olehmushka/go-oikumenea/internal/tenant/application"
+	tenantdomain "github.com/olehmushka/go-oikumenea/internal/tenant/domain"
 )
 
 // diffPermPool: unit-scoped permission codes sampled onto roles; the '.read' subset is what the

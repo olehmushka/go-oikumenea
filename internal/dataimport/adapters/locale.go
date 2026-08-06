@@ -6,8 +6,8 @@ package adapters
 import (
 	"context"
 
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // LocaleRepo is the create-if-absent implementation of domain.LocaleStore (D-DataPacks + D-i18n, M54),

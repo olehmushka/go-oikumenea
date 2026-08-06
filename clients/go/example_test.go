@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 
-	oik "github.com/olegamysk/go-oikumenea/clients/go"
-	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/identityfederation"
-	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/person"
+	oik "github.com/olehmushka/go-oikumenea/clients/go"
+	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/identityfederation"
+	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/person"
 	"github.com/palantir/pkg/bearertoken"
 )
 

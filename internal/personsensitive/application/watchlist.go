@@ -13,7 +13,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 // ---------------------------------------------------------------- watchlist match (live-lookup)

@@ -6,7 +6,7 @@ package glottolog
 import (
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // TestMapParentFirst verifies the mapper emits every parent before its children (the RESTRICT

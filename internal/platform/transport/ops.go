@@ -9,7 +9,7 @@ package transport
 import (
 	"context"
 
-	platformapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/platform"
+	platformapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/platform"
 )
 
 // OpsService implements platformapi.PlatformOpsService — the unauthenticated operational surface.

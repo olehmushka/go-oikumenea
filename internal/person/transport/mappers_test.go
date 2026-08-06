@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	personapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/person"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 // mapErrorContract pins the HTTP classification of every person domain error `mapError` is expected to

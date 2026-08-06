@@ -34,9 +34,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/factbookethnicities"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/factbookethnicities"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/fetcher"
 )
 
 func main() {

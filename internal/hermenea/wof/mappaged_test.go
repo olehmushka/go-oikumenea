@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // TestMapPagedAgainstSQLite drives the real MapPaged leg over a tiny generated WOF SQLite fixture (the

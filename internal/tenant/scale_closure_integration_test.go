@@ -22,13 +22,13 @@ import (
 	"testing"
 	"time"
 
-	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
-	tenantadapters "github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
-	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
-	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	auditadapters "github.com/olehmushka/go-oikumenea/internal/audit/adapters"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
+	tenantadapters "github.com/olehmushka/go-oikumenea/internal/tenant/adapters"
+	tenantapp "github.com/olehmushka/go-oikumenea/internal/tenant/application"
+	tenantdomain "github.com/olehmushka/go-oikumenea/internal/tenant/domain"
 )
 
 const scaleGraphCode = "scale-command"

@@ -28,7 +28,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // svcArmFixture: two organizations, each with one shadow (reach-scoped) unit, and one machine

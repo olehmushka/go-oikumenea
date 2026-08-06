@@ -150,6 +150,9 @@ A **consumer** of the above (not a backend module), documented alongside them:
 12. [`development-process.md`](development-process.md) — the **feature pipeline**: the gates a feature
    passes (idea → decided → designed → backend → migrated → ui → verified), the runbook to advance one,
    and how the stage board is kept honest. Read it before starting or reporting on any feature.
+13. [`releasing.md`](releasing.md) — how the **three published artifacts** (the container images, the
+   Go SDK, the npm package) are versioned and published. They version **independently**, because both
+   SDKs are contract-derived and most server releases change nothing in them.
 
 ## Provenance
 

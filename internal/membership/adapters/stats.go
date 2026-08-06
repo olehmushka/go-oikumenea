@@ -7,10 +7,10 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/membership/adapters/membershipsql"
-	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
-	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/membership/adapters/membershipsql"
+	"github.com/olehmushka/go-oikumenea/internal/membership/domain"
+	persondomain "github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // VisiblePersonStatsForSubject is the READ-SCOPE arm of the directory dashboard (M57 /

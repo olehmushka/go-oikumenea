@@ -25,15 +25,15 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	authzapp "github.com/olegamysk/go-oikumenea/internal/authorization/application"
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/scope"
-	linksapp "github.com/olegamysk/go-oikumenea/internal/links/application"
-	linksdomain "github.com/olegamysk/go-oikumenea/internal/links/domain"
-	localizationapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
-	membershipapp "github.com/olegamysk/go-oikumenea/internal/membership/application"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	authzapp "github.com/olehmushka/go-oikumenea/internal/authorization/application"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/scope"
+	linksapp "github.com/olehmushka/go-oikumenea/internal/links/application"
+	linksdomain "github.com/olehmushka/go-oikumenea/internal/links/domain"
+	localizationapp "github.com/olehmushka/go-oikumenea/internal/localization/application"
+	membershipapp "github.com/olehmushka/go-oikumenea/internal/membership/application"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 func registerLinkDescriptors(

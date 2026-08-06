@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // ISODate is the layout person calendar-date fields (birthdate, citizenship/residence windows) are

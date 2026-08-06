@@ -11,8 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/crypto"
 	"github.com/palantir/witchcraft-go-logging/wlog"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )

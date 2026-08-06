@@ -20,8 +20,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/tenant/application"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/application"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/domain"
 )
 
 func strp(s string) *string { return &s }

@@ -10,7 +10,7 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	hermeneamigrations "github.com/olegamysk/go-oikumenea/migrations/hermenea"
+	hermeneamigrations "github.com/olehmushka/go-oikumenea/migrations/hermenea"
 	werror "github.com/palantir/witchcraft-go-error"
 )
 

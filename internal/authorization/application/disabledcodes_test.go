@@ -6,7 +6,7 @@ package application
 import (
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
 )
 
 // TestRejectDisabledCode pins the D-DataPacks (M54) rule that a disabled vertical's permission codes are

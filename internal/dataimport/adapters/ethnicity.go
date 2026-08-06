@@ -8,9 +8,9 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/adapters/dataimportsql"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/adapters/dataimportsql"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // EthnicityRepo is the pgx/sqlc-backed implementation of domain.EthnicityStore (D-PhysicalIdentity

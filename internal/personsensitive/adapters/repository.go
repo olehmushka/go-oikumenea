@@ -20,9 +20,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	personsensitivesql "github.com/olegamysk/go-oikumenea/internal/personsensitive/adapters/personsensitivesql"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	personsensitivesql "github.com/olehmushka/go-oikumenea/internal/personsensitive/adapters/personsensitivesql"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // Repository is the personsensitive pgx/sqlc-backed persistence adapter, bound to a single db.DBTX — the

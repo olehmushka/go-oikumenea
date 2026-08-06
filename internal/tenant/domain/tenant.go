@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // Sentinel errors mapped to Conjure SerializableErrors by the transport layer. The DB

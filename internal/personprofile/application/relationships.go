@@ -11,7 +11,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 // ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships)

@@ -6,7 +6,7 @@ package db
 import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // ScanStatsGroups reads the four-column shape every facet aggregate returns — facet key, bucket key

@@ -42,7 +42,7 @@ api/*.conjure.yml ──(godel conjure)──> internal/conjure/**           ser
                               ──(conjure-typescript)──> clients/typescript/src/generated   TS SDK clients
 ```
 
-- **Go SDK** — `clients/go/` (nested Go module, `github.com/olegamysk/go-oikumenea/clients/go`, versioned
+- **Go SDK** — `clients/go/` (nested Go module, `github.com/olehmushka/go-oikumenea/clients/go`, versioned
   independently). Generated per-service clients under `clients/go/oikumenea/<module>`; hand-written files:
   `clients/go/dial.go` (`Dial`) and `clients/go/client.go` (the façade).
 - **TypeScript SDK** — `clients/typescript/` (npm package). Generated per-service clients under

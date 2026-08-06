@@ -19,10 +19,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	"github.com/olegamysk/go-oikumenea/internal/person/appkit"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	"github.com/olehmushka/go-oikumenea/internal/person/appkit"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // auditSubsystem labels the interim system actor for personprofile admin writes (mirrors the person core

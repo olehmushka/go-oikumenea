@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/olegamysk/go-oikumenea/internal/finance/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/finance/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // This file holds the ONE predicate each list shares with its dashboard, and the aggregates built on

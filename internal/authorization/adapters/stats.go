@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/adapters/authzsql"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/adapters/authzsql"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // The assignment dashboard aggregate (M58 ticket 6 / D-ObjectFacets): every selected facet's

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // ActorType is one of the two audited actor kinds (D-Audit). There is no super_admin kind — an

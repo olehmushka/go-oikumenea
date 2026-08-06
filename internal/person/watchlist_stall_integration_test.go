@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
-	"github.com/olegamysk/go-oikumenea/internal/watchlistclient"
+	hermeneaapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/hermenea"
+	"github.com/olehmushka/go-oikumenea/internal/watchlistclient"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 )
 

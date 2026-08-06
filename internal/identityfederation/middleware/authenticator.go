@@ -13,9 +13,9 @@ import (
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/authn"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/authn"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 

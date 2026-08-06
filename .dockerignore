@@ -3,6 +3,13 @@
 /.git/
 /.github/
 .env
+# Local env files NEVER enter the build context. `.env` was already excluded; `.env.local` was not,
+# and web/Dockerfile does `COPY web web` — so a developer's untracked secrets (AUTH_SECRET, IdP client
+# secrets) were being carried into the image build, and `next build` was quietly reading them. It also
+# made the build unreproducible: it succeeded on a laptop that had the file and failed in CI, which is
+# exactly how this was found.
+.env.local
+.env.*.local
 *.swp
 .DS_Store
 *_test.go

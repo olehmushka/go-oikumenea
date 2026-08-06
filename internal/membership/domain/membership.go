@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	persondomain "github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // Sentinel errors mapped to Conjure SerializableErrors by the transport layer. The DB constraints

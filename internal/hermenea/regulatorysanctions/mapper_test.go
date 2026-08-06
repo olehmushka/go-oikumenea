@@ -6,7 +6,7 @@ package regulatorysanctions
 import (
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // TestMapper validates the passthrough: well-formed rows are emitted with their fields, incomplete rows

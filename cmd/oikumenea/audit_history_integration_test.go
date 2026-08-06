@@ -18,13 +18,13 @@ import (
 	"testing"
 	"time"
 
-	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	audittransport "github.com/olegamysk/go-oikumenea/internal/audit/transport"
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	auditadapters "github.com/olehmushka/go-oikumenea/internal/audit/adapters"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	audittransport "github.com/olehmushka/go-oikumenea/internal/audit/transport"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 	"github.com/palantir/pkg/bearertoken"
 )
 

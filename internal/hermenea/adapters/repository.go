@@ -14,9 +14,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/adapters/hermeneasql"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/adapters/hermeneasql"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // Repository is the pgx/sqlc-backed implementation of domain.Store, bound to a single db.DBTX.

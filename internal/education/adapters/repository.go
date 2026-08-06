@@ -15,9 +15,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/education/adapters/educationsql"
-	"github.com/olegamysk/go-oikumenea/internal/education/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/education/adapters/educationsql"
+	"github.com/olehmushka/go-oikumenea/internal/education/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // Repository implements domain.Repository over a single command surface (pool or tx).

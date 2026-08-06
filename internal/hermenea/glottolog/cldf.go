@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // CLDFMapper reads a staged Glottolog CLDF directory and emits canonical language-scheme records.

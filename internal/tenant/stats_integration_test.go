@@ -23,10 +23,10 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/application"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/application"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 func allUnitFacets(t *testing.T) stats.Selection {

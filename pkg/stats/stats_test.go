@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
 )
 
 func k(s string) *string { return &s }

@@ -26,7 +26,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 // dbLocations is a test LocationLookup that verifies a location RID against the DB — faithful to the

@@ -12,8 +12,8 @@ package adapters
 import (
 	"context"
 
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // RegulatorySanctionRepo is the raw-pgx implementation of domain.RegulatorySanctionStore, bound to a

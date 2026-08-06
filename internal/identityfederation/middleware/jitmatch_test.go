@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
 )
 
 // stubResolver satisfies the whole Resolver port; matchPerson only exercises the JIT-match method, so

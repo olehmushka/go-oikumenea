@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	hconfig "github.com/olegamysk/go-oikumenea/internal/hermenea/config"
-	config "github.com/olegamysk/go-oikumenea/internal/platform/config"
-	"github.com/olegamysk/go-oikumenea/pkg/config/envoverlay"
+	hconfig "github.com/olehmushka/go-oikumenea/internal/hermenea/config"
+	config "github.com/olehmushka/go-oikumenea/internal/platform/config"
+	"github.com/olehmushka/go-oikumenea/pkg/config/envoverlay"
 	"gopkg.in/yaml.v3"
 )
 

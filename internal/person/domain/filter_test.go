@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 func sptr(s string) *string { return &s }

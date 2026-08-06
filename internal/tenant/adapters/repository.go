@@ -15,9 +15,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/adapters/tenantsql"
-	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/adapters/tenantsql"
+	"github.com/olehmushka/go-oikumenea/internal/tenant/domain"
 )
 
 // Repository is the pgx/sqlc-backed implementation of domain.Repository, bound to a single db.DBTX

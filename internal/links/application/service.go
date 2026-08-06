@@ -24,9 +24,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/scope"
-	"github.com/olegamysk/go-oikumenea/internal/links/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/scope"
+	"github.com/olehmushka/go-oikumenea/internal/links/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 const (

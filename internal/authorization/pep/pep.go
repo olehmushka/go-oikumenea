@@ -27,10 +27,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/application"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	authzapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/authorization"
-	"github.com/olegamysk/go-oikumenea/pkg/authn"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/application"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	authzapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/authorization"
+	"github.com/olehmushka/go-oikumenea/pkg/authn"
 	"github.com/palantir/pkg/bearertoken"
 )
 

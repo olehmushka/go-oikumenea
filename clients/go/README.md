@@ -5,7 +5,7 @@ Conjure contract** (`api/*.conjure.yml`) as the server, so the SDK cannot drift 
 **nested module** — it versions and is consumed independently of the server.
 
 ```
-go get github.com/olegamysk/go-oikumenea/clients/go@latest
+go get github.com/olehmushka/go-oikumenea/clients/go@latest
 ```
 
 ## Layout
@@ -53,9 +53,9 @@ import (
 	"context"
 	"fmt"
 
-	oik "github.com/olegamysk/go-oikumenea/clients/go"
-	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/identityfederation"
-	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/person"
+	oik "github.com/olehmushka/go-oikumenea/clients/go"
+	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/identityfederation"
+	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/person"
 	"github.com/palantir/pkg/bearertoken"
 )
 

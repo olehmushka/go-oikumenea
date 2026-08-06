@@ -13,10 +13,10 @@ package search
 import (
 	"context"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	searchapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/search"
-	"github.com/olegamysk/go-oikumenea/internal/search/application"
-	"github.com/olegamysk/go-oikumenea/internal/search/transport"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	searchapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/search"
+	"github.com/olehmushka/go-oikumenea/internal/search/application"
+	"github.com/olehmushka/go-oikumenea/internal/search/transport"
 	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"

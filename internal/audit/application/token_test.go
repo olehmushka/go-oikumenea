@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/internal/audit/domain"
 )
 
 func TestTokenRoundTrip(t *testing.T) {

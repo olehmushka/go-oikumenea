@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/religion/domain"
+	"github.com/olehmushka/go-oikumenea/internal/religion/domain"
 )
 
 func seedLocation(t *testing.T, pool *pgxpool.Pool, lat, lng float64) string {

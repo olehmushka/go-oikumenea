@@ -16,9 +16,9 @@ import (
 	"context"
 	"time"
 
-	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
-	"github.com/olegamysk/go-oikumenea/internal/connectorcall"
-	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
+	hermeneaapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/hermenea"
+	"github.com/olehmushka/go-oikumenea/internal/connectorcall"
+	persondomain "github.com/olehmushka/go-oikumenea/internal/person/domain"
 	"github.com/palantir/pkg/bearertoken"
 )
 

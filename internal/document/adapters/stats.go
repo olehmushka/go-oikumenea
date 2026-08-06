@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/document/adapters/documentsql"
-	"github.com/olegamysk/go-oikumenea/internal/document/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/document/adapters/documentsql"
+	"github.com/olehmushka/go-oikumenea/internal/document/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // DocumentStats is the document-register dashboard aggregate (M57 / D-ObjectFacets): every selected

@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // purgeWidthBudget caps the statements in one person-family purge transaction. Set to ~2× the observed

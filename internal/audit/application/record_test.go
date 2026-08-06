@@ -8,10 +8,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/action"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/pkg/action"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 type stubRepo struct{ inserted bool }

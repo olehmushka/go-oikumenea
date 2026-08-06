@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 
-	locationapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/location"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	locationapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/location"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 )
 

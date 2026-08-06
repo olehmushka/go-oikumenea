@@ -168,6 +168,29 @@ docker-down: ## Stop the packaged stack
 	$(COMPOSE) down
 
 # ---------------------------------------------------------------------------------------------------
+##@ Release (see docs/releasing.md — each artifact has its OWN version and its OWN tag)
+# ---------------------------------------------------------------------------------------------------
+
+.PHONY: release-check
+release-check: ## What each artifact would release right now (publishes nothing)
+	scripts/release.sh check
+
+.PHONY: release-images
+release-images: ## Build the three images at VERSION for both registries (PUSH=1 to publish, PLATFORMS= to narrow)
+	@[ -n "$(VERSION)" ] || { echo "usage: make release-images VERSION=1.2.3 [PUSH=1] [PLATFORMS=linux/amd64]"; exit 2; }
+	scripts/release.sh images $(VERSION) $(if $(PUSH),--push,) $(if $(PLATFORMS),--platforms=$(PLATFORMS),)
+
+.PHONY: release-go-sdk
+release-go-sdk: ## Verify + tag the nested Go SDK module at VERSION (add PUSH=1 to publish)
+	@[ -n "$(VERSION)" ] || { echo "usage: make release-go-sdk VERSION=1.2.3 [PUSH=1]"; exit 2; }
+	scripts/release.sh go-sdk $(VERSION) $(if $(PUSH),--push,)
+
+.PHONY: release-ts-sdk
+release-ts-sdk: ## Verify + publish oikumenea-client at VERSION to npm (add PUSH=1 to publish)
+	@[ -n "$(VERSION)" ] || { echo "usage: make release-ts-sdk VERSION=1.2.3 [PUSH=1]"; exit 2; }
+	scripts/release.sh ts-sdk $(VERSION) $(if $(PUSH),--push,)
+
+# ---------------------------------------------------------------------------------------------------
 ##@ Web console (optional Next.js admin UI)
 # ---------------------------------------------------------------------------------------------------
 

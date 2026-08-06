@@ -6,9 +6,9 @@ package transport
 import (
 	"context"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	identityapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/identityfederation"
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	identityapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/identityfederation"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 )

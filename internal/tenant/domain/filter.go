@@ -6,8 +6,8 @@ package domain
 import (
 	"fmt"
 
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/rid"
 )
 
 // UnitFilter is the unit facet vocabulary (M56 / D-ObjectFacets): the structural predicates the FLAT

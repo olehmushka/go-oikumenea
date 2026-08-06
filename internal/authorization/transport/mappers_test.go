@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	authzapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/authorization"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	authzapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/authorization"
 	conjureerrors "github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
 )
 

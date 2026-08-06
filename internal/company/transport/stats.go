@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/olegamysk/go-oikumenea/internal/company/domain"
-	companyapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/company"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/company/domain"
+	companyapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/company"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 	"github.com/palantir/pkg/bearertoken"
 )
 

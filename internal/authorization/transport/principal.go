@@ -7,9 +7,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	authzapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/authorization"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	authzapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/authorization"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 )

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 // personFilter assembles the listPersons query args into the one PersonFilter both list paths take

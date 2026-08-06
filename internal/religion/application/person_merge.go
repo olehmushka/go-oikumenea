@@ -7,8 +7,8 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
-	"github.com/olegamysk/go-oikumenea/pkg/events"
+	personevents "github.com/olehmushka/go-oikumenea/internal/person/events"
+	"github.com/olehmushka/go-oikumenea/pkg/events"
 )
 
 // SubscribePersonEvents re-homes this module's person references on a PersonMerged (D-OverlayFoundation,

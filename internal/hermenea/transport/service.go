@@ -12,9 +12,9 @@ import (
 	"errors"
 	"time"
 
-	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/application"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	hermeneaapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/hermenea"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/application"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 	"github.com/palantir/pkg/bearertoken"
 )
 

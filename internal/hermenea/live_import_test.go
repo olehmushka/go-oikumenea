@@ -8,10 +8,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/cldrscripts"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/glottolog"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/cldrscripts"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/fetcher"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/glottolog"
 )
 
 // TestLiveLanguageImport exercises the LIVE language path end-to-end up to the load boundary: the

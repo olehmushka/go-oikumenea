@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/person/adapters/personsql"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/person/adapters/personsql"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // PersonStats is the INSTANCE-ADMIN dashboard aggregate (M57 / D-ObjectFacets): one round-trip

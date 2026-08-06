@@ -6,7 +6,7 @@ package wikidataorgs
 import (
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 func TestMapExternalOrgs(t *testing.T) {

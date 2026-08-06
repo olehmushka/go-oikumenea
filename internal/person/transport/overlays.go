@@ -10,8 +10,8 @@ package transport
 import (
 	"context"
 
-	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	personapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/person"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 	"github.com/palantir/pkg/bearertoken"
 )
 

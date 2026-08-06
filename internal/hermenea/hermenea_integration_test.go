@@ -34,14 +34,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/application"
-	hdb "github.com/olegamysk/go-oikumenea/internal/hermenea/db"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/geocountries"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/runtime"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/application"
+	hdb "github.com/olehmushka/go-oikumenea/internal/hermenea/db"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/fetcher"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/geocountries"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/runtime"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/wikidataorgs"
 )
 
 const defaultHermeneaTestDSN = "postgres://postgres:dev@localhost:5432/hermenea_test?sslmode=disable"

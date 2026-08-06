@@ -30,7 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // maxPayload bounds a fetched body (16 MiB) so a runaway source can't exhaust memory.

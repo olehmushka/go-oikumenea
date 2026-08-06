@@ -16,11 +16,11 @@ import (
 	"context"
 	"errors"
 
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
-	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
-	locapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/localization"
-	"github.com/olegamysk/go-oikumenea/internal/localization/application"
-	"github.com/olegamysk/go-oikumenea/internal/localization/domain"
+	authzdomain "github.com/olehmushka/go-oikumenea/internal/authorization/domain"
+	"github.com/olehmushka/go-oikumenea/internal/authorization/pep"
+	locapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/localization"
+	"github.com/olehmushka/go-oikumenea/internal/localization/application"
+	"github.com/olehmushka/go-oikumenea/internal/localization/domain"
 	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 )

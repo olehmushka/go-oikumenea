@@ -12,10 +12,10 @@ import (
 	"context"
 	"errors"
 
-	authzapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/authorization"
-	linksapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/links"
-	"github.com/olegamysk/go-oikumenea/internal/links/application"
-	"github.com/olegamysk/go-oikumenea/internal/links/domain"
+	authzapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/authorization"
+	linksapi "github.com/olehmushka/go-oikumenea/internal/conjure/oikumenea/links"
+	"github.com/olehmushka/go-oikumenea/internal/links/application"
+	"github.com/olehmushka/go-oikumenea/internal/links/domain"
 	"github.com/palantir/pkg/bearertoken"
 )
 

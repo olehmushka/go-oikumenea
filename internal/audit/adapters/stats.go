@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/audit/adapters/auditsql"
-	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/audit/adapters/auditsql"
+	"github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // Stats is the ledger's dashboard aggregate (M58 / D-ObjectFacets): every selected facet's

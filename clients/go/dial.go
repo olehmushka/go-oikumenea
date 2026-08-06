@@ -4,7 +4,7 @@
 // Package client is the published Go SDK for the go-oikumenea API.
 //
 // The per-service typed clients live in the generated subpackages under
-// github.com/olegamysk/go-oikumenea/clients/go/oikumenea/<module> (e.g. .../oikumenea/person), generated
+// github.com/olehmushka/go-oikumenea/clients/go/oikumenea/<module> (e.g. .../oikumenea/person), generated
 // from the same Conjure contract as the server (D-Conjure) so the SDK cannot drift from the API.
 //
 // This file is the only hand-written code in the module: a small Dial helper that builds the

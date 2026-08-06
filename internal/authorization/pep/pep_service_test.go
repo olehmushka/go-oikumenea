@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/pkg/authn"
+	"github.com/olehmushka/go-oikumenea/pkg/authn"
 	"github.com/palantir/pkg/bearertoken"
 )
 

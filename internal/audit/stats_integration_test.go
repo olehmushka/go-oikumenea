@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/olegamysk/go-oikumenea/internal/audit/application"
-	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/audit/application"
+	"github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 func allAuditFacets(t *testing.T) stats.Selection {

@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 )
 
 // Factbook stages the CIA World Factbook country files (D-PhysicalIdentity amendment, M43) for the paged

@@ -17,7 +17,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/olegamysk/go-oikumenea/pkg/events"
+	"github.com/olehmushka/go-oikumenea/pkg/events"
 )
 
 // TypePersonMerged is the events.Event.Type() dispatch key for a provisional→canonical merge.

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/nyaruka/phonenumbers"
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olehmushka/go-oikumenea/internal/person/domain"
 )
 
 // normalizeEmail lowercases and trims a contact email before validation/storage. The column is

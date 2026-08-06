@@ -24,13 +24,13 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
-	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
-	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/adapters"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/application"
-	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	auditadapters "github.com/olehmushka/go-oikumenea/internal/audit/adapters"
+	auditapp "github.com/olehmushka/go-oikumenea/internal/audit/application"
+	auditdomain "github.com/olehmushka/go-oikumenea/internal/audit/domain"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/adapters"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/application"
+	"github.com/olehmushka/go-oikumenea/internal/dataimport/domain"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // synthetic codes these tests own (scoped cleanup — the shared test DB runs package binaries in parallel).

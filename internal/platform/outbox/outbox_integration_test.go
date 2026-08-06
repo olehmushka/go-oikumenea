@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/internal/platform/outbox"
-	"github.com/olegamysk/go-oikumenea/pkg/events"
+	pdb "github.com/olehmushka/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/platform/outbox"
+	"github.com/olehmushka/go-oikumenea/pkg/events"
 	"github.com/palantir/pkg/metrics"
 	"github.com/palantir/witchcraft-go-logging/wlog"
 	_ "github.com/palantir/witchcraft-go-logging/wlog-zap" // real logging provider so the WARN is captured

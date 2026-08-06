@@ -7,8 +7,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olehmushka/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olehmushka/go-oikumenea/internal/platform/db"
 )
 
 // LoginEventRepo is the raw-pgx implementation of domain.LoginEventRepository over

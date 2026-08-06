@@ -21,10 +21,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/finance/application"
-	"github.com/olegamysk/go-oikumenea/internal/finance/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/facet"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/finance/application"
+	"github.com/olehmushka/go-oikumenea/internal/finance/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/facet"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // TestHolderKindPartitionsAndFilters_Integration builds the world the facet's declaration claims to

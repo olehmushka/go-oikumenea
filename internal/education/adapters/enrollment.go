@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olegamysk/go-oikumenea/internal/education/adapters/educationsql"
-	"github.com/olegamysk/go-oikumenea/internal/education/domain"
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/olehmushka/go-oikumenea/internal/education/adapters/educationsql"
+	"github.com/olehmushka/go-oikumenea/internal/education/domain"
+	"github.com/olehmushka/go-oikumenea/pkg/stats"
 )
 
 // The enrollment register's browse + dashboard halves (M58 ticket 7 / D-ObjectFacets).

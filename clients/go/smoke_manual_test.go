@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
-	oik "github.com/olegamysk/go-oikumenea/clients/go"
-	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/identityfederation"
+	oik "github.com/olehmushka/go-oikumenea/clients/go"
+	"github.com/olehmushka/go-oikumenea/clients/go/oikumenea/identityfederation"
 	"github.com/palantir/pkg/bearertoken"
 )
 
