@@ -131,7 +131,10 @@ jobs:
           fi
 
       - name: announce
-        run: echo "go get github.com/olehmushka/go-oikumenea/clients/go@v${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          # The import path comes from go.mod, NOT from the GitHub namespace — they are allowed to
+          # differ, and here they do.
+          echo "go get $(sed -n 's/^module //p' clients/go/go.mod | head -1)@v${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
 
   # ── TypeScript SDK ────────────────────────────────────────────────────────────────────────────
   ts-sdk:

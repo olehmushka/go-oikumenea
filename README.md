@@ -271,7 +271,7 @@ typed **Go SDK** ([`clients/go/`](clients/go/README.md)), a **TypeScript SDK**
 most server releases change nothing in a contract-derived client. Installing them:
 
 ```bash
-go get github.com/olehmushka/go-oikumenea/clients/go@latest   # Go SDK
+go get github.com/olegamysk/go-oikumenea/clients/go@latest   # Go SDK (the go.mod path)
 npm i oikumenea-client                                        # TypeScript SDK
 docker pull ghcr.io/olehmushka/oikumenea:latest               # server image (also on Docker Hub)
 ```

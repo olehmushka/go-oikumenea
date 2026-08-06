@@ -77,6 +77,13 @@ scripts/release.sh go-sdk 0.4.0 --push     # …and pushes it
 A Go module release **is** the tag — nothing is uploaded, and `proxy.golang.org` serves it within
 minutes. The tag form `clients/go/vX.Y.Z` is fixed by the nested module's path and is not a choice.
 
+> **BLOCKED today.** The module declares `github.com/olegamysk/go-oikumenea/clients/go`, and that path
+> returns 404 — the repository lives at `github.com/olehmushka/go-oikumenea`. The proxy fetches a
+> module by its **go.mod path**, not by the repo you tagged, so tagging now would publish a module
+> that `go get` cannot install, and the version number would be spent. `release.sh go-sdk` refuses
+> for exactly this reason. Resolve it by renaming the module path to match the repository (go.mod,
+> clients/go/go.mod and every import), or by making the declared path resolve.
+
 The command refuses to proceed when `clients/go` is byte-identical to the last release, when the
 version does not move forward, when the IR-derived mirrors are stale against the contract, or when
 the module does not build/vet/test clean.

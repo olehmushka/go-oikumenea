@@ -45,11 +45,14 @@ ROOT="$(pwd)"
 
 # ── configuration ───────────────────────────────────────────────────────────────────────────────
 NAMESPACE="${RELEASE_NAMESPACE:-olehmushka}"
-# Both registries by default; --registries=docker.io narrows it. Narrowing exists because the two are
-# authenticated differently and one can be ready before the other — a single buildx invocation carries
-# every tag, so an unauthenticated GHCR fails the whole build INCLUDING the Docker Hub half that would
-# have worked.
-RELEASE_REGISTRIES="${RELEASE_REGISTRIES:-ghcr.io,docker.io}"
+# Each entry is `host` (using NAMESPACE) or `host/namespace` — because the namespaces genuinely
+# DIFFER: GHCR's is forced to the GitHub owner, while the Docker Hub account is whatever you signed up
+# as, and assuming one from the other is how a push ends in `insufficient_scope: authorization failed`
+# (authenticated fine, just not for that namespace).
+#
+# Narrowing with --registries also matters because one buildx invocation carries every tag, so an
+# unauthenticated registry fails the whole build INCLUDING the half that would have worked.
+RELEASE_REGISTRIES="${RELEASE_REGISTRIES:-ghcr.io/olehmushka,docker.io/olegamysk}"
 PLATFORMS="${RELEASE_PLATFORMS:-linux/amd64,linux/arm64}"
 NPM_PACKAGE="oikumenea-client"
 
@@ -183,7 +186,8 @@ cmd_images() {
   local REGISTRIES=()
   local host
   for host in ${RELEASE_REGISTRIES//,/ }; do
-    REGISTRIES+=("${host}/${NAMESPACE}")
+    # `host` alone takes the default namespace; `host/ns` carries its own.
+    if [[ "$host" == */* ]]; then REGISTRIES+=("$host"); else REGISTRIES+=("${host}/${NAMESPACE}"); fi
   done
   [[ ${#REGISTRIES[@]} -gt 0 ]] || die "no registries selected (--registries=ghcr.io,docker.io)"
 
@@ -220,7 +224,7 @@ cmd_images() {
     for reg in "${REGISTRIES[@]}"; do
       rhost="${reg%%/*}"
       if ! docker_logged_in "$rhost"; then
-        die "not logged in to ${rhost} — the push would fail at export, AFTER the whole build.
+        die "not logged in to ${rhost} (pushing to ${reg}) — the push would fail at export, AFTER the whole build.
        ghcr.io:    echo <PAT-with-write:packages> | docker login ghcr.io -u ${NAMESPACE} --password-stdin
        docker.io:  docker login docker.io
        …or push only where you ARE authenticated:  --registries=<host>
@@ -276,6 +280,34 @@ cmd_images() {
   fi
 }
 
+# require_module_path_resolves — a Go module release is a TAG, and the proxy fetches it by the module
+# path in go.mod, NOT by the repo you tagged. If the two disagree the tag publishes cleanly and
+# `go get` 404s, with nothing to roll back: a version number is spent and the module is uninstallable.
+#
+# That is the live case here. go.mod says github.com/olegamysk/go-oikumenea while the repo is at
+# github.com/olehmushka/go-oikumenea, so the declared path does not exist. Checked at RELEASE time
+# rather than in CI, because it is exactly the moment the mistake becomes permanent.
+require_module_path_resolves() {
+  local modpath; modpath="$(sed -n 's/^module //p' clients/go/go.mod | head -1)"
+  [[ -n "$modpath" ]] || die "cannot read the module path from clients/go/go.mod"
+  say "module path: $modpath"
+
+  # Only github.com paths can be checked this cheaply; anything else (a vanity domain) is the
+  # operator's to verify.
+  [[ "$modpath" == github.com/* ]] || { warn "non-github module path — not verified"; return 0; }
+
+  local repo; repo="$(cut -d/ -f1-3 <<<"$modpath")"
+  local code; code="$(curl -s -o /dev/null -w '%{http_code}' "https://$repo" 2>/dev/null || echo 000)"
+  if [[ "$code" == "404" ]]; then
+    die "the module path $modpath does not resolve (HTTP 404), but this repo is $(git remote get-url origin).
+       A Go module is fetched by its go.mod path, so tagging this would publish a module that
+       'go get $modpath/...' cannot install — and the version number would be spent.
+       Fix the module path (go.mod + clients/go/go.mod + every import) to match where the repo lives,
+       or make that path resolve, before releasing the Go SDK."
+  fi
+  [[ "$code" == "200" ]] || warn "could not verify $repo (HTTP $code) — check it before relying on the tag"
+}
+
 # ── the Go SDK ──────────────────────────────────────────────────────────────────────────────────
 # A nested module (clients/go/go.mod), so "publishing" is a TAG — the module proxy serves it from
 # there. Nothing is uploaded, which is why the guard below is the whole substance of this command.
@@ -299,6 +331,7 @@ cmd_go_sdk() {
     say "no previous ${prefix}* tag — this is the FIRST Go SDK release."
   fi
 
+  require_module_path_resolves
   verify_generated_matches_contract go
 
   say "building + testing the nested module…"
@@ -314,7 +347,7 @@ cmd_go_sdk() {
     else
       run git push origin "$tag"
     fi
-    say "released: go get github.com/${NAMESPACE}/go-oikumenea/clients/go@v${version}"
+    say "released: go get $(sed -n 's/^module //p' clients/go/go.mod | head -1)@v${version}"
   else
     say "tag $tag ready locally; re-run with --push to publish it."
   fi
