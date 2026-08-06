@@ -263,20 +263,45 @@ The full hands-on login/token recipe is in [`deploy/keycloak/README.md`](deploy/
 through Keycloak (one issuer, and the only route for GitHub, which is OAuth2 without OIDC and so
 publishes nothing this service could verify) and *direct* (one `idp.issuers[]` entry per provider).
 
-**Contracts & SDKs.** The API is Conjure-first (`api/*.conjure.yml`). From that one contract come a
-typed **Go SDK** ([`clients/go/`](clients/go/README.md)), a **TypeScript SDK**
-([`clients/typescript/`](clients/typescript/README.md)), and an **OpenAPI** reference
-([`docs/api/README.md`](docs/api/README.md)) — none can drift from the server. They are
-**published independently of the server** — an SDK version moves only when that SDK does, because
-most server releases change nothing in a contract-derived client. Installing them:
+### Client libraries
 
-```bash
-go get github.com/olehmushka/go-oikumenea/clients/go@latest   # Go SDK
-npm i oikumenea-client                                        # TypeScript SDK
-docker pull ghcr.io/olehmushka/oikumenea:latest               # server image (also docker.io/olegamysk)
+The API is **Conjure-first** (`api/*.conjure.yml`), and every client below is generated from that one
+contract along with the server — so none of them can drift from it.
+
+| Language | Package | Install | Source |
+|---|---|---|---|
+| **Go** | [![Go Reference](https://pkg.go.dev/badge/github.com/olehmushka/go-oikumenea/clients/go.svg)](https://pkg.go.dev/github.com/olehmushka/go-oikumenea/clients/go) | `go get github.com/olehmushka/go-oikumenea/clients/go` | [`clients/go/`](clients/go/README.md) |
+| **TypeScript** | [![npm](https://img.shields.io/npm/v/oikumenea-client)](https://www.npmjs.com/package/oikumenea-client) | `npm i oikumenea-client` | [`clients/typescript/`](clients/typescript/README.md) |
+
+Prefer raw HTTP? The **OpenAPI** reference is generated from the same contract —
+[`docs/api/README.md`](docs/api/README.md).
+
+```go
+import (
+    oik "github.com/olehmushka/go-oikumenea/clients/go"
+    "github.com/olehmushka/go-oikumenea/clients/go/oikumenea/person"
+)
+
+c, err := oik.New("https://oikumenea.example.org:8443", token)  // token bound once, for every service
+p, err := c.Person.GetPerson(ctx, personRID)                   // no per-call bearer argument
+_ = person.IsPersonNotFound(err)                               // typed errors, per endpoint
 ```
 
-Publishing them is [`docs/releasing.md`](docs/releasing.md).
+```ts
+import { createOikumeneaClient } from "oikumenea-client";
+
+const client = createOikumeneaClient({
+  baseUrl: "https://oikumenea.example.org:8443",
+  token,   // omit behind a BFF that injects it server-side
+});
+```
+
+The clients are **versioned independently of the server**: a contract-derived SDK moves only when
+that SDK actually changes, so most server releases leave them where they are. Publishing any of them
+is [`docs/releasing.md`](docs/releasing.md).
+
+**Container images.** `ghcr.io/olehmushka/oikumenea` and `docker.io/olegamysk/oikumenea` (plus
+`hermenea` and `oikumenea-console`), built for `linux/amd64` and `linux/arm64`.
 
 **Data ingestion (`hermenea`).** An optional companion service ingests external reference datasets
 (country codes, gazetteers, watchlists, …) and loads them into oikumenea over HTTP. It has its own
