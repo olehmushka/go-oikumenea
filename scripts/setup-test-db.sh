@@ -17,7 +17,19 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Source .env if present so we honor a custom host port / credentials.
-if [[ -f .env ]]; then set -a; . ./.env; set +a; fi
+# .env supplies DEFAULTS, and must not override what the caller already exported: `set -a; . ./.env`
+# on its own clobbers the environment, so a caller pointing the script at a different server (CI, a
+# throwaway container) silently got the dev DSNs from the dotfile instead — and the only symptom is
+# the script cheerfully reporting "No migration files to execute" against an already-migrated
+# database that was never the target.
+if [[ -f .env ]]; then
+  __pre_db="${DATABASE_URL-}"; __pre_oik="${OIKUMENEA_TEST_DSN-}"; __pre_herm="${HERMENEA_TEST_DSN-}"
+  set -a; . ./.env; set +a
+  [[ -n "$__pre_db"   ]] && DATABASE_URL="$__pre_db"
+  [[ -n "$__pre_oik"  ]] && OIKUMENEA_TEST_DSN="$__pre_oik"
+  [[ -n "$__pre_herm" ]] && HERMENEA_TEST_DSN="$__pre_herm"
+  unset __pre_db __pre_oik __pre_herm
+fi
 
 ADMIN_DSN="${DATABASE_URL:-postgres://postgres:dev@localhost:5432/postgres?sslmode=disable}"
 TEST_DSN="${OIKUMENEA_TEST_DSN:-postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable}"

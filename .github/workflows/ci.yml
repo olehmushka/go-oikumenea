@@ -66,13 +66,16 @@ jobs:
       # Migrations + the bulk of the integration tests run as the owner/superuser (the tests call the
       # application services directly, bypassing the request middleware that pins RLS GUCs). The
       # dedicated RLS test (internal/platform/db) derives the non-superuser DSN from this one.
-      # …/oikumenea_ci, NOT the image's default `postgres` DB. The postgis image's init scripts create
-      # postgis + topology + tiger_geocoder in the default database, and Atlas refuses to apply to a
-      # database it did not start clean ("connected database is not clean: found schema tiger"). A
-      # database created from template1 has none of that while the extension binaries are still
-      # installed system-wide, so migration 0001's `CREATE EXTENSION postgis` works on an empty slate.
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/oikumenea_ci?sslmode=disable
-      OIKUMENEA_TEST_DSN: postgres://postgres:postgres@localhost:5432/oikumenea_ci?sslmode=disable
+      #
+      # DATABASE_URL is the ADMIN connection (setup-test-db.sh only issues CREATE DATABASE / CREATE
+      # ROLE on it); the suites run against the two DEDICATED databases below. Both are created from
+      # template1, which is also what keeps Atlas happy: the postgis image installs postgis, topology
+      # and tiger_geocoder into its DEFAULT database, and Atlas refuses a target it did not start
+      # clean ("connected database is not clean: found schema tiger"). A fresh database has none of
+      # that while the extension binaries remain installed system-wide.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      OIKUMENEA_TEST_DSN: postgres://postgres:postgres@localhost:5432/oikumenea_test?sslmode=disable
+      HERMENEA_TEST_DSN: postgres://postgres:postgres@localhost:5432/hermenea_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -80,14 +83,15 @@ jobs:
           go-version-file: go.mod
           cache: true
       - uses: ariga/setup-atlas@v0
-      - name: Create a clean target database
-        run: psql "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c "CREATE DATABASE oikumenea_ci"
-      - name: Apply migrations (as owner/superuser)
-        run: atlas migrate apply --env local
-      - name: Create the non-superuser application login role (RLS backstop)
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
-            -c "CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;"
+      # The repo's own setup script, rather than a partial copy of it inline. It creates BOTH test
+      # databases, applies both migration sets (migrations/ and migrations/hermenea/) and ensures the
+      # oikumenea_app / oikumenea roles the RLS backstop needs.
+      #
+      # CI used to hand-roll three of those four steps and omit hermenea's database entirely — which
+      # nothing noticed, because the job died at migration 0001 before any test could miss it. The
+      # moment PostGIS was fixed, five hermenea suites failed on a database that had never existed.
+      - name: Create + migrate the test databases
+        run: ./scripts/setup-test-db.sh
       - name: Integration tests
         run: go test -tags integration ./...
 
