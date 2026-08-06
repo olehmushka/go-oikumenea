@@ -32,12 +32,34 @@ type LocationService interface {
 	// Soft-delete a location. Location:LocationInUse when an owner still references it.
 	DeleteLocation(ctx context.Context, authHeader bearertoken.Token, locationIdArg string) error
 	/*
-	   Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the
-	   address fields — no spatial window required), or a radius (lat + lng + radiusM, via
-	   ST_DWithin), or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired
-	   when none is given.
+	   Browse, spatial or text query, token-paginated. FOUR modes, selected by which arguments are
+	   present and resolved in this precedence (M58 ticket 6):
+
+	   1. `query` — case-insensitive match on the address fields (locality, admin areas, street,
+	      MGRS, raw address);
+	   2. a radius — `lat` + `lng` + `radiusM`, via ST_DWithin, nearest first;
+	   3. a bounding box — `minLat` + `minLng` + `maxLat` + `maxLng`;
+	   4. BROWSE — none of the above: the whole registry in RID order.
+
+	   Mode 4 is new; before it, no window meant Location:QueryWindowRequired, and there was no way
+	   to ask for "the locations" at all. That error is now vestigial (see its docs).
+
+	   `countryId` and `typeId` are FACET filters (D-ObjectFacets) and apply in EVERY mode — they
+	   narrow the window rather than replacing it. `locationStats` takes the same arguments and
+	   describes the same set.
 	*/
-	ListLocations(ctx context.Context, authHeader bearertoken.Token, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string) (LocationPage, error)
+	ListLocations(ctx context.Context, authHeader bearertoken.Token, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, pageSizeArg *int, pageTokenArg *string, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationPage, error)
+	/*
+	   Facet distributions over the location registry — the dashboard half of the location facet
+	   vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the arguments `listLocations`
+	   takes, minus paging, so a dashboard and a list are two renderings of one request state —
+	   INCLUDING the spatial window, which is a predicate over the listed table and therefore
+	   counts (see LocationStats).
+
+	   The path is `/stats/locations` rather than `/locations/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{locationId}`.
+	*/
+	LocationStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, latArg *float64, lngArg *float64, radiusMArg *float64, minLatArg *float64, minLngArg *float64, maxLatArg *float64, maxLngArg *float64, queryArg *string, countryIdArg *string, typeIdArg *string) (LocationStats, error)
 	// List the active place-type catalog.
 	ListLocationTypes(ctx context.Context, authHeader bearertoken.Token) (LocationTypeList, error)
 }
@@ -63,6 +85,9 @@ func RegisterRoutesLocationService(router wrouter.Router, impl LocationService, 
 	}
 	if err := resource.Get("ListLocations", "/location/v1/locations", httpserver.NewJSONHandler(handler.HandleListLocations, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listLocations route")
+	}
+	if err := resource.Get("LocationStats", "/location/v1/stats/locations", httpserver.NewJSONHandler(handler.HandleLocationStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add locationStats route")
 	}
 	if err := resource.Get("ListLocationTypes", "/location/v1/location/types", httpserver.NewJSONHandler(handler.HandleListLocationTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listLocationTypes route")
@@ -236,7 +261,106 @@ func (l *locationServiceHandler) HandleListLocations(rw http.ResponseWriter, req
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
-	respArg, err := l.impl.ListLocations(req.Context(), bearertoken.Token(authHeader), latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, pageSizeArg, pageTokenArg, queryArg)
+	var countryIdArg *string
+	if countryIdArgStr := req.URL.Query().Get("countryId"); countryIdArgStr != "" {
+		countryIdArgInternal := countryIdArgStr
+		countryIdArg = &countryIdArgInternal
+	}
+	var typeIdArg *string
+	if typeIdArgStr := req.URL.Query().Get("typeId"); typeIdArgStr != "" {
+		typeIdArgInternal := typeIdArgStr
+		typeIdArg = &typeIdArgInternal
+	}
+	respArg, err := l.impl.ListLocations(req.Context(), bearertoken.Token(authHeader), latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, pageSizeArg, pageTokenArg, queryArg, countryIdArg, typeIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (l *locationServiceHandler) HandleLocationStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var latArg *float64
+	if latArgStr := req.URL.Query().Get("lat"); latArgStr != "" {
+		latArgInternal, err := strconv.ParseFloat(latArgStr, 64)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"lat\" as double")
+		}
+		latArg = &latArgInternal
+	}
+	var lngArg *float64
+	if lngArgStr := req.URL.Query().Get("lng"); lngArgStr != "" {
+		lngArgInternal, err := strconv.ParseFloat(lngArgStr, 64)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"lng\" as double")
+		}
+		lngArg = &lngArgInternal
+	}
+	var radiusMArg *float64
+	if radiusMArgStr := req.URL.Query().Get("radiusM"); radiusMArgStr != "" {
+		radiusMArgInternal, err := strconv.ParseFloat(radiusMArgStr, 64)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"radiusM\" as double")
+		}
+		radiusMArg = &radiusMArgInternal
+	}
+	var minLatArg *float64
+	if minLatArgStr := req.URL.Query().Get("minLat"); minLatArgStr != "" {
+		minLatArgInternal, err := strconv.ParseFloat(minLatArgStr, 64)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"minLat\" as double")
+		}
+		minLatArg = &minLatArgInternal
+	}
+	var minLngArg *float64
+	if minLngArgStr := req.URL.Query().Get("minLng"); minLngArgStr != "" {
+		minLngArgInternal, err := strconv.ParseFloat(minLngArgStr, 64)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"minLng\" as double")
+		}
+		minLngArg = &minLngArgInternal
+	}
+	var maxLatArg *float64
+	if maxLatArgStr := req.URL.Query().Get("maxLat"); maxLatArgStr != "" {
+		maxLatArgInternal, err := strconv.ParseFloat(maxLatArgStr, 64)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"maxLat\" as double")
+		}
+		maxLatArg = &maxLatArgInternal
+	}
+	var maxLngArg *float64
+	if maxLngArgStr := req.URL.Query().Get("maxLng"); maxLngArgStr != "" {
+		maxLngArgInternal, err := strconv.ParseFloat(maxLngArgStr, 64)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"maxLng\" as double")
+		}
+		maxLngArg = &maxLngArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	var countryIdArg *string
+	if countryIdArgStr := req.URL.Query().Get("countryId"); countryIdArgStr != "" {
+		countryIdArgInternal := countryIdArgStr
+		countryIdArg = &countryIdArgInternal
+	}
+	var typeIdArg *string
+	if typeIdArgStr := req.URL.Query().Get("typeId"); typeIdArgStr != "" {
+		typeIdArgInternal := typeIdArgStr
+		typeIdArg = &typeIdArgInternal
+	}
+	respArg, err := l.impl.LocationStats(req.Context(), bearertoken.Token(authHeader), facetsArg, latArg, lngArg, radiusMArg, minLatArg, minLngArg, maxLatArg, maxLngArg, queryArg, countryIdArg, typeIdArg)
 	if err != nil {
 		return err
 	}

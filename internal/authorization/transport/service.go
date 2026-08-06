@@ -208,30 +208,51 @@ func (s Service) RevokeAssignment(ctx context.Context, token bearertoken.Token, 
 	return toAPIAssignment(revoked), nil
 }
 
-func (s Service) ListAssignments(ctx context.Context, token bearertoken.Token, subjectPersonID *string, targetUnitID *string, pageSize *int, pageToken *string) (authzapi.AssignmentPage, error) {
-	subj := derefOr(subjectPersonID, "")
-	unit := derefOr(targetUnitID, "")
-	switch {
-	case unit != "" && subj == "":
-		if err := s.pep.Require(ctx, token, string(domain.PermAssignmentRead), unit); err != nil {
-			return authzapi.AssignmentPage{}, err
-		}
-		page, err := s.app.ListAssignmentsByUnit(ctx, unit, derefOr(pageSize, 0), derefOr(pageToken, ""))
-		if err != nil {
-			return authzapi.AssignmentPage{}, s.mapError(ctx, err)
-		}
-		return toAPIAssignmentPage(page), nil
-	case subj != "" && unit == "":
-		if err := s.pep.RequireAnywhere(ctx, token, string(domain.PermAssignmentRead)); err != nil {
-			return authzapi.AssignmentPage{}, err
-		}
-		page, err := s.app.ListAssignmentsBySubject(ctx, subj, derefOr(pageSize, 0), derefOr(pageToken, ""))
-		if err != nil {
-			return authzapi.AssignmentPage{}, s.mapError(ctx, err)
-		}
-		return toAPIAssignmentPage(page), nil
-	default:
-		return authzapi.AssignmentPage{}, authzapi.NewAssignmentInvalid("provide exactly one of subjectPersonId or targetUnitId")
+// ListAssignments lists the ACTIVE grant population under the facet filter (M58 ticket 6 /
+// D-ObjectFacets). ONE gate and ONE query, where there used to be a three-way switch requiring
+// exactly one of subjectPersonId/targetUnitId — those are now ordinary filters, and there is finally a
+// way to ask for the grants.
+//
+// The gate is `assignment.read` held ANYWHERE and the rows are then trimmed to the caller's
+// `assignment.read` REACH. That combination is what makes collapsing the switch safe rather than
+// merely tidy, and it moves both old arms in the same direction — never wider:
+//
+//   - the targetUnitId arm used to gate with Require(…, unit), which is exactly "is that unit in my
+//     assignment.read reach" asked one unit at a time. Same rows; a caller who cannot reach the named
+//     unit now gets an empty page instead of a 403, which discloses strictly less.
+//   - the subjectPersonId arm used to gate with RequireAnywhere and apply NO trim, so one grant
+//     anywhere enumerated any person's authority across the whole instance. It is now trimmed like
+//     everything else.
+//
+// The reach is computed for `assignment.read` SPECIFICALLY, not the '%.read' family every other
+// module's scoped list uses — see the adapter, where the code is passed explicitly at each call site.
+func (s Service) ListAssignments(ctx context.Context, token bearertoken.Token, subjectPersonID *string, targetUnitID *string, roleID *string, scope *string, graphID *string, pageSize *int, pageToken *string) (authzapi.AssignmentPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(domain.PermAssignmentRead)); err != nil {
+		return authzapi.AssignmentPage{}, err
+	}
+	reader, isAdmin, err := s.pep.SubjectAuthority(ctx)
+	if err != nil {
+		return authzapi.AssignmentPage{}, s.mapError(ctx, err)
+	}
+	page, err := s.app.ListAssignments(ctx,
+		assignmentFilterFrom(subjectPersonID, targetUnitID, roleID, scope, graphID),
+		reader, isAdmin, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	if err != nil {
+		return authzapi.AssignmentPage{}, s.mapError(ctx, err)
+	}
+	return toAPIAssignmentPage(page), nil
+}
+
+// assignmentFilterFrom builds the assignment facet filter from the raw query args. Shared by
+// ListAssignments and AssignmentStats so a list and its dashboard cannot read the same URL
+// differently.
+func assignmentFilterFrom(subjectPersonID, targetUnitID, roleID, scope, graphID *string) domain.AssignmentFilter {
+	return domain.AssignmentFilter{
+		SubjectPersonID: subjectPersonID,
+		TargetUnitID:    targetUnitID,
+		RoleID:          roleID,
+		Scope:           scope,
+		GraphID:         graphID,
 	}
 }
 

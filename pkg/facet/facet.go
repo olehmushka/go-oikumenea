@@ -244,6 +244,23 @@ const (
 	ClassSearch Class = "search"
 	// ClassTraversal selects a traversal MODE rather than adding a predicate to the listed table.
 	ClassTraversal Class = "traversal"
+	// ClassWindow is a CONTINUOUS predicate over the listed table that has no buckets to group by —
+	// today, `location`'s radius and bounding box (M58 ticket 6).
+	//
+	// It exists because the two neighbouring classes each say something false about such an arg.
+	// ClassTraversal says "no aggregate counts this", which is right for a tree walk (an exact-parent
+	// arg switches the listing to a hierarchy mode and describes nothing about the registry) and wrong
+	// here: a radius selects a SUBSET OF THE SAME POPULATION, so a dashboard that ignored it would
+	// describe a different world than the list beside it. ClassSearch says "a separate plan shape, and
+	// it ships on stats", of which only the second half fits.
+	//
+	// So the rule this class carries is: it SHIPS on the stats endpoint (statsargs_test.go requires
+	// it, exactly as for ClassSearch) and it is grouped by NOTHING (there is no `want_` branch and no
+	// bucket strategy — a continuum has no chart order). An arg that could be bucketed is a facet and
+	// must be declared as one; this class is not a way to filter without a chart.
+	//
+	// `Drives` names the sqlc query the arm feeds, resolved against the module's queries/*.sql.
+	ClassWindow Class = "window"
 	// ClassSuperseded is a filter arg a FACET'S OWN args have replaced, retained only because the
 	// contract is expand-only (L-UpgradeSafe): removing a query arg breaks every stored link and
 	// every client that still sends it. `Drives` names the facet that supersedes it, and the guard
@@ -593,7 +610,7 @@ func validateNonFacetArg(objectType string, n NonFacetArg) error {
 		if n.Arg != "pageSize" && n.Arg != "pageToken" {
 			return fmt.Errorf("%s: the paging class covers only pageSize/pageToken", where)
 		}
-	case ClassSearch, ClassTraversal, ClassSuperseded:
+	case ClassSearch, ClassTraversal, ClassSuperseded, ClassWindow:
 		if n.Drives == "" {
 			return fmt.Errorf("%s: the %s class requires Drives (the query or facet it feeds)", where, n.Class)
 		}

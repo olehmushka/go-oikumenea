@@ -1,4 +1,4 @@
-h1:+c3RINeYkf4dNK8rXSzSrZwviFEZTPTkMXuVI/HVCtY=
+h1:IL/ZMFXtEOasSUM55HfmJiMy5DqpyuR5SfEbR5ATZbI=
 0001_platform_core.sql h1:c4WwIF4z9hfxCrl+IBaqR0fYO9ICqMz3Ga6iM/OXtpg=
 0002_tenant_rank.sql h1:bJbgk9xm7zrkXCjv1YWGSBtWDipt06zQrz8rDDWjZoA=
 0003_person_membership.sql h1:NS6tiM/3nkBNXaln2e6VzCXPUwhpo0I+T044Gi5miUc=
@@ -21,3 +21,4 @@ h1:+c3RINeYkf4dNK8rXSzSrZwviFEZTPTkMXuVI/HVCtY=
 0020_facet_language_tenant.sql h1:cnwMC1f/oiE3UDZRfHswVEeozD3XT0BYIs3gZ3Xbhxo=
 0021_facet_company_education.sql h1:7eI8MxP1DUKx4xNV925CfKS5yFZxAJn4KVdjXO9Rf/U=
 0022_tenant_unit_search.sql h1:MhdQT8vlOf8aGJZJwXt5stPsVdmOJeOJ4ovMlTLGzqI=
+0023_facet_location_assignment.sql h1:yQse5CbqOmOvWisHIDFn5tCPbgzLU19nq+XzKg7Di9k=

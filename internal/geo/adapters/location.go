@@ -81,46 +81,67 @@ func (r *Repository) SoftDeleteLocation(ctx context.Context, id string) (int64, 
 	return r.q.SoftDeleteLocation(ctx, id)
 }
 
-func (r *Repository) ListLocationsNear(ctx context.Context, lat, lng, radiusM, afterDist float64, afterID string, limit int) ([]domain.Location, error) {
-	rows, err := r.q.ListLocationsNear(ctx, geosql.ListLocationsNearParams{
-		Lng: lng, Lat: lat, RadiusM: radiusM, AfterDist: afterDist, AfterID: afterID, Lim: int32(limit),
-	})
-	if err != nil {
-		return nil, err
+// ListLocations pages one of the four listing modes (M58 ticket 6). It DISPATCHES on the mode the
+// transport already resolved and never re-decides it: each mode is a distinct plan (trigram bitmap,
+// GiST radius, GiST envelope, plain keyset), and each one's aggregate twin carries the same filter
+// block, which is what makes the dashboard a description of the list rather than of the registry.
+func (r *Repository) ListLocations(ctx context.Context, f domain.LocationFilter, afterDist float64, afterID string, limit int) ([]domain.Location, error) {
+	switch f.Mode {
+	case domain.LocationModeText:
+		rows, err := r.q.SearchLocationsByText(ctx, geosql.SearchLocationsByTextParams{
+			Query: f.Query, CountryID: textPtr(f.CountryID), TypeID: textPtr(f.TypeID),
+			After: afterID, Lim: int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]domain.Location, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, locationFromSearch(row))
+		}
+		return out, nil
+	case domain.LocationModeRadius:
+		rows, err := r.q.ListLocationsNear(ctx, geosql.ListLocationsNearParams{
+			Lng: f.Lng, Lat: f.Lat, RadiusM: f.RadiusM,
+			CountryID: textPtr(f.CountryID), TypeID: textPtr(f.TypeID),
+			AfterDist: afterDist, AfterID: afterID, Lim: int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]domain.Location, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, locationFromNear(row))
+		}
+		return out, nil
+	case domain.LocationModeBbox:
+		rows, err := r.q.ListLocationsInBbox(ctx, geosql.ListLocationsInBboxParams{
+			MinLng: f.MinLng, MinLat: f.MinLat, MaxLng: f.MaxLng, MaxLat: f.MaxLat,
+			CountryID: textPtr(f.CountryID), TypeID: textPtr(f.TypeID),
+			After: afterID, Lim: int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]domain.Location, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, locationFromBbox(row))
+		}
+		return out, nil
+	default:
+		rows, err := r.q.ListLocations(ctx, geosql.ListLocationsParams{
+			CountryID: textPtr(f.CountryID), TypeID: textPtr(f.TypeID),
+			After: afterID, Lim: int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]domain.Location, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, locationFromBrowse(row))
+		}
+		return out, nil
 	}
-	out := make([]domain.Location, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, locationFromNear(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, after string, limit int) ([]domain.Location, error) {
-	rows, err := r.q.ListLocationsInBbox(ctx, geosql.ListLocationsInBboxParams{
-		MinLng: minLng, MinLat: minLat, MaxLng: maxLng, MaxLat: maxLat, After: after, Lim: int32(limit),
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Location, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, locationFromBbox(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) SearchLocationsByText(ctx context.Context, query, after string, limit int) ([]domain.Location, error) {
-	rows, err := r.q.SearchLocationsByText(ctx, geosql.SearchLocationsByTextParams{
-		Query: query, After: after, Lim: int32(limit),
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Location, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, locationFromSearch(row))
-	}
-	return out, nil
 }
 
 func (r *Repository) ListLocationTypes(ctx context.Context) ([]domain.LocationType, error) {
@@ -176,6 +197,19 @@ func locationFromBbox(row geosql.ListLocationsInBboxRow) domain.Location {
 
 func locationFromSearch(row geosql.SearchLocationsByTextRow) domain.Location {
 	return locationFromInsert(geosql.InsertLocationRow(row))
+}
+
+func locationFromBrowse(row geosql.ListLocationsRow) domain.Location {
+	return locationFromInsert(geosql.InsertLocationRow(row))
+}
+
+// textPtr maps an optional facet filter onto a sqlc narg: nil is SQL NULL, which each predicate reads
+// as "criterion disabled".
+func textPtr(s *string) pgtype.Text {
+	if s == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *s, Valid: true}
 }
 
 // sourceJSON / srcFromDB bridge the source_coordinate jsonb column (sqlc maps jsonb to []byte). A nil

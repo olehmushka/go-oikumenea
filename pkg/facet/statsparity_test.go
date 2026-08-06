@@ -91,6 +91,24 @@ var statsAggregateGroups = []struct {
 		{"education", "InstitutionStatsForSubject"},
 		{"education", "InstitutionStatsForSubjectSearch"},
 	}},
+	// M58 ticket 6 — the first group whose axis is neither visibility nor search but the listing MODE.
+	// A location has no owner and no shadow bit, so there is no scoped arm to hold identical; what
+	// there are instead are four windows, each a different plan, and byte-identity of the aggregate
+	// half is what stops a radius-windowed dashboard from bucketing the same world differently than
+	// the unwindowed one beside it.
+	{"location", []struct{ module, query string }{
+		{"geo", "LocationStats"},
+		{"geo", "LocationStatsNear"},
+		{"geo", "LocationStatsInBbox"},
+		{"geo", "LocationStatsSearch"},
+	}},
+	// Assignment is admin-vs-scoped with no search twin (a grant has no name of its own, so there is
+	// no haystack for R-21 to split), and the scoped arm has no dense variant: an aggregate visits
+	// every candidate row whatever the reach size, so the point probe has no LIMIT to save.
+	{"link__has_role", []struct{ module, query string }{
+		{"authorization", "AssignmentStats"},
+		{"authorization", "AssignmentStatsForSubject"},
+	}},
 }
 
 // TestEveryRegisteredTypeHasAnAggregateGroup is the coverage floor: a type registered in the catalog

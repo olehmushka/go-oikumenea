@@ -133,6 +133,49 @@ func TestEveryStatsArgIsAccountedFor(t *testing.T) {
 	}
 }
 
+// TestWindowArgsShipOnStats is the rule ClassWindow carries (M58 ticket 6).
+//
+// A window is what separates `location` from every type before it: a radius or a bounding box is a
+// predicate over the LISTED TABLE, so it selects a subset of the same population, and a dashboard
+// that ignored it would describe a different world than the list beside it. That is the opposite of
+// ClassTraversal, where an exact-parent arg switches the listing to a hierarchy walk and no aggregate
+// should count it.
+//
+// So the class earns its exemption from being a facet only if it is on BOTH endpoints. Dropping a
+// window arg from the stats contract would compile, pass the arg guard (which reads the list), and
+// leave a chart that quietly ignores the filter above it — which is precisely the class of failure
+// this vocabulary exists to make impossible.
+func TestWindowArgsShipOnStats(t *testing.T) {
+	checked := 0
+	for _, o := range Default.All() {
+		if o.StatsEndpoint == "" {
+			continue
+		}
+		shipped := map[string]bool{}
+		for _, a := range statsArgs[o.Type] {
+			shipped[a.Name] = true
+		}
+		for _, n := range o.NonFacetArgs {
+			if n.Class != ClassWindow {
+				continue
+			}
+			checked++
+			if !shipped[n.Arg] {
+				t.Errorf("%s: window arg %q is on %s but NOT on %s. A window narrows the same "+
+					"population the list pages, so the aggregate must carry it — otherwise a windowed "+
+					"list sits under a chart of the whole registry and neither says so",
+					o.Type, n.Arg, o.ListEndpoint, o.StatsEndpoint)
+			}
+		}
+	}
+	// Non-vacuity: the loop above passes trivially the day no type declares a window, and would then
+	// stop protecting `location` without anyone noticing.
+	if checked == 0 {
+		t.Fatal("no ClassWindow arg is declared anywhere — this guard is vacuous; if the class was " +
+			"genuinely retired, remove it from facet.go rather than leaving a test that checks nothing")
+	}
+}
+
 // TestStatsArgGuardIsNonVacuous: the mirror must actually be populated, or every check above passes
 // on empty maps.
 func TestStatsArgGuardIsNonVacuous(t *testing.T) {

@@ -94,6 +94,65 @@ func (o *AssignmentPage) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+Facet distributions over the SAME set `listAssignments` returns under the same filters,
+with the reach trim folded INTO the count (M58 ticket 6 / D-ObjectFacets).
+
+TWO arms. An instance admin counts every grant; anyone else counts only grants whose
+target unit is within their `assignment.read` reach — the same question the `targetUnitId`
+filter has always asked, asked for many units at once. The trim is computed over
+`assignment.read` SPECIFICALLY and not over the `'%.read'` family that every other module's
+reach predicate uses: generic read-reach is a strict superset, so borrowing it here would
+widen a surface rather than describe it.
+
+ACTIVE ONLY. `listAssignments` returns active grants (`revokedAt` null) and this counts the
+same population, so `totalCount` is a count of ACTIVE grants — not of rows in the grant
+table. A revoked grant is a security artefact whose reachability is an authz read-surface
+decision rather than a facet-vocabulary one, which is why the default stands and why there
+is no `active` facet to make a one-bar chart out of.
+*/
+type AssignmentStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o AssignmentStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpAssignmentStats AssignmentStats
+	return safejson.Marshal(_tmpAssignmentStats(o))
+}
+
+func (o *AssignmentStats) UnmarshalJSON(data []byte) error {
+	type _tmpAssignmentStats AssignmentStats
+	var rawAssignmentStats _tmpAssignmentStats
+	if err := safejson.Unmarshal(data, &rawAssignmentStats); err != nil {
+		return err
+	}
+	if rawAssignmentStats.Facets == nil {
+		rawAssignmentStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = AssignmentStats(rawAssignmentStats)
+	return nil
+}
+
+func (o AssignmentStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AssignmentStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // One question in a batch decision.
 type AuthorizeQuery struct {
 	Action string  `json:"action"`
@@ -356,6 +415,87 @@ func (o Explanation) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Explanation) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — a `scope` value (`unit`) or a RID
+for a `ref` facet — and is exactly what you pass back as the corresponding list filter. Two
+synthetic keys never name a real value: `(unknown)` is the NULL bucket and `(other)` a
+top-N facet's collapsed tail; neither is a usable filter value.
+
+`label` carries the object's display name as a locale → text map (D-i18n) and is present
+only for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name
+carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for `scope`, the declared CHECK-set order with
+zero-count buckets included so a chart's shape is stable; for a ref, descending by count
+with `(other)`/`(unknown)` last.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

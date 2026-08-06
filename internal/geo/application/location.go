@@ -19,6 +19,7 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -53,24 +54,13 @@ func (s *Service) ListLocationTypes(ctx context.Context) ([]domain.LocationType,
 	return s.newRepo(s.pool).ListLocationTypes(ctx)
 }
 
-// ListLocationsNear returns locations within radiusM metres of (lat,lng), nearest first, plus a flag
-// for whether another page exists (the caller encodes the page token). Keyset-paginated on the
-// (distance, id) sort key: afterDist/afterID resume strictly after the last row of the previous page
-// (empty afterID starts at the nearest — review R-21, replacing OFFSET).
-func (s *Service) ListLocationsNear(ctx context.Context, lat, lng, radiusM, afterDist float64, afterID string, pageSize int) ([]domain.Location, bool, error) {
+// ListLocations pages one listing mode (M58 ticket 6), plus a flag for whether another page exists
+// (the caller encodes the page token). The mode and its window arrive resolved on the filter; the
+// keyset is (distance, id) for the radius mode and id for the other three (review R-21, replacing
+// OFFSET), so afterDist is read only by the radius mode.
+func (s *Service) ListLocations(ctx context.Context, f domain.LocationFilter, afterDist float64, afterID string, pageSize int) ([]domain.Location, bool, error) {
 	limit := clampPageSize(pageSize)
-	rows, err := s.newRepo(s.pool).ListLocationsNear(ctx, lat, lng, radiusM, afterDist, afterID, limit+1)
-	if err != nil {
-		return nil, false, err
-	}
-	return trimPage(rows, limit)
-}
-
-// ListLocationsInBbox returns locations whose coordinate falls inside the box, ordered by id,
-// keyset-paginated on id (review R-21, replacing OFFSET).
-func (s *Service) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, after string, pageSize int) ([]domain.Location, bool, error) {
-	limit := clampPageSize(pageSize)
-	rows, err := s.newRepo(s.pool).ListLocationsInBbox(ctx, minLat, minLng, maxLat, maxLng, after, limit+1)
+	rows, err := s.newRepo(s.pool).ListLocations(ctx, f, afterDist, afterID, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
@@ -78,14 +68,25 @@ func (s *Service) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLa
 }
 
 // SearchLocations returns locations whose address fields match a case-insensitive text query, ordered
-// by id, keyset-paginated on id (no spatial window required) — backs the typeahead picker (review R-21).
+// by id, keyset-paginated on id — the cross-module seam the unified search fan-in calls (D-UnifiedSearch),
+// kept as its own method because that caller has no facet filters to supply.
 func (s *Service) SearchLocations(ctx context.Context, query, after string, pageSize int) ([]domain.Location, bool, error) {
-	limit := clampPageSize(pageSize)
-	rows, err := s.newRepo(s.pool).SearchLocationsByText(ctx, query, after, limit+1)
-	if err != nil {
-		return nil, false, err
-	}
-	return trimPage(rows, limit)
+	return s.ListLocations(ctx, domain.LocationFilter{Mode: domain.LocationModeText, Query: query}, 0, after, pageSize)
+}
+
+// LocationStats is the dashboard aggregate over the SAME candidate set ListLocations pages under the
+// same filter, window included (M58 ticket 6 / D-ObjectFacets).
+//
+// isAdmin=true with an empty subject is the ABSENCE of a visibility decision, not an escalation: a
+// location carries no owner, no unit and no public/shadow bit (D-Location — a referencing module owns
+// the meaning of a place on its own link), so there is nothing for a scoped arm to narrow and
+// `location.read` held anywhere is the whole gate. That is languoid's and vehicle's shape, and it is
+// deliberately not the audit ledger's, where the one arm exists because the RLS policy on the pinned
+// connection IS the decision.
+func (s *Service) LocationStats(ctx context.Context, f domain.LocationFilter, sel stats.Selection) (stats.Result, error) {
+	return stats.Compute(ctx, s.labeler, sel, true, "", func(string) ([]stats.Group, error) {
+		return s.newRepo(s.pool).LocationStats(ctx, f, sel)
+	})
 }
 
 // ---------------------------------------------------------------- writes

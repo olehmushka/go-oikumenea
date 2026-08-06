@@ -11,7 +11,7 @@
 //   - the original input is preserved verbatim in source_coordinate;
 //   - update the coordinate -> MGRS recomputes;
 //   - out-of-range coordinate is rejected (ErrCoordinateOutOfRange), unparseable -> ErrCoordinateInvalid;
-//   - ListLocationsNear returns rows within radius and excludes those outside (ST_DWithin);
+//   - the radius mode returns rows within radius and excludes those outside (ST_DWithin);
 //   - soft-delete removes the row from reads (ErrLocationNotFound afterwards);
 //   - each write emits exactly one `system`-actor audited Action in the same transaction.
 //
@@ -83,6 +83,12 @@ func f64(v float64) *float64 { return &v }
 func iptr(v int) *int        { return &v }
 
 // latLonInput builds a WGS84 lat/lon LocationInput for a country.
+// radiusFilter builds the radius-mode filter the four-mode ListLocations takes (M58 ticket 6
+// replaced the per-mode application methods with one entry point carrying a resolved mode).
+func radiusFilter(lat, lng, radiusM float64) domain.LocationFilter {
+	return domain.LocationFilter{Mode: domain.LocationModeRadius, Lat: lat, Lng: lng, RadiusM: radiusM}
+}
+
 func latLonInput(lat, lng float64, country string) domain.LocationInput {
 	return domain.LocationInput{
 		Coordinate: domain.CoordinateInput{Format: domain.FormatLatLon, Latitude: f64(lat), Longitude: f64(lng)},
@@ -217,7 +223,7 @@ func TestLocationRadiusQuery(t *testing.T) {
 		t.Fatalf("create far: %v", err)
 	}
 
-	rows, _, err := svc.ListLocationsNear(ctx, kyivLat, kyivLng, 5000, 0, "", 100)
+	rows, _, err := svc.ListLocations(ctx, radiusFilter(kyivLat, kyivLng, 5000), 0, "", 100)
 	if err != nil {
 		t.Fatalf("near: %v", err)
 	}
@@ -257,7 +263,7 @@ func TestLocationNearKeysetPagination(t *testing.T) {
 	var afterID string
 	lastDist := -1.0
 	for pages := 0; pages < 10000; pages++ {
-		page, more, err := svc.ListLocationsNear(ctx, kyivLat, kyivLng, 50000, afterDist, afterID, 1)
+		page, more, err := svc.ListLocations(ctx, radiusFilter(kyivLat, kyivLng, 50000), afterDist, afterID, 1)
 		if err != nil {
 			t.Fatalf("near page: %v", err)
 		}

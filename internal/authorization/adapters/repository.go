@@ -181,24 +181,75 @@ func (r *Repository) RevokeAssignment(ctx context.Context, id, revokedBy string)
 	return assignmentFrom(row), nil
 }
 
-func (r *Repository) ListAssignmentsBySubject(ctx context.Context, subjectPersonID, after string, limit int) ([]domain.Assignment, error) {
-	rows, err := r.q.ListAssignmentsBySubject(ctx, authzsql.ListAssignmentsBySubjectParams{
-		SubjectPersonID: subjectPersonID, After: after, Lim: int32(limit),
-	})
-	if err != nil {
-		return nil, err
+// PermAssignmentReadCode is the ONE permission whose reach trims the assignment surfaces. It is
+// passed explicitly to every `_with` reach call below rather than defaulted in SQL, so that the code
+// the trim asks for is visible at each call site — and so assignment_reach_test.go can refuse any
+// other value. Widening it to the generic '%.read' family, which every other module's scoped list
+// uses, would make this endpoint show grants that its own per-unit arm refuses.
+const PermAssignmentReadCode = string(domain.PermAssignmentRead)
+
+// ListAssignments pages the active grant population under the facet filter. readerPersonID empty is
+// the instance-admin arm (no reach predicate at all); otherwise the rows are trimmed to that reader's
+// assignment.read reach, in the plan shape `dense` selects.
+func (r *Repository) ListAssignments(ctx context.Context, f domain.AssignmentFilter, readerPersonID string, dense bool, after string, limit int) ([]domain.Assignment, error) {
+	switch {
+	case readerPersonID == "":
+		rows, err := r.q.ListAssignments(ctx, authzsql.ListAssignmentsParams{
+			After:           after,
+			SubjectPersonID: textPtr(f.SubjectPersonID),
+			TargetUnitID:    textPtr(f.TargetUnitID),
+			RoleID:          textPtr(f.RoleID),
+			Scope:           textPtr(f.Scope),
+			GraphID:         textPtr(f.GraphID),
+			Lim:             int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return assignmentsFrom(rows), nil
+	case dense:
+		rows, err := r.q.ListAssignmentsForSubjectDense(ctx, authzsql.ListAssignmentsForSubjectDenseParams{
+			After:           after,
+			SubjectPersonID: textPtr(f.SubjectPersonID),
+			TargetUnitID:    textPtr(f.TargetUnitID),
+			RoleID:          textPtr(f.RoleID),
+			Scope:           textPtr(f.Scope),
+			GraphID:         textPtr(f.GraphID),
+			ReaderPersonID:  readerPersonID,
+			Permission:      PermAssignmentReadCode,
+			Lim:             int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return assignmentsFrom(rows), nil
+	default:
+		rows, err := r.q.ListAssignmentsForSubject(ctx, authzsql.ListAssignmentsForSubjectParams{
+			After:           after,
+			SubjectPersonID: textPtr(f.SubjectPersonID),
+			TargetUnitID:    textPtr(f.TargetUnitID),
+			RoleID:          textPtr(f.RoleID),
+			Scope:           textPtr(f.Scope),
+			GraphID:         textPtr(f.GraphID),
+			ReaderPersonID:  readerPersonID,
+			Permission:      PermAssignmentReadCode,
+			Lim:             int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return assignmentsFrom(rows), nil
 	}
-	return assignmentsFrom(rows), nil
 }
 
-func (r *Repository) ListAssignmentsByUnit(ctx context.Context, targetUnitID, after string, limit int) ([]domain.Assignment, error) {
-	rows, err := r.q.ListAssignmentsByUnit(ctx, authzsql.ListAssignmentsByUnitParams{
-		TargetUnitID: targetUnitID, After: after, Lim: int32(limit),
+// CountAssignmentReachCapped answers "is this reader's assignment.read reach past the threshold",
+// counting no further than cap — the probe the sparse/dense dispatch reads.
+func (r *Repository) CountAssignmentReachCapped(ctx context.Context, readerPersonID string, cap int) (int64, error) {
+	return r.q.CountAssignmentReadableUnitsCapped(ctx, authzsql.CountAssignmentReadableUnitsCappedParams{
+		ReaderPersonID: readerPersonID,
+		Permission:     PermAssignmentReadCode,
+		Cap:            int32(cap),
 	})
-	if err != nil {
-		return nil, err
-	}
-	return assignmentsFrom(rows), nil
 }
 
 func (r *Repository) ActiveGrantsForSubject(ctx context.Context, subjectPersonID string) ([]domain.ActiveGrant, error) {

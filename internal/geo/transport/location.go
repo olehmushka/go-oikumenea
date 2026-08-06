@@ -107,7 +107,7 @@ func (s LocationService) GetLocation(ctx context.Context, token bearertoken.Toke
 	return s.toAPI(ctx, loc)
 }
 
-func (s LocationService) ListLocations(ctx context.Context, token bearertoken.Token, lat, lng, radiusM, minLat, minLng, maxLat, maxLng *float64, pageSize *int, pageToken, query *string) (locationapi.LocationPage, error) {
+func (s LocationService) ListLocations(ctx context.Context, token bearertoken.Token, lat, lng, radiusM, minLat, minLng, maxLat, maxLng *float64, pageSize *int, pageToken, query, countryID, typeID *string) (locationapi.LocationPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, locReadPerm); err != nil {
 		return locationapi.LocationPage{}, err
 	}
@@ -116,25 +116,19 @@ func (s LocationService) ListLocations(ctx context.Context, token bearertoken.To
 		size = *pageSize
 	}
 
+	f := locationFilterFrom(lat, lng, radiusM, minLat, minLng, maxLat, maxLng, query, countryID, typeID)
+	// The nearest-first mode keys on (distance, id) rather than id, so it reads the other token shape.
 	var (
-		locs    []domain.Location
-		hasMore bool
-		near    bool // the nearest-first branch keys on (distance, id), not id — chooses the token format
-		err     error
+		afterDist float64
+		afterID   string
 	)
-	switch {
-	case query != nil && strings.TrimSpace(*query) != "":
-		// Text search over address fields — no spatial window required (backs the typeahead picker).
-		locs, hasMore, err = s.app.SearchLocations(ctx, strings.TrimSpace(*query), decodeIDCursor(pageToken), size)
-	case lat != nil && lng != nil && radiusM != nil:
-		near = true
-		afterDist, afterID := decodeNearCursor(pageToken)
-		locs, hasMore, err = s.app.ListLocationsNear(ctx, *lat, *lng, *radiusM, afterDist, afterID, size)
-	case minLat != nil && minLng != nil && maxLat != nil && maxLng != nil:
-		locs, hasMore, err = s.app.ListLocationsInBbox(ctx, *minLat, *minLng, *maxLat, *maxLng, decodeIDCursor(pageToken), size)
-	default:
-		return locationapi.LocationPage{}, locationapi.NewQueryWindowRequired()
+	if f.Mode == domain.LocationModeRadius {
+		afterDist, afterID = decodeNearCursor(pageToken)
+	} else {
+		afterID = decodeIDCursor(pageToken)
 	}
+
+	locs, hasMore, err := s.app.ListLocations(ctx, f, afterDist, afterID, size)
 	if err != nil {
 		return locationapi.LocationPage{}, s.mapError(ctx, err, "")
 	}
@@ -151,7 +145,7 @@ func (s LocationService) ListLocations(ctx context.Context, token bearertoken.To
 	if hasMore {
 		last := locs[len(locs)-1]
 		var next string
-		if near {
+		if f.Mode == domain.LocationModeRadius {
 			next = encodeNearCursor(last.DistanceM, last.ID)
 		} else {
 			next = encodeIDCursor(last.ID)
@@ -159,6 +153,27 @@ func (s LocationService) ListLocations(ctx context.Context, token bearertoken.To
 		page.NextPageToken = &next
 	}
 	return page, nil
+}
+
+// locationFilterFrom resolves the raw query args into one filter — the MODE and its window, plus the
+// structural facet filters. It is the single place `listLocations`' mode precedence (query beats
+// radius beats bbox) is written, and it is shared by ListLocations and LocationStats so a list and its
+// dashboard cannot read the same URL differently. Before M58 ticket 6 the `default` arm below returned
+// Location:QueryWindowRequired; it is now the BROWSE mode, and that error is vestigial.
+func locationFilterFrom(lat, lng, radiusM, minLat, minLng, maxLat, maxLng *float64, query, countryID, typeID *string) domain.LocationFilter {
+	f := domain.LocationFilter{Mode: domain.LocationModeBrowse, CountryID: countryID, TypeID: typeID}
+	switch {
+	case query != nil && strings.TrimSpace(*query) != "":
+		f.Mode = domain.LocationModeText
+		f.Query = strings.TrimSpace(*query)
+	case lat != nil && lng != nil && radiusM != nil:
+		f.Mode = domain.LocationModeRadius
+		f.Lat, f.Lng, f.RadiusM = *lat, *lng, *radiusM
+	case minLat != nil && minLng != nil && maxLat != nil && maxLng != nil:
+		f.Mode = domain.LocationModeBbox
+		f.MinLat, f.MinLng, f.MaxLat, f.MaxLng = *minLat, *minLng, *maxLat, *maxLng
+	}
+	return f
 }
 
 func (s LocationService) ListLocationTypes(ctx context.Context, token bearertoken.Token) (locationapi.LocationTypeList, error) {

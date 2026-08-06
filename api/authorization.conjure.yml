@@ -82,6 +82,50 @@ types:
         fields:
           assignments: list<Assignment>
           nextPageToken: optional<string>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — a `scope` value (`unit`) or a RID
+          for a `ref` facet — and is exactly what you pass back as the corresponding list filter. Two
+          synthetic keys never name a real value: `(unknown)` is the NULL bucket and `(other)` a
+          top-N facet's collapsed tail; neither is a usable filter value.
+
+          `label` carries the object's display name as a locale → text map (D-i18n) and is present
+          only for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name
+          carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for `scope`, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable; for a ref, descending by count
+          with `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      AssignmentStats:
+        docs: |
+          Facet distributions over the SAME set `listAssignments` returns under the same filters,
+          with the reach trim folded INTO the count (M58 ticket 6 / D-ObjectFacets).
+
+          TWO arms. An instance admin counts every grant; anyone else counts only grants whose
+          target unit is within their `assignment.read` reach — the same question the `targetUnitId`
+          filter has always asked, asked for many units at once. The trim is computed over
+          `assignment.read` SPECIFICALLY and not over the `'%.read'` family that every other module's
+          reach predicate uses: generic read-reach is a strict superset, so borrowing it here would
+          widen a surface rather than describe it.
+
+          ACTIVE ONLY. `listAssignments` returns active grants (`revokedAt` null) and this counts the
+          same population, so `totalCount` is a count of ACTIVE grants — not of rows in the grant
+          table. A revoked grant is a security artefact whose reachability is an authz read-surface
+          decision rather than a facet-vocabulary one, which is why the default stands and why there
+          is no `active` facet to make a one-bar chart out of.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       InstanceAdmin:
         docs: A person on the instance-wide authority plane (the reified link__instance_admin).
         fields:
@@ -258,7 +302,11 @@ types:
         safe-args:
           reason: string
       AssignmentInvalid:
-        docs: The assignment request is malformed or references an unknown subject/role/unit/graph.
+        docs: |
+          The assignment request is malformed or references an unknown subject/role/unit/graph, or a
+          list/stats request named an undeclared facet key. It is NO LONGER returned for "provide
+          exactly one of subjectPersonId or targetUnitId" — since M58 ticket 6 `listAssignments`
+          needs neither.
         namespace: Assignment
         code: INVALID_ARGUMENT
         safe-args:
@@ -402,14 +450,46 @@ services:
         returns: Assignment
       listAssignments:
         http: GET /assignments
-        docs: List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read).
+        docs: |
+          List ACTIVE assignments, token-paginated. Gated on `assignment.read` held anywhere, and
+          reach-trimmed: an instance admin sees every grant, anyone else sees only grants whose
+          target unit is within their `assignment.read` reach.
+
+          Every argument is an optional FACET filter (M58 ticket 6 / D-ObjectFacets). Until then this
+          endpoint required exactly one of `subjectPersonId`/`targetUnitId` and there was no way to
+          ask for "the grants"; Assignment:AssignmentInvalid is no longer returned for that reason.
+
+          Two things this changed rather than added, both deliberate:
+          - the `subjectPersonId` arm used to be gated on `assignment.read` held ANYWHERE with no
+            trim, so one grant anywhere enumerated any person's authority everywhere. It is now
+            trimmed like every other arm, so it can only narrow.
+          - the `targetUnitId` arm used to 403 when the caller could not reach the named unit; it now
+            returns an empty page. The row set is identical.
+
+          ACTIVE ONLY, and that default stands: `revokedAt` rows are never returned, so there is no
+          `active` or `expiresAt` filter (a distribution whose every row is active is a chart with
+          one bar).
         args:
           subjectPersonId:
             type: optional<string>
             param-type: query
+            docs: Facet filter — the subject person's RID.
           targetUnitId:
             type: optional<string>
             param-type: query
+            docs: Facet filter — the target unit's RID. EXACT match, not subtree-expanding.
+          roleId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — the granted role's RID.
+          scope:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `unit` | `subtree`.
+          graphId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — the cascade graph's RID; set for subtree grants only.
           pageSize:
             type: optional<integer>
             param-type: query
@@ -417,6 +497,45 @@ services:
             type: optional<string>
             param-type: query
         returns: AssignmentPage
+      assignmentStats:
+        http: GET /stats/assignments
+        docs: |
+          Facet distributions over the active grant population — the dashboard half of the assignment
+          facet vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the filter args
+          `listAssignments` takes, minus paging, so a dashboard and a list are two renderings of one
+          request state.
+
+          The path is `/stats/assignments` rather than `/assignments/stats` because the server's
+          router rejects a literal path segment that is a sibling of `{assignmentId}`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`roleId,scope`). Omitted or empty =
+              every facet the caller may read; an explicit list of nothing (`facets=,`) returns
+              `totalCount` alone. An undeclared facet key is an Assignment:AssignmentInvalid.
+          subjectPersonId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listAssignments`.
+          targetUnitId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listAssignments`.
+          roleId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listAssignments`.
+          scope:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listAssignments`.
+          graphId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listAssignments`.
+        returns: AssignmentStats
       grantInstanceAdmin:
         http: POST /instance-admins
         docs: Grant instance-admin (instance.admin.manage). Returns Authorization:InstanceAdminConflict if already active.

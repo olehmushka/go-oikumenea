@@ -102,6 +102,256 @@ func (q *Queries) ActiveGrantsForSubject(ctx context.Context, subjectPersonID st
 	return items, nil
 }
 
+const assignmentStats = `-- name: AssignmentStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT a.subject_person_id, a.role_id, a.target_unit_id, a.scope, a.graph_id
+  FROM oikumenea.authz_role_assignments a
+  WHERE a.revoked_at IS NULL
+    AND ($1::uuid IS NULL OR a.subject_person_id = $1::uuid)
+    AND ($2::uuid IS NULL OR a.target_unit_id = $2::uuid)
+    AND ($3::uuid IS NULL OR a.role_id = $3::uuid)
+    AND ($4::text IS NULL OR a.scope = $4::text)
+    AND ($5::uuid IS NULL OR a.graph_id = $5::uuid)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'subjectPersonId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.subject_person_id::text AS k, count(*) AS n
+            FROM cand c WHERE $7::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'roleId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.role_id::text AS k, count(*) AS n
+            FROM cand c WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'targetUnitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.target_unit_id::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'scope'::text, c.scope::text, count(*)::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+UNION ALL
+SELECT 'graphId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.graph_id::text AS k, count(*) AS n
+            FROM cand c WHERE $11::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+`
+
+type AssignmentStatsParams struct {
+	SubjectPersonID     pgtype.Text
+	TargetUnitID        pgtype.Text
+	RoleID              pgtype.Text
+	Scope               pgtype.Text
+	GraphID             pgtype.Text
+	TopN                int32
+	WantSubjectPersonID bool
+	WantRoleID          bool
+	WantTargetUnitID    bool
+	WantScope           bool
+	WantGraphID         bool
+}
+
+type AssignmentStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// ============================ assignment dashboard (M58 ticket 6 / D-ObjectFacets) ============================
+// TWO arms, {instance-admin, reach-scoped}, and no search twin: authz_role_assignments carries no
+// search_text haystack (a grant has no name of its own — its parts are all RIDs), so there is nothing
+// for an R-21 split to split.
+//
+// The scoped arm uses the SET form only. M57 measured that a scoped AGGREGATE, unlike a scoped LIST,
+// has no early-terminating LIMIT to lose: it must visit every candidate row whatever the reach size,
+// so the point probe's dense-reach advantage does not exist and a dense twin would be two plans for
+// one answer.
+//
+// The aggregate half is byte-identical across both arms (statsparity_test.go), or an admin and a
+// scoped caller would be shown different distributions of the same world.
+// The INSTANCE-ADMIN arm: no reach predicate at all, which is why it is a separate query rather than
+// the scoped one with a flag.
+func (q *Queries) AssignmentStats(ctx context.Context, arg AssignmentStatsParams) ([]AssignmentStatsRow, error) {
+	rows, err := q.db.Query(ctx, assignmentStats,
+		arg.SubjectPersonID,
+		arg.TargetUnitID,
+		arg.RoleID,
+		arg.Scope,
+		arg.GraphID,
+		arg.TopN,
+		arg.WantSubjectPersonID,
+		arg.WantRoleID,
+		arg.WantTargetUnitID,
+		arg.WantScope,
+		arg.WantGraphID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AssignmentStatsRow
+	for rows.Next() {
+		var i AssignmentStatsRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assignmentStatsForSubject = `-- name: AssignmentStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT a.subject_person_id, a.role_id, a.target_unit_id, a.scope, a.graph_id
+  FROM oikumenea.authz_role_assignments a
+  WHERE a.revoked_at IS NULL
+    AND ($1::uuid IS NULL OR a.subject_person_id = $1::uuid)
+    AND ($2::uuid IS NULL OR a.target_unit_id = $2::uuid)
+    AND ($3::uuid IS NULL OR a.role_id = $3::uuid)
+    AND ($4::text IS NULL OR a.scope = $4::text)
+    AND ($5::uuid IS NULL OR a.graph_id = $5::uuid)
+    AND a.target_unit_id IN (SELECT oikumenea.authz_readable_units_with($6, $7))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'subjectPersonId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.subject_person_id::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'roleId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.role_id::text AS k, count(*) AS n
+            FROM cand c WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'targetUnitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.target_unit_id::text AS k, count(*) AS n
+            FROM cand c WHERE $11::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'scope'::text, c.scope::text, count(*)::bigint
+FROM cand c WHERE $12::boolean GROUP BY 2
+UNION ALL
+SELECT 'graphId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.graph_id::text AS k, count(*) AS n
+            FROM cand c WHERE $13::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+`
+
+type AssignmentStatsForSubjectParams struct {
+	SubjectPersonID     pgtype.Text
+	TargetUnitID        pgtype.Text
+	RoleID              pgtype.Text
+	Scope               pgtype.Text
+	GraphID             pgtype.Text
+	ReaderPersonID      string
+	Permission          string
+	TopN                int32
+	WantSubjectPersonID bool
+	WantRoleID          bool
+	WantTargetUnitID    bool
+	WantScope           bool
+	WantGraphID         bool
+}
+
+type AssignmentStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The reach-scoped arm. Identical but for the reach predicate, which is the same set form
+// ListAssignmentsForSubject uses and asks for the same one permission.
+func (q *Queries) AssignmentStatsForSubject(ctx context.Context, arg AssignmentStatsForSubjectParams) ([]AssignmentStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, assignmentStatsForSubject,
+		arg.SubjectPersonID,
+		arg.TargetUnitID,
+		arg.RoleID,
+		arg.Scope,
+		arg.GraphID,
+		arg.ReaderPersonID,
+		arg.Permission,
+		arg.TopN,
+		arg.WantSubjectPersonID,
+		arg.WantRoleID,
+		arg.WantTargetUnitID,
+		arg.WantScope,
+		arg.WantGraphID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AssignmentStatsForSubjectRow
+	for rows.Next() {
+		var i AssignmentStatsForSubjectRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bumpAuthzEpoch = `-- name: BumpAuthzEpoch :exec
 UPDATE oikumenea.authz_epoch SET epoch = epoch + 1 WHERE singleton
 `
@@ -111,6 +361,24 @@ UPDATE oikumenea.authz_epoch SET epoch = epoch + 1 WHERE singleton
 func (q *Queries) BumpAuthzEpoch(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, bumpAuthzEpoch)
 	return err
+}
+
+const countAssignmentReadableUnitsCapped = `-- name: CountAssignmentReadableUnitsCapped :one
+SELECT oikumenea.authz_readable_unit_count_with($1, $2, $3::integer) AS n
+`
+
+type CountAssignmentReadableUnitsCappedParams struct {
+	ReaderPersonID string
+	Permission     string
+	Cap            int32
+}
+
+// The capped reach-cardinality probe the sparse/dense dispatch reads, for assignment.read.
+func (q *Queries) CountAssignmentReadableUnitsCapped(ctx context.Context, arg CountAssignmentReadableUnitsCappedParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAssignmentReadableUnitsCapped, arg.ReaderPersonID, arg.Permission, arg.Cap)
+	var n int64
+	err := row.Scan(&n)
+	return n, err
 }
 
 const deleteRolePermissions = `-- name: DeleteRolePermissions :exec
@@ -498,24 +766,70 @@ func (q *Queries) IsActiveInstanceAdmin(ctx context.Context, personID string) (b
 	return is_admin, err
 }
 
-const listAssignmentsBySubject = `-- name: ListAssignmentsBySubject :many
+const listAssignments = `-- name: ListAssignments :many
+
 SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
        granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
-FROM oikumenea.authz_role_assignments
-WHERE subject_person_id = $1 AND revoked_at IS NULL
-  AND ($2::text = '' OR id::text > $2::text)
-ORDER BY id
-LIMIT $3
+FROM oikumenea.authz_role_assignments a
+WHERE a.revoked_at IS NULL
+  AND ($1::text = '' OR a.id::text > $1::text)
+  AND ($2::uuid IS NULL OR a.subject_person_id = $2::uuid)
+  AND ($3::uuid IS NULL OR a.target_unit_id = $3::uuid)
+  AND ($4::uuid IS NULL OR a.role_id = $4::uuid)
+  AND ($5::text IS NULL OR a.scope = $5::text)
+  AND ($6::uuid IS NULL OR a.graph_id = $6::uuid)
+ORDER BY a.id
+LIMIT $7
 `
 
-type ListAssignmentsBySubjectParams struct {
-	SubjectPersonID string
+type ListAssignmentsParams struct {
 	After           string
+	SubjectPersonID pgtype.Text
+	TargetUnitID    pgtype.Text
+	RoleID          pgtype.Text
+	Scope           pgtype.Text
+	GraphID         pgtype.Text
 	Lim             int32
 }
 
-func (q *Queries) ListAssignmentsBySubject(ctx context.Context, arg ListAssignmentsBySubjectParams) ([]OikumeneaAuthzRoleAssignment, error) {
-	rows, err := q.db.Query(ctx, listAssignmentsBySubject, arg.SubjectPersonID, arg.After, arg.Lim)
+// ============================ the assignment list (M58 ticket 6 / D-ObjectFacets) ============================
+// GET /assignments. THREE shapes, ONE filter block, byte-identical between them: the admin path and
+// the two reach-scoped paths must select the same rows for the same filters, differing ONLY by how
+// reach is applied. sqlparity_test.go proves the block is present in all of them with no database.
+//
+// This replaces ListAssignmentsBySubject / ListAssignmentsByUnit, which were not two filters but two
+// ENDPOINTS wearing one name: exactly one of them had to be supplied, so there was no way to ask for
+// the grants. Both are now ordinary predicates in the block below.
+//
+// ACTIVE ONLY, and unlike the top-level membership list this default STANDS (decided M58 ticket 3):
+// an ended membership is ordinary directory history, while a revoked grant is a security artefact
+// whose reachability is an authz read-surface decision rather than a facet-vocabulary one. The
+// consequence is written into the contract — totalCount counts ACTIVE grants — and there is no
+// `active` facet, because a distribution whose every row is active is a chart with one bar.
+//
+// REACH IS ASKED FOR `assignment.read` AND NOTHING ELSE. Every other module's scoped list trims with
+// authz_readable_units(subject), which asks whether the subject holds ANY '%.read' code on the unit;
+// that is right there, where the endpoint has already checked its own read code and reach is only
+// narrowing rows. Here it would WIDEN: generic read-reach is a strict superset of assignment.read
+// reach, so a caller holding `person.read` over a unit and `assignment.read` somewhere else would be
+// handed grants that today's per-unit arm refuses them. The 0023 `_with` functions ask the narrow
+// question; passing anything but 'assignment.read' at the call sites is what
+// assignment_reach_test.go refuses.
+//
+// The `sqlc.narg('x')::type IS NULL OR col = ...` style is deliberate and load-bearing: R-21 BANS the
+// `(@arg = ” OR ...)` sentinel because the planner cannot prove the arg non-empty under a generic
+// prepared plan and sequential-scans.
+// Instance-admin path: every active grant, keyset-paginated by RID.
+func (q *Queries) ListAssignments(ctx context.Context, arg ListAssignmentsParams) ([]OikumeneaAuthzRoleAssignment, error) {
+	rows, err := q.db.Query(ctx, listAssignments,
+		arg.After,
+		arg.SubjectPersonID,
+		arg.TargetUnitID,
+		arg.RoleID,
+		arg.Scope,
+		arg.GraphID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -548,24 +862,124 @@ func (q *Queries) ListAssignmentsBySubject(ctx context.Context, arg ListAssignme
 	return items, nil
 }
 
-const listAssignmentsByUnit = `-- name: ListAssignmentsByUnit :many
+const listAssignmentsForSubject = `-- name: ListAssignmentsForSubject :many
 SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
        granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
-FROM oikumenea.authz_role_assignments
-WHERE target_unit_id = $1 AND revoked_at IS NULL
-  AND ($2::text = '' OR id::text > $2::text)
-ORDER BY id
-LIMIT $3
+FROM oikumenea.authz_role_assignments a
+WHERE a.revoked_at IS NULL
+  AND ($1::text = '' OR a.id::text > $1::text)
+  AND ($2::uuid IS NULL OR a.subject_person_id = $2::uuid)
+  AND ($3::uuid IS NULL OR a.target_unit_id = $3::uuid)
+  AND ($4::uuid IS NULL OR a.role_id = $4::uuid)
+  AND ($5::text IS NULL OR a.scope = $5::text)
+  AND ($6::uuid IS NULL OR a.graph_id = $6::uuid)
+  AND a.target_unit_id IN (SELECT oikumenea.authz_readable_units_with($7, $8))
+ORDER BY a.id
+LIMIT $9
 `
 
-type ListAssignmentsByUnitParams struct {
-	TargetUnitID string
-	After        string
-	Lim          int32
+type ListAssignmentsForSubjectParams struct {
+	After           string
+	SubjectPersonID pgtype.Text
+	TargetUnitID    pgtype.Text
+	RoleID          pgtype.Text
+	Scope           pgtype.Text
+	GraphID         pgtype.Text
+	ReaderPersonID  string
+	Permission      string
+	Lim             int32
 }
 
-func (q *Queries) ListAssignmentsByUnit(ctx context.Context, arg ListAssignmentsByUnitParams) ([]OikumeneaAuthzRoleAssignment, error) {
-	rows, err := q.db.Query(ctx, listAssignmentsByUnit, arg.TargetUnitID, arg.After, arg.Lim)
+// SPARSE-reach path: the same set intersected with the subject's assignment.read reach. The reach set
+// is UNCORRELATED — it reads only @subject_person_id and @permission — so the planner evaluates it
+// once and probes a hash rather than re-deriving the closure per candidate row.
+func (q *Queries) ListAssignmentsForSubject(ctx context.Context, arg ListAssignmentsForSubjectParams) ([]OikumeneaAuthzRoleAssignment, error) {
+	rows, err := q.db.Query(ctx, listAssignmentsForSubject,
+		arg.After,
+		arg.SubjectPersonID,
+		arg.TargetUnitID,
+		arg.RoleID,
+		arg.Scope,
+		arg.GraphID,
+		arg.ReaderPersonID,
+		arg.Permission,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaAuthzRoleAssignment
+	for rows.Next() {
+		var i OikumeneaAuthzRoleAssignment
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubjectPersonID,
+			&i.RoleID,
+			&i.TargetUnitID,
+			&i.Scope,
+			&i.GraphID,
+			&i.GrantedBy,
+			&i.GrantedAt,
+			&i.RevokedAt,
+			&i.RevokedBy,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAssignmentsForSubjectDense = `-- name: ListAssignmentsForSubjectDense :many
+SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
+       granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
+FROM oikumenea.authz_role_assignments a
+WHERE a.revoked_at IS NULL
+  AND ($1::text = '' OR a.id::text > $1::text)
+  AND ($2::uuid IS NULL OR a.subject_person_id = $2::uuid)
+  AND ($3::uuid IS NULL OR a.target_unit_id = $3::uuid)
+  AND ($4::uuid IS NULL OR a.role_id = $4::uuid)
+  AND ($5::text IS NULL OR a.scope = $5::text)
+  AND ($6::uuid IS NULL OR a.graph_id = $6::uuid)
+  AND oikumenea.authz_unit_readable_with(a.target_unit_id, $7, $8)
+ORDER BY a.id
+LIMIT $9
+`
+
+type ListAssignmentsForSubjectDenseParams struct {
+	After           string
+	SubjectPersonID pgtype.Text
+	TargetUnitID    pgtype.Text
+	RoleID          pgtype.Text
+	Scope           pgtype.Text
+	GraphID         pgtype.Text
+	ReaderPersonID  string
+	Permission      string
+	Lim             int32
+}
+
+// DENSE-reach plan shape of the query above, byte-identical in its filter block and differing ONLY in
+// how reach is applied: a per-row point probe instead of a materialized reach set. The adapter
+// dispatches on the capped count (0017 §2 measured why neither shape wins everywhere).
+func (q *Queries) ListAssignmentsForSubjectDense(ctx context.Context, arg ListAssignmentsForSubjectDenseParams) ([]OikumeneaAuthzRoleAssignment, error) {
+	rows, err := q.db.Query(ctx, listAssignmentsForSubjectDense,
+		arg.After,
+		arg.SubjectPersonID,
+		arg.TargetUnitID,
+		arg.RoleID,
+		arg.Scope,
+		arg.GraphID,
+		arg.ReaderPersonID,
+		arg.Permission,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

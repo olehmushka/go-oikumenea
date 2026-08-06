@@ -214,6 +214,46 @@ var institutionFacetNargs = map[string][]string{
 	"state":     {"state"},
 }
 
+// locationFilterQueries: EIGHT queries, and the axis is the listing MODE rather than visibility —
+// four list branches, each with one aggregate twin. A location has no owner and no shadow bit, so
+// there is no scoped arm; what there is instead is four plans (plain keyset / GiST radius / GiST
+// envelope / trigram bitmap), and the facet predicates have to be in every one of them or a windowed
+// list would filter differently from the unwindowed one.
+var locationFilterQueries = []struct{ module, query string }{
+	{"geo", "ListLocations"},
+	{"geo", "ListLocationsNear"},
+	{"geo", "ListLocationsInBbox"},
+	{"geo", "SearchLocationsByText"},
+	{"geo", "LocationStats"},
+	{"geo", "LocationStatsNear"},
+	{"geo", "LocationStatsInBbox"},
+	{"geo", "LocationStatsSearch"},
+}
+
+var locationFacetNargs = map[string][]string{
+	"countryId": {"country_id"},
+	"typeId":    {"type_id"},
+}
+
+// assignmentFilterQueries: five — three list shapes (admin / sparse reach / dense reach) and two
+// aggregate arms (admin / reach-scoped, set form only). The aggregate does not need a dense twin: it
+// has no early-terminating LIMIT for the reach-set plan to lose.
+var assignmentFilterQueries = []struct{ module, query string }{
+	{"authorization", "ListAssignments"},
+	{"authorization", "ListAssignmentsForSubject"},
+	{"authorization", "ListAssignmentsForSubjectDense"},
+	{"authorization", "AssignmentStats"},
+	{"authorization", "AssignmentStatsForSubject"},
+}
+
+var assignmentFacetNargs = map[string][]string{
+	"subjectPersonId": {"subject_person_id"},
+	"roleId":          {"role_id"},
+	"targetUnitId":    {"target_unit_id"},
+	"scope":           {"scope"},
+	"graphId":         {"graph_id"},
+}
+
 var nargRe = regexp.MustCompile(`sqlc\.narg\('([a-z_][a-z0-9_]*)'\)`)
 
 func TestPersonFacetNargsAppearInEveryQuery(t *testing.T) {
@@ -256,6 +296,14 @@ func TestInstitutionFacetNargsAppearInEveryQuery(t *testing.T) {
 	assertFacetNargParity(t, "institution", institutionFilterQueries, institutionFacetNargs)
 }
 
+func TestLocationFacetNargsAppearInEveryQuery(t *testing.T) {
+	assertFacetNargParity(t, "location", locationFilterQueries, locationFacetNargs)
+}
+
+func TestAssignmentFacetNargsAppearInEveryQuery(t *testing.T) {
+	assertFacetNargParity(t, "link__has_role", assignmentFilterQueries, assignmentFacetNargs)
+}
+
 // TestEveryRegisteredTypeHasANargGroup closes the hole the per-type tests above leave: a NEW facet
 // block added to the catalog with no entry here would simply go unchecked, and the guard would stay
 // green while the drift it exists to catch went unpoliced. Registering a type is therefore a
@@ -265,6 +313,7 @@ func TestEveryRegisteredTypeHasANargGroup(t *testing.T) {
 		"person": true, "unit": true, "link__member_of": true, "order": true, "document": true,
 		"audit": true, "organization": true, "languoid": true,
 		"company": true, "institution": true,
+		"location": true, "link__has_role": true,
 	}
 	// A raw-pgx module has no queries/*.sql for narg parity to read, so the SAME invariant — the list
 	// and the stats path apply one predicate — is proven in rawpgx_test.go by an AST check that both

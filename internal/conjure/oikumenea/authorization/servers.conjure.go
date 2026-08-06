@@ -49,8 +49,37 @@ type AuthorizationService interface {
 	GrantAssignment(ctx context.Context, authHeader bearertoken.Token, requestArg GrantAssignmentRequest) (Assignment, error)
 	// Revoke an assignment (reversible flip; assignment.revoke).
 	RevokeAssignment(ctx context.Context, authHeader bearertoken.Token, assignmentIdArg string) (Assignment, error)
-	// List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read).
-	ListAssignments(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg *string, targetUnitIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error)
+	/*
+	   List ACTIVE assignments, token-paginated. Gated on `assignment.read` held anywhere, and
+	   reach-trimmed: an instance admin sees every grant, anyone else sees only grants whose
+	   target unit is within their `assignment.read` reach.
+
+	   Every argument is an optional FACET filter (M58 ticket 6 / D-ObjectFacets). Until then this
+	   endpoint required exactly one of `subjectPersonId`/`targetUnitId` and there was no way to
+	   ask for "the grants"; Assignment:AssignmentInvalid is no longer returned for that reason.
+
+	   Two things this changed rather than added, both deliberate:
+	   - the `subjectPersonId` arm used to be gated on `assignment.read` held ANYWHERE with no
+	     trim, so one grant anywhere enumerated any person's authority everywhere. It is now
+	     trimmed like every other arm, so it can only narrow.
+	   - the `targetUnitId` arm used to 403 when the caller could not reach the named unit; it now
+	     returns an empty page. The row set is identical.
+
+	   ACTIVE ONLY, and that default stands: `revokedAt` rows are never returned, so there is no
+	   `active` or `expiresAt` filter (a distribution whose every row is active is a chart with
+	   one bar).
+	*/
+	ListAssignments(ctx context.Context, authHeader bearertoken.Token, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string, pageSizeArg *int, pageTokenArg *string) (AssignmentPage, error)
+	/*
+	   Facet distributions over the active grant population — the dashboard half of the assignment
+	   facet vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the filter args
+	   `listAssignments` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/assignments` rather than `/assignments/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{assignmentId}`.
+	*/
+	AssignmentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, subjectPersonIdArg *string, targetUnitIdArg *string, roleIdArg *string, scopeArg *string, graphIdArg *string) (AssignmentStats, error)
 	// Grant instance-admin (instance.admin.manage). Returns Authorization:InstanceAdminConflict if already active.
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdmin, error)
 	// Revoke instance-admin (instance.admin.manage; reversible flip).
@@ -112,6 +141,9 @@ func RegisterRoutesAuthorizationService(router wrouter.Router, impl Authorizatio
 	}
 	if err := resource.Get("ListAssignments", "/authorization/v1/assignments", httpserver.NewJSONHandler(handler.HandleListAssignments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAssignments route")
+	}
+	if err := resource.Get("AssignmentStats", "/authorization/v1/stats/assignments", httpserver.NewJSONHandler(handler.HandleAssignmentStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add assignmentStats route")
 	}
 	if err := resource.Post("GrantInstanceAdmin", "/authorization/v1/instance-admins", httpserver.NewJSONHandler(handler.HandleGrantInstanceAdmin, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add grantInstanceAdmin route")
@@ -344,6 +376,21 @@ func (a *authorizationServiceHandler) HandleListAssignments(rw http.ResponseWrit
 		targetUnitIdArgInternal := targetUnitIdArgStr
 		targetUnitIdArg = &targetUnitIdArgInternal
 	}
+	var roleIdArg *string
+	if roleIdArgStr := req.URL.Query().Get("roleId"); roleIdArgStr != "" {
+		roleIdArgInternal := roleIdArgStr
+		roleIdArg = &roleIdArgInternal
+	}
+	var scopeArg *string
+	if scopeArgStr := req.URL.Query().Get("scope"); scopeArgStr != "" {
+		scopeArgInternal := scopeArgStr
+		scopeArg = &scopeArgInternal
+	}
+	var graphIdArg *string
+	if graphIdArgStr := req.URL.Query().Get("graphId"); graphIdArgStr != "" {
+		graphIdArgInternal := graphIdArgStr
+		graphIdArg = &graphIdArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -357,7 +404,50 @@ func (a *authorizationServiceHandler) HandleListAssignments(rw http.ResponseWrit
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := a.impl.ListAssignments(req.Context(), bearertoken.Token(authHeader), subjectPersonIdArg, targetUnitIdArg, pageSizeArg, pageTokenArg)
+	respArg, err := a.impl.ListAssignments(req.Context(), bearertoken.Token(authHeader), subjectPersonIdArg, targetUnitIdArg, roleIdArg, scopeArg, graphIdArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (a *authorizationServiceHandler) HandleAssignmentStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var subjectPersonIdArg *string
+	if subjectPersonIdArgStr := req.URL.Query().Get("subjectPersonId"); subjectPersonIdArgStr != "" {
+		subjectPersonIdArgInternal := subjectPersonIdArgStr
+		subjectPersonIdArg = &subjectPersonIdArgInternal
+	}
+	var targetUnitIdArg *string
+	if targetUnitIdArgStr := req.URL.Query().Get("targetUnitId"); targetUnitIdArgStr != "" {
+		targetUnitIdArgInternal := targetUnitIdArgStr
+		targetUnitIdArg = &targetUnitIdArgInternal
+	}
+	var roleIdArg *string
+	if roleIdArgStr := req.URL.Query().Get("roleId"); roleIdArgStr != "" {
+		roleIdArgInternal := roleIdArgStr
+		roleIdArg = &roleIdArgInternal
+	}
+	var scopeArg *string
+	if scopeArgStr := req.URL.Query().Get("scope"); scopeArgStr != "" {
+		scopeArgInternal := scopeArgStr
+		scopeArg = &scopeArgInternal
+	}
+	var graphIdArg *string
+	if graphIdArgStr := req.URL.Query().Get("graphId"); graphIdArgStr != "" {
+		graphIdArgInternal := graphIdArgStr
+		graphIdArg = &graphIdArgInternal
+	}
+	respArg, err := a.impl.AssignmentStats(req.Context(), bearertoken.Token(authHeader), facetsArg, subjectPersonIdArg, targetUnitIdArg, roleIdArg, scopeArg, graphIdArg)
 	if err != nil {
 		return err
 	}
