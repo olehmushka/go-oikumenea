@@ -156,23 +156,54 @@ docker_logged_in() {
   return 1
 }
 
+# npm_in DIR ARGS… — run npm with DIR as the working directory.
+#
+# NOT `npm --prefix DIR`. That flag is honoured by `install` and `run-script` and IGNORED by `pack`
+# and `publish`, which operate on the current directory regardless — so the same flag silently means
+# two different things depending on the subcommand, and the release got all the way through
+# installing, building and bumping the version before dying on:
+#
+#   npm error path /home/user18/projects/go-oikumenea/package.json
+#   npm error enoent Could not read package.json
+#
+# A cd cannot mean two things.
+npm_in() {
+  local dir="$1"; shift
+  ( cd "$dir" && npm "$@" )
+}
+
 # ── the contract gate ───────────────────────────────────────────────────────────────────────────
 # Both SDKs are GENERATED from api/*.conjure.yml (D-ClientSDK / D-Conjure). Publishing one whose
 # committed sources no longer match the contract ships wrong types to every consumer, and it is
 # invisible: the package builds, type-checks and imports cleanly — it is simply describing an API the
 # server does not serve. The generators both have a --verify mode for exactly this.
+#
+# A FAILED CHECK IS NOT A VERDICT. Both generators exit non-zero for two very different reasons — the
+# output differs from the contract, or the generator could not run at all — and reporting the second
+# as the first sends you off to run `make sdk`, which fails the same way and explains nothing. That
+# is exactly what happened when a `clients/go/v0.1.0` tag broke godel's version derivation: the
+# release said "the generated TypeScript SDK is STALE" about an SDK that was perfectly current.
+#
+# So the output is captured and shown. Distinguishing the two automatically is not worth it — the
+# generators' own messages are clear once you can see them.
 verify_generated_matches_contract() {
-  local which="$1"
+  local which="$1" out rc
   case "$which" in
     go)
       say "checking the Go mirrors against api/*.conjure.yml…"
-      scripts/gen-action-params.sh --verify >/dev/null \
-        || die "the IR-derived Go mirrors are STALE — run scripts/gen-action-params.sh and commit before releasing."
+      out="$(scripts/gen-action-params.sh --verify 2>&1)"; rc=$?
+      [[ $rc -eq 0 ]] || die "the Go mirror check FAILED (exit $rc). Either the mirrors are stale — run
+       scripts/gen-action-params.sh and commit — or the generator itself could not run. Its output:
+
+$out"
       ;;
     ts)
       say "checking clients/typescript/src/generated against api/*.conjure.yml…"
-      scripts/gen-ts-client.sh --verify >/dev/null \
-        || die "the generated TypeScript SDK is STALE — run 'make sdk' and commit before releasing."
+      out="$(scripts/gen-ts-client.sh --verify 2>&1)"; rc=$?
+      [[ $rc -eq 0 ]] || die "the TypeScript SDK check FAILED (exit $rc). Either the generated sources are
+       stale — run 'make sdk' and commit — or the generator itself could not run. Its output:
+
+$out"
       ;;
   esac
 }
@@ -394,7 +425,7 @@ cmd_ts_sdk() {
     # fix it. Publishing an untraceable version is worse than a failed release.
     if git symbolic-ref -q HEAD >/dev/null; then
       say "setting $pkg_dir/package.json version: $current -> $version"
-      run npm --prefix "$pkg_dir" version "$version" --no-git-tag-version --allow-same-version
+      run npm_in "$pkg_dir" version "$version" --no-git-tag-version --allow-same-version
       run git add "$pkg_dir/package.json"
       [[ -f "$pkg_dir/package-lock.json" ]] && run git add "$pkg_dir/package-lock.json"
       run git commit -m "chore(sdk): oikumenea-client $version"
@@ -404,8 +435,8 @@ cmd_ts_sdk() {
   fi
 
   say "building the package…"
-  run npm --prefix "$pkg_dir" ci
-  run npm --prefix "$pkg_dir" run build
+  run npm_in "$pkg_dir" ci
+  run npm_in "$pkg_dir" run build
 
   local tag="${prefix}${version}"
 
@@ -416,7 +447,7 @@ cmd_ts_sdk() {
     if npm view "${NPM_PACKAGE}@${version}" version >/dev/null 2>&1; then
       say "${NPM_PACKAGE}@${version} is already on npm — nothing to publish."
     else
-      run npm --prefix "$pkg_dir" publish --access public
+      run npm_in "$pkg_dir" publish --access public
     fi
     ensure_tag "$tag" "TypeScript client SDK $version"
     if ! git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1; then
@@ -425,7 +456,7 @@ cmd_ts_sdk() {
     fi
     say "released: npm i ${NPM_PACKAGE}@${version}"
   else
-    run npm --prefix "$pkg_dir" pack --dry-run
+    run npm_in "$pkg_dir" pack --dry-run
     say "not published (no --push). The pack listing above is exactly what would go to npm."
   fi
 }

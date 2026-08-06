@@ -1,6 +1,6 @@
 {
   "name": "oikumenea-client",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Typed TypeScript SDK for the go-oikumenea API, generated from the same Conjure contract as the server and the Go SDK (D-ClientSDK). Includes the hermenea endpoints oikumenea proxies.",
   "license": "Apache-2.0",
   "type": "module",
