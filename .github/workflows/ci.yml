@@ -103,3 +103,8 @@ jobs:
           npm --prefix web run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+          # A build-time placeholder for a RUNTIME setting: next build collects page data for every
+          # route, and lib/api/server.ts requires API_BASE_URL at module scope. The same value is set
+          # in web/Dockerfile's build stage and in neither runner — the address is the operator's to
+          # supply, and the container still fails fast without it.
+          API_BASE_URL: https://api.invalid
