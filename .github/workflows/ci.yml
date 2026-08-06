@@ -45,7 +45,13 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # postgis/postgis, NOT postgres: migration 0001 does `CREATE EXTENSION postgis` (M19 brought
+        # PostGIS in for location), and a plain postgres image does not carry it — the job died at the
+        # first migration with `extension "postgis" is not available`, before a single test ran. Every
+        # other environment already uses this image: docker-compose.yml, docker-compose.dev.yml, and
+        # atlas.hcl's own dev URL (docker://postgis/postgis/16-3.4/dev), which is why the lint gate
+        # stayed green while the apply failed.
+        image: postgis/postgis:16-3.4
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
@@ -60,8 +66,13 @@ jobs:
       # Migrations + the bulk of the integration tests run as the owner/superuser (the tests call the
       # application services directly, bypassing the request middleware that pins RLS GUCs). The
       # dedicated RLS test (internal/platform/db) derives the non-superuser DSN from this one.
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
-      OIKUMENEA_TEST_DSN: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      # …/oikumenea_ci, NOT the image's default `postgres` DB. The postgis image's init scripts create
+      # postgis + topology + tiger_geocoder in the default database, and Atlas refuses to apply to a
+      # database it did not start clean ("connected database is not clean: found schema tiger"). A
+      # database created from template1 has none of that while the extension binaries are still
+      # installed system-wide, so migration 0001's `CREATE EXTENSION postgis` works on an empty slate.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/oikumenea_ci?sslmode=disable
+      OIKUMENEA_TEST_DSN: postgres://postgres:postgres@localhost:5432/oikumenea_ci?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -69,6 +80,8 @@ jobs:
           go-version-file: go.mod
           cache: true
       - uses: ariga/setup-atlas@v0
+      - name: Create a clean target database
+        run: psql "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c "CREATE DATABASE oikumenea_ci"
       - name: Apply migrations (as owner/superuser)
         run: atlas migrate apply --env local
       - name: Create the non-superuser application login role (RLS backstop)
