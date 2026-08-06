@@ -42,7 +42,13 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # postgis/postgis, NOT postgres: migration 0001 does `CREATE EXTENSION postgis` (M19 brought
+        # PostGIS in for location), and a plain postgres image does not carry it — the job died at the
+        # first migration with `extension "postgis" is not available`, before a single test ran. Every
+        # other environment already uses this image: docker-compose.yml, docker-compose.dev.yml, and
+        # atlas.hcl's own dev URL (docker://postgis/postgis/16-3.4/dev), which is why the lint gate
+        # stayed green while the apply failed.
+        image: postgis/postgis:16-3.4
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
@@ -54,9 +60,14 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      # A database created from template1, not the postgis image's default one — that comes with
+      # postgis/topology/tiger already installed, and upgrade-test.sh requires an EMPTY operator DB
+      # (Atlas refuses a target it did not start clean).
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/oikumenea_ci?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: ariga/setup-atlas@v0
+      - name: Create a clean target database
+        run: psql "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c "CREATE DATABASE oikumenea_ci"
       - name: Upgrade test (seed at prior revision, migrate to HEAD, assert preserved)
         run: ./scripts/upgrade-test.sh
