@@ -73,6 +73,16 @@ func refLabelSources() []struct{ typ, table, col, entity string } {
 		{"location_type", "location_location_types", "name", "location_type"},
 		{"role", "authz_roles", "name", "role"},
 		{"graph", "tenant_graphs", "name", "graph"},
+		// M58 ticket 7 — the enrollment dashboard. `organization` and `unit` are already above and are
+		// REUSED: an institution IS a tenant organization (M41 / D-UnifiedOrgGraph) and an enrollment's
+		// faculty is an ordinary tenant unit, so both must be named by the resolver that names them
+		// everywhere else. Only three are new, and `degree_level` is the first catalog whose ORDER also
+		// matters (facet.StrategyCatalog reads isced_level in SQL) — the label and the ordinal come from
+		// the same table but by different routes, which is why adding a resolver here is not enough on
+		// its own.
+		{"program", "education_programs", "name", "education_program"},
+		{"group", "education_groups", "name", "education_group"},
+		{"degree_level", "education_degree_levels", "name", "education_degree_level"},
 	}
 }
 

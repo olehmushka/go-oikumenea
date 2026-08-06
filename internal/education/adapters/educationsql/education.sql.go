@@ -35,6 +35,24 @@ func (q *Queries) AbolishPosition(ctx context.Context, id string) (OikumeneaEduc
 	return i, err
 }
 
+const countReadableUnitsForDispatch = `-- name: CountReadableUnitsForDispatch :one
+SELECT oikumenea.authz_readable_unit_count($1, $2::integer) AS n
+`
+
+type CountReadableUnitsForDispatchParams struct {
+	SubjectPersonID string
+	Cap             int32
+}
+
+// The capped reach-cardinality probe the sparse/dense list dispatch reads (migration 0017). Capped,
+// because the question is never "how big is the reach" but "is it past the threshold".
+func (q *Queries) CountReadableUnitsForDispatch(ctx context.Context, arg CountReadableUnitsForDispatchParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countReadableUnitsForDispatch, arg.SubjectPersonID, arg.Cap)
+	var n int64
+	err := row.Scan(&n)
+	return n, err
+}
+
 const endAppointment = `-- name: EndAppointment :one
 UPDATE oikumenea.education_appointments
 SET status = 'ended', effective_to = COALESCE($1::timestamptz, now())
@@ -62,6 +80,339 @@ func (q *Queries) EndAppointment(ctx context.Context, arg EndAppointmentParams) 
 		&i.DeletedAt,
 	)
 	return i, err
+}
+
+const enrollmentStats = `-- name: EnrollmentStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT e.id, e.institution_id, e.program_id, e.unit_id, e.group_id, e.degree_level_id, e.status, e.effective_from
+  FROM oikumenea.person_education_enrollments e
+  WHERE e.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR e.institution_id = $1::uuid)
+  AND ($2::uuid IS NULL OR e.program_id = $2::uuid)
+  AND ($3::uuid IS NULL OR e.unit_id = $3::uuid)
+  AND ($4::uuid IS NULL OR e.group_id = $4::uuid)
+  AND ($5::uuid IS NULL OR e.degree_level_id = $5::uuid)
+  AND ($6::text IS NULL OR e.status = $6::text)
+  AND ($7::date IS NULL OR e.effective_from >= $7::date)
+  AND ($8::date IS NULL OR e.effective_from <= $8::date)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'institutionId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.institution_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'programId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.program_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $11::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $12::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'groupId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.group_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $13::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'degreeLevelId'::text, dl.id::text, coalesce(g.n, 0)::bigint, dl.isced_level::bigint
+FROM oikumenea.education_degree_levels dl
+LEFT JOIN (SELECT c.degree_level_id AS k, count(*) AS n
+           FROM cand c
+           WHERE $14::boolean
+           GROUP BY 1) g ON g.k = dl.id
+WHERE $14::boolean AND dl.deleted_at IS NULL
+UNION ALL
+SELECT 'degreeLevelId'::text, NULL::text, count(*)::bigint, NULL::bigint
+FROM cand c
+WHERE $14::boolean AND c.degree_level_id IS NULL
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $15::boolean GROUP BY c.status
+UNION ALL
+SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $16::boolean GROUP BY 2
+`
+
+type EnrollmentStatsParams struct {
+	InstitutionID     pgtype.Text
+	ProgramID         pgtype.Text
+	UnitID            pgtype.Text
+	GroupID           pgtype.Text
+	DegreeLevelID     pgtype.Text
+	Status            pgtype.Text
+	EffectiveFromFrom pgtype.Date
+	EffectiveFromTo   pgtype.Date
+	TopN              int32
+	WantInstitutionID bool
+	WantProgramID     bool
+	WantUnitID        bool
+	WantGroupID       bool
+	WantDegreeLevelID bool
+	WantStatus        bool
+	WantEffectiveFrom bool
+}
+
+type EnrollmentStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// ============================ enrollment dashboard aggregates (M58 ticket 7) ============================
+//
+// The degreeLevelId branch is the first CATALOG-ORDERED distribution (facet.StrategyCatalog). It is
+// shaped unlike every ref branch above it in two ways, both of which are the strategy rather than a
+// local choice: it drives from `education_degree_levels` through a LEFT JOIN, so an ISCED level with
+// no enrollments still emits a bucket with count 0 (on a scale an empty level is information), and it
+// carries `isced_level` in the `ord` column, which is what pkg/stats sorts by instead of the counts.
+// There is no `(other)` bucket and no top_n: the catalog has nine rows and every one of them is named.
+// Its NULL bucket is a separate UNION arm because the LEFT JOIN cannot produce one — GROUP BY 2 there
+// is load-bearing, since an ungrouped count(*) would emit a zero row even when the facet is not
+// selected.
+// The INSTANCE-ADMIN dashboard aggregate: the candidate CTE carries ListEnrollmentsPage's filter block
+// VERBATIM, then one branch per facet, each skipped by the planner when its want_* flag is false.
+func (q *Queries) EnrollmentStats(ctx context.Context, arg EnrollmentStatsParams) ([]EnrollmentStatsRow, error) {
+	rows, err := q.db.Query(ctx, enrollmentStats,
+		arg.InstitutionID,
+		arg.ProgramID,
+		arg.UnitID,
+		arg.GroupID,
+		arg.DegreeLevelID,
+		arg.Status,
+		arg.EffectiveFromFrom,
+		arg.EffectiveFromTo,
+		arg.TopN,
+		arg.WantInstitutionID,
+		arg.WantProgramID,
+		arg.WantUnitID,
+		arg.WantGroupID,
+		arg.WantDegreeLevelID,
+		arg.WantStatus,
+		arg.WantEffectiveFrom,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EnrollmentStatsRow
+	for rows.Next() {
+		var i EnrollmentStatsRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const enrollmentStatsForSubject = `-- name: EnrollmentStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT e.id, e.institution_id, e.program_id, e.unit_id, e.group_id, e.degree_level_id, e.status, e.effective_from
+  FROM oikumenea.person_education_enrollments e
+  WHERE e.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR e.institution_id = $1::uuid)
+  AND ($2::uuid IS NULL OR e.program_id = $2::uuid)
+  AND ($3::uuid IS NULL OR e.unit_id = $3::uuid)
+  AND ($4::uuid IS NULL OR e.group_id = $4::uuid)
+  AND ($5::uuid IS NULL OR e.degree_level_id = $5::uuid)
+  AND ($6::text IS NULL OR e.status = $6::text)
+  AND ($7::date IS NULL OR e.effective_from >= $7::date)
+  AND ($8::date IS NULL OR e.effective_from <= $8::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = e.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units($9)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'institutionId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $10::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.institution_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $11::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'programId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $10::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.program_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $12::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $10::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $13::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'groupId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $10::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.group_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $14::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'degreeLevelId'::text, dl.id::text, coalesce(g.n, 0)::bigint, dl.isced_level::bigint
+FROM oikumenea.education_degree_levels dl
+LEFT JOIN (SELECT c.degree_level_id AS k, count(*) AS n
+           FROM cand c
+           WHERE $15::boolean
+           GROUP BY 1) g ON g.k = dl.id
+WHERE $15::boolean AND dl.deleted_at IS NULL
+UNION ALL
+SELECT 'degreeLevelId'::text, NULL::text, count(*)::bigint, NULL::bigint
+FROM cand c
+WHERE $15::boolean AND c.degree_level_id IS NULL
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $16::boolean GROUP BY c.status
+UNION ALL
+SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $17::boolean GROUP BY 2
+`
+
+type EnrollmentStatsForSubjectParams struct {
+	InstitutionID     pgtype.Text
+	ProgramID         pgtype.Text
+	UnitID            pgtype.Text
+	GroupID           pgtype.Text
+	DegreeLevelID     pgtype.Text
+	Status            pgtype.Text
+	EffectiveFromFrom pgtype.Date
+	EffectiveFromTo   pgtype.Date
+	SubjectPersonID   string
+	TopN              int32
+	WantInstitutionID bool
+	WantProgramID     bool
+	WantUnitID        bool
+	WantGroupID       bool
+	WantDegreeLevelID bool
+	WantStatus        bool
+	WantEffectiveFrom bool
+}
+
+type EnrollmentStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// The READ-SCOPE arm. Enrollments carry no unit, so reach goes THROUGH THE HOLDER: the same active-
+// membership semi-join ListEnrollmentsPageForSubject uses, folded into the candidate set. An
+// unreadable holder's enrollments are therefore absent from the count rather than counted and
+// trimmed — which is what makes totalCount equal the rows exhaustive paging returns.
+//
+// One scoped query, not two: the aggregate has no LIMIT, so the sparse/dense dispatch the LIST needs
+// does not apply here (M57's measurement — the set form wins at every reach once the LIMIT is gone).
+func (q *Queries) EnrollmentStatsForSubject(ctx context.Context, arg EnrollmentStatsForSubjectParams) ([]EnrollmentStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, enrollmentStatsForSubject,
+		arg.InstitutionID,
+		arg.ProgramID,
+		arg.UnitID,
+		arg.GroupID,
+		arg.DegreeLevelID,
+		arg.Status,
+		arg.EffectiveFromFrom,
+		arg.EffectiveFromTo,
+		arg.SubjectPersonID,
+		arg.TopN,
+		arg.WantInstitutionID,
+		arg.WantProgramID,
+		arg.WantUnitID,
+		arg.WantGroupID,
+		arg.WantDegreeLevelID,
+		arg.WantStatus,
+		arg.WantEffectiveFrom,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EnrollmentStatsForSubjectRow
+	for rows.Next() {
+		var i EnrollmentStatsForSubjectRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getActiveAppointmentByPosition = `-- name: GetActiveAppointmentByPosition :one
@@ -1168,6 +1519,279 @@ ORDER BY effective_from DESC NULLS LAST, id
 
 func (q *Queries) ListEnrollmentsByPerson(ctx context.Context, personID string) ([]OikumeneaPersonEducationEnrollment, error) {
 	rows, err := q.db.Query(ctx, listEnrollmentsByPerson, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonEducationEnrollment
+	for rows.Next() {
+		var i OikumeneaPersonEducationEnrollment
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.InstitutionID,
+			&i.UnitID,
+			&i.GroupID,
+			&i.DegreeLevelID,
+			&i.FieldOfStudy,
+			&i.Status,
+			&i.Qualification,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.ProgramID,
+			&i.StudentNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEnrollmentsPage = `-- name: ListEnrollmentsPage :many
+
+SELECT id, person_id, institution_id, unit_id, group_id, degree_level_id, field_of_study, status, qualification, effective_from, effective_to, created_at, updated_at, deleted_at, program_id, student_number FROM oikumenea.person_education_enrollments e
+WHERE e.deleted_at IS NULL
+  AND ($1 = '' OR e.id::text > $1)
+  AND ($2::uuid IS NULL OR e.institution_id = $2::uuid)
+  AND ($3::uuid IS NULL OR e.program_id = $3::uuid)
+  AND ($4::uuid IS NULL OR e.unit_id = $4::uuid)
+  AND ($5::uuid IS NULL OR e.group_id = $5::uuid)
+  AND ($6::uuid IS NULL OR e.degree_level_id = $6::uuid)
+  AND ($7::text IS NULL OR e.status = $7::text)
+  AND ($8::date IS NULL OR e.effective_from >= $8::date)
+  AND ($9::date IS NULL OR e.effective_from <= $9::date)
+ORDER BY e.id
+LIMIT $10
+`
+
+type ListEnrollmentsPageParams struct {
+	After             interface{}
+	InstitutionID     pgtype.Text
+	ProgramID         pgtype.Text
+	UnitID            pgtype.Text
+	GroupID           pgtype.Text
+	DegreeLevelID     pgtype.Text
+	Status            pgtype.Text
+	EffectiveFromFrom pgtype.Date
+	EffectiveFromTo   pgtype.Date
+	Lim               int32
+}
+
+// ============================ top-level facet-filtered list (M58 ticket 7 / D-ObjectFacets) ============================
+// GET /enrollments. Two shapes, ONE filter block, byte-identical between them: the admin path and the
+// holder-scoped path must select the same rows for the same filters, differing ONLY by the visibility
+// predicate. sqlparity_test.go proves the block is present in both with no database.
+//
+// person_education_enrollments carries NO unit column and NO RLS policy (0007): enrollments are
+// scoped THROUGH THE HOLDER (D-PersonReadScope), exactly as documents are. The scoped arm therefore
+// folds the holder semi-join — the person has an active membership in a unit of the subject's reach —
+// rather than a unit predicate. Note that `unit_id` on the enrollment is NOT that predicate: it is the
+// faculty the person studied in, an attribute of the row and a facet, and gating on it would answer a
+// different question (whose faculty is reachable) from the one the read scope asks (whose person is).
+//
+// The reach here is the GENERIC '%.read' family (authz_readable_units), not the permission-
+// parameterised form migration 0023 added for listAssignments — and the difference between the two
+// cases is which question the trim is asking. `listAssignments`' per-unit arm had always demanded
+// `assignment.read` on that specific unit, so borrowing the generic family would have WIDENED it.
+// Here the trim is not asking about education authority at all: the endpoint has already checked
+// `education.read`, and what remains is "may this subject read this PERSON", which is the
+// D-PersonReadScope projection and is the generic question by definition. Same composition documents
+// use, and the same one holderReadable() applies row-by-row on the per-person endpoints.
+// Instance-admin path: every enrollment, keyset-paginated by RID.
+func (q *Queries) ListEnrollmentsPage(ctx context.Context, arg ListEnrollmentsPageParams) ([]OikumeneaPersonEducationEnrollment, error) {
+	rows, err := q.db.Query(ctx, listEnrollmentsPage,
+		arg.After,
+		arg.InstitutionID,
+		arg.ProgramID,
+		arg.UnitID,
+		arg.GroupID,
+		arg.DegreeLevelID,
+		arg.Status,
+		arg.EffectiveFromFrom,
+		arg.EffectiveFromTo,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonEducationEnrollment
+	for rows.Next() {
+		var i OikumeneaPersonEducationEnrollment
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.InstitutionID,
+			&i.UnitID,
+			&i.GroupID,
+			&i.DegreeLevelID,
+			&i.FieldOfStudy,
+			&i.Status,
+			&i.Qualification,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.ProgramID,
+			&i.StudentNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEnrollmentsPageForSubject = `-- name: ListEnrollmentsPageForSubject :many
+SELECT id, person_id, institution_id, unit_id, group_id, degree_level_id, field_of_study, status, qualification, effective_from, effective_to, created_at, updated_at, deleted_at, program_id, student_number FROM oikumenea.person_education_enrollments e
+WHERE e.deleted_at IS NULL
+  AND ($1 = '' OR e.id::text > $1)
+  AND ($2::uuid IS NULL OR e.institution_id = $2::uuid)
+  AND ($3::uuid IS NULL OR e.program_id = $3::uuid)
+  AND ($4::uuid IS NULL OR e.unit_id = $4::uuid)
+  AND ($5::uuid IS NULL OR e.group_id = $5::uuid)
+  AND ($6::uuid IS NULL OR e.degree_level_id = $6::uuid)
+  AND ($7::text IS NULL OR e.status = $7::text)
+  AND ($8::date IS NULL OR e.effective_from >= $8::date)
+  AND ($9::date IS NULL OR e.effective_from <= $9::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = e.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units($10)))
+ORDER BY e.id
+LIMIT $11
+`
+
+type ListEnrollmentsPageForSubjectParams struct {
+	After             interface{}
+	InstitutionID     pgtype.Text
+	ProgramID         pgtype.Text
+	UnitID            pgtype.Text
+	GroupID           pgtype.Text
+	DegreeLevelID     pgtype.Text
+	Status            pgtype.Text
+	EffectiveFromFrom pgtype.Date
+	EffectiveFromTo   pgtype.Date
+	SubjectPersonID   string
+	Lim               int32
+}
+
+// Read-scope path: the same set restricted to enrollments whose HOLDER the subject may read. The reach
+// set is UNCORRELATED (it reads only @subject_person_id), so the planner evaluates it once and probes
+// a hash instead of re-deriving the closure per candidate enrollment.
+func (q *Queries) ListEnrollmentsPageForSubject(ctx context.Context, arg ListEnrollmentsPageForSubjectParams) ([]OikumeneaPersonEducationEnrollment, error) {
+	rows, err := q.db.Query(ctx, listEnrollmentsPageForSubject,
+		arg.After,
+		arg.InstitutionID,
+		arg.ProgramID,
+		arg.UnitID,
+		arg.GroupID,
+		arg.DegreeLevelID,
+		arg.Status,
+		arg.EffectiveFromFrom,
+		arg.EffectiveFromTo,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonEducationEnrollment
+	for rows.Next() {
+		var i OikumeneaPersonEducationEnrollment
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.InstitutionID,
+			&i.UnitID,
+			&i.GroupID,
+			&i.DegreeLevelID,
+			&i.FieldOfStudy,
+			&i.Status,
+			&i.Qualification,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.ProgramID,
+			&i.StudentNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEnrollmentsPageForSubjectDense = `-- name: ListEnrollmentsPageForSubjectDense :many
+SELECT id, person_id, institution_id, unit_id, group_id, degree_level_id, field_of_study, status, qualification, effective_from, effective_to, created_at, updated_at, deleted_at, program_id, student_number FROM oikumenea.person_education_enrollments e
+WHERE e.deleted_at IS NULL
+  AND ($1 = '' OR e.id::text > $1)
+  AND ($2::uuid IS NULL OR e.institution_id = $2::uuid)
+  AND ($3::uuid IS NULL OR e.program_id = $3::uuid)
+  AND ($4::uuid IS NULL OR e.unit_id = $4::uuid)
+  AND ($5::uuid IS NULL OR e.group_id = $5::uuid)
+  AND ($6::uuid IS NULL OR e.degree_level_id = $6::uuid)
+  AND ($7::text IS NULL OR e.status = $7::text)
+  AND ($8::date IS NULL OR e.effective_from >= $8::date)
+  AND ($9::date IS NULL OR e.effective_from <= $9::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = e.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND oikumenea.authz_unit_readable_by(m.unit_id, $10))
+ORDER BY e.id
+LIMIT $11
+`
+
+type ListEnrollmentsPageForSubjectDenseParams struct {
+	After             interface{}
+	InstitutionID     pgtype.Text
+	ProgramID         pgtype.Text
+	UnitID            pgtype.Text
+	GroupID           pgtype.Text
+	DegreeLevelID     pgtype.Text
+	Status            pgtype.Text
+	EffectiveFromFrom pgtype.Date
+	EffectiveFromTo   pgtype.Date
+	SubjectPersonID   string
+	Lim               int32
+}
+
+// DENSE-reach plan shape of the query above, byte-identical in its filter block and differing ONLY in
+// how the holder's reach is applied: a per-row point probe instead of a materialized reach set. See
+// migration 0017 for the measured reason both shapes exist — at root reach materializing the reach
+// makes the planner drive from it and build a person hash, so the LIMIT never terminates early. The
+// adapter dispatches on CountReadableUnitsForDispatch.
+func (q *Queries) ListEnrollmentsPageForSubjectDense(ctx context.Context, arg ListEnrollmentsPageForSubjectDenseParams) ([]OikumeneaPersonEducationEnrollment, error) {
+	rows, err := q.db.Query(ctx, listEnrollmentsPageForSubjectDense,
+		arg.After,
+		arg.InstitutionID,
+		arg.ProgramID,
+		arg.UnitID,
+		arg.GroupID,
+		arg.DegreeLevelID,
+		arg.Status,
+		arg.EffectiveFromFrom,
+		arg.EffectiveFromTo,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

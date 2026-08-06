@@ -277,3 +277,22 @@ type InstitutionFilter struct {
 	FoundedOnTo   *string // ISO date, INCLUSIVE
 	State         *string
 }
+
+// EnrollmentFilter is the facet filter block `listEnrollments` and `enrollmentStats` BOTH take
+// (M58 ticket 7 / D-ObjectFacets), the same one-struct-one-builder arrangement InstitutionFilter
+// documents above.
+//
+// No Query field: an enrollment has no name of its own — every part of it is a RID, a code or a date
+// — so there is no search_text haystack and nothing for an R-21 split to split. That is why this type
+// ships TWO aggregate arms where institution ships four; the axis here is the holder read scope
+// alone.
+type EnrollmentFilter struct {
+	InstitutionID     *string
+	ProgramID         *string
+	UnitID            *string
+	GroupID           *string
+	DegreeLevelID     *string
+	Status            *string
+	EffectiveFromFrom *string // ISO date, INCLUSIVE
+	EffectiveFromTo   *string // ISO date, INCLUSIVE
+}

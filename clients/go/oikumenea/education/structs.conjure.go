@@ -655,6 +655,107 @@ func (o *EnrollmentList) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+type EnrollmentPage struct {
+	Enrollments   []Enrollment `json:"enrollments"`
+	NextPageToken *string      `json:"nextPageToken,omitempty"`
+}
+
+func (o EnrollmentPage) MarshalJSON() ([]byte, error) {
+	if o.Enrollments == nil {
+		o.Enrollments = make([]Enrollment, 0)
+	}
+	type _tmpEnrollmentPage EnrollmentPage
+	return safejson.Marshal(_tmpEnrollmentPage(o))
+}
+
+func (o *EnrollmentPage) UnmarshalJSON(data []byte) error {
+	type _tmpEnrollmentPage EnrollmentPage
+	var rawEnrollmentPage _tmpEnrollmentPage
+	if err := safejson.Unmarshal(data, &rawEnrollmentPage); err != nil {
+		return err
+	}
+	if rawEnrollmentPage.Enrollments == nil {
+		rawEnrollmentPage.Enrollments = make([]Enrollment, 0)
+	}
+	*o = EnrollmentPage(rawEnrollmentPage)
+	return nil
+}
+
+func (o EnrollmentPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *EnrollmentPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listEnrollments` returns under the same filters, with
+the holder read-scope folded INTO the count (M58 ticket 7 / D-ObjectFacets).
+
+An enrollment carries no unit of its own — it is scoped THROUGH ITS HOLDER
+(D-PersonReadScope), exactly as a document is: an instance admin counts everything, and
+everyone else counts the enrollments of the people they may read (a person is readable when
+they hold an active membership in a unit of the caller's reach). Folded into SQL rather than
+applied to the page, because trimming after the fact is right for a page and wrong for a
+count. `totalCount` therefore equals the rows exhaustively paging `listEnrollments` under
+these filters would return.
+
+The `degreeLevelId` distribution is ordered by ISCED LEVEL, not by count, and includes
+levels with no enrollments at all: it is a scale, and a scale re-sorted by frequency reads
+as if a doctorate ranked below a bachelor's. It carries no `(other)` bucket for the same
+reason — every level is named.
+*/
+type EnrollmentStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o EnrollmentStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpEnrollmentStats EnrollmentStats
+	return safejson.Marshal(_tmpEnrollmentStats(o))
+}
+
+func (o *EnrollmentStats) UnmarshalJSON(data []byte) error {
+	type _tmpEnrollmentStats EnrollmentStats
+	var rawEnrollmentStats _tmpEnrollmentStats
+	if err := safejson.Unmarshal(data, &rawEnrollmentStats); err != nil {
+		return err
+	}
+	if rawEnrollmentStats.Facets == nil {
+		rawEnrollmentStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = EnrollmentStats(rawEnrollmentStats)
+	return nil
+}
+
+func (o EnrollmentStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *EnrollmentStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 /*
 One bucket of a facet distribution (M57 / D-ObjectFacets).
 

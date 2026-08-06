@@ -312,7 +312,7 @@ Facets and components in brief; each is expanded to the table form above when it
 | ~~**vehicle**~~ | — | **BUILT (M58 ticket 3)** — see below |
 | ~~**finance-account**~~ / ~~**finance-card**~~ | — | **BUILT (M58 ticket 3)** as `account` and `card` — see below |
 | ~~**institution**~~ | — | **BUILT (M58 ticket 5)** — see below |
-| **enrollment** (`person_education_enrollments`) | `institutionId`, `degreeLevelId`, `status`, `effectiveFrom`(range) | Enrollments per intake histogram · degree-level bar (ISCED-ordered, **not** count-ordered) · status tiles. ⚠️ **Defect (M58 ticket-2 survey):** `programId` and `startedOn` name columns that do not exist — the nearest are `field_of_study` (free TEXT, so a `code` facet at best) and `effective_from`. Corrected above. Also has **no top-level list**: only `GET /education/v1/persons/{personId}/enrollments` |
+| ~~**enrollment**~~ | — | **BUILT (M58 ticket 7)** as `link__studied_at` — see below. The ticket-2 survey's defect note was HALF wrong: `startedOn` really does not exist (the column is `effective_from`), but `programId` does — an `ALTER` far below the `CREATE TABLE`, the `vehicle.color` trap again |
 
 
 | ~~**location**~~ | — | **BUILT (M58 ticket 6)** — see below |
@@ -764,6 +764,95 @@ fifth facet corrects the catalog rather than working around it.
 > trim at all**, so one grant anywhere enumerated any person's authority across the whole instance; it
 > is now trimmed like everything else.
 
+#### `enrollment` (token `link__studied_at`) — [education](../modules/education.md) · `person_education_enrollments` — **BUILT (M58 ticket 7)**
+
+The **last type of the M58 tranche**, the third faceted reified link, and the third with no
+unconditional list: `GET /persons/{personId}/enrollments` is one person at a time, so the register
+could be interrogated and never described. `GET /enrollments` is the browse mode; the per-person
+operation keeps its path and is renamed `listPersonEnrollments`, the shape `listPersonAppointments`
+beside it already used.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `institutionId` | ref | `institution_id` → `tenant_organizations` | NOT NULL. RefType is **`organization`**, not `institution` — M41 folded institutions onto the tenant org graph, so there is no institution token to point at (the reading `account.institutionId` already takes) |
+| `programId` | ref | `program_id` → `education_programs` | Nullable. The tranche table recorded this column as NOT EXISTING; it does — see below |
+| `unitId` | ref | `unit_id` → `tenant_units` | the faculty/department. EXACT match, not subtree-expanding. Nullable, and **not** the visibility column |
+| `groupId` | ref | `group_id` → `education_groups` | the study cohort. Nullable |
+| `degreeLevelId` | **ref, catalog-ordered** | `degree_level_id` → `education_degree_levels` | the ISCED 2011 scale. The first `StrategyCatalog` facet — see below. Nullable |
+| `status` | enum | `status` | `enrolled`/`on_leave`/`graduated`/`withdrawn`/`expelled`, declared in LIFECYCLE order (the two in-progress states, then the three terminal ones) |
+| `effectiveFrom` | date-range | `effective_from` | the intake date, MONTH grain. Catalogued as `startedOn`, which is the half of the survey's defect note that was right. Nullable |
+
+**Components.** ① **Degree level** bar (ISCED-ordered). ② **Cohort status** donut. ③ **Intake per
+month** bar. ④ **Top institutions** bar. ⑤ **Top faculties** bar. ⑥ **Top programmes** bar. ⑦ **Top
+study groups** bar.
+
+Not faceted, deliberately: `fieldOfStudy` and `qualification` are free TEXT with no catalog behind
+them (a `code` facet at best, and a long tail of near-duplicate spellings on real data), and
+`studentNumber` is an identifier of a person at an institution — data to read on a row, never a chart
+axis.
+
+> **`StrategyCatalog`: the one new kernel concept, and the third escape hatch.** A ref facet ranks
+> top-N by count, which is right for an open or large value set and wrong for a column whose target is
+> a closed catalog carrying a SCALE. ISCED 2011 has nine levels, 0–8; sorted by frequency it reads
+> "Bachelor, Doctoral, Master", which is a ranking, not a scale. The strategy orders buckets by the
+> referenced catalog's own ordinal, emits **every** row including the zero-count ones (on a scale an
+> empty level is information), and has no `(other)` tail (a closed catalog has no tail to collapse).
+> It is the ref analogue of `StrategyIdentity`, and the same rule `KindEnum.Values` already carries —
+> reaching the case where the ordered set lives in a table rather than in a CHECK constraint.
+>
+> Like `Profile` and unlike `Ledger` it is **CHECKABLE**, so that is what keeps it from being copied:
+> `Register` refuses it on a non-ref facet or without `CatalogTable`/`CatalogOrder`, and a guard then
+> parses the migrations and asserts the facet's column really FK-references the named catalog and that
+> the ordinal is really a column of it. A facet could otherwise name an unrelated table, LEFT JOIN it,
+> return all zeroes, and render.
+
+> **The survey's `programId` defect DID NOT EXIST** — the same shape ticket 3 had to un-decide for
+> `vehicle.color`. `program_id` has been a real FK to `education_programs` since M20, added by an
+> `ALTER` ~750 lines below the `CREATE TABLE` in the same consolidated migration file. Since the 46→15
+> consolidation **a table's shape is not its `CREATE TABLE`**, and a survey that reads only the CREATE
+> block is reading a snapshot. Only `startedOn` was fictitious.
+
+> **The scope comes from the HOLDER, and the precedent is `document`, not any M58 type.**
+> `person_education_enrollments` carries no unit column and no shadow bit, so there is no unit
+> predicate to write and no visibility gate to apply. It is holder-scoped (D-PersonReadScope): reach
+> reaches a row by way of the person who holds it, through that person's active memberships. Two
+> aggregate arms, {instance-admin, holder-scoped}, and the semi-join lives INSIDE the query (R-06 — a
+> Go-side trim after the keyset page is cut returns a short page still carrying a next-page token).
+>
+> The trim uses the **generic** `'%.read'` family, not the permission-parameterised `_with` trio
+> ticket 6 added, and the difference is which question is being asked. `listAssignments`' per-unit arm
+> had always demanded `assignment.read` on that specific unit, so the generic family would have
+> WIDENED it. Here the endpoint has already checked `education.read`, and what remains — "may this
+> subject read this PERSON" — is the D-PersonReadScope projection, which is the generic question by
+> definition. Same composition documents have used since M56 ticket 3.
+
+> **AND A LEAK, on nine endpoints: education applied the holder read scope NOWHERE.** Every
+> person-binding read in the module — enrollments, dorm stays, education appointments and the six
+> reference-layer bindings (publication authorships, research memberships, grant holdings, governance
+> memberships, qualification awards, scholarship awards) — gated `education.read` ANYWHERE and then
+> returned the rows. One grant anywhere enumerated any person's education history instance-wide, since
+> M20. D-PersonReadScope has required the projection since M0 and only `document` implemented it.
+>
+> All nine now probe one `holderReadable` helper per transport; an unreadable holder gets an EMPTY
+> list, never a 403, because a permission error would confirm the person exists. It went unnoticed for
+> the reason the `getOrganization` and `listCompanies` leaks did — the gate lives PER HANDLER in the
+> transport, where nothing outside the package can observe its absence — so the guard is structural
+> and, crucially, is held against the CONTRACT: a tenth `GET /persons/{personId}/…` endpoint that is
+> not in the list fails, which is the check that would have caught the original nine.
+
+> **The bare pool returned an empty page to an entitled caller, and only the LIVE run found it.**
+> `person_education_enrollments` has no RLS policy, so nothing about the table suggests the request-
+> pinned connection matters — but the holder semi-join probes `membership_memberships`, which is FORCE
+> RLS. On an unpinned connection the `app.*` GUCs are unset, `authz_unit_in_reach` matches nothing, and
+> the endpoint answers **200 with zero rows** to a caller entitled to fourteen. That reads as "no
+> results", not as a fault, and the integration suite cannot see it: it connects as a superuser and
+> bypasses RLS.
+>
+> The guard for exactly this has existed since M56 (`internal/platform/db/rls_querier_guard_test.go`,
+> which names `document` for this precise reason) — education simply was never in its table. A guard
+> that has never been pointed at a module is not protecting it, which is the same shape as ticket 6's
+> drift guard reading a stale mirror. The module is in the table now.
+
 ### The raw-pgx arm of the parity guards (M58 ticket 2)
 
 `sqlparity_test.go` and `statsparity_test.go` prove a type's list and its dashboard see one world by
@@ -1083,7 +1172,14 @@ M58 ticket 6 adds five guard files, because two of its properties live where no 
   chart is honest and hard to read at the same time. The general fix is org-qualified labels across
   every ref labeler, which is wider than one facet and wider than one ticket; recorded rather than
   patched here, because a bespoke join for this one chart would put the rule in a second place.
-- **`enrollment` is the last M58 type without a list.** `GET /education/v1/persons/{personId}/enrollments`
-  is per-person only, so like `location` and `assignment` before ticket 6 it needs a list mode invented
-  before it can carry facets. Ticket 6 was scoped to the two the stage board named; this one is
-  outstanding, and the tranche table above still carries its (corrected) facet row.
+- ~~**`enrollment` is the last M58 type without a list.**~~ **CLOSED in M58 ticket 7** — `GET
+  /enrollments` is the browse mode and the per-person operation kept its path as
+  `listPersonEnrollments`. With it the M58 tranche is complete: every listable object type in the
+  catalog now carries facets, a dashboard and a console entry.
+- **A month histogram has no cap, and a student register may eventually need one.** `yearSpan` gives
+  up past 60 buckets (ticket 5, after rendering 356 bars for 8 institutions); `monthSpan` does not,
+  because a month histogram was reasoned about as covering an operational window. An intake histogram
+  covers however long the institution has been enrolling people — five seeded years is 60 bars, which
+  is exactly the visual budget, and a decade of real data would be 120. Recorded rather than capped:
+  the fix is the same three lines `yearSpan` already carries, and it should be applied when a real
+  register asks for it rather than on a guess about one.

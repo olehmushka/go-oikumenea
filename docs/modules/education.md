@@ -198,9 +198,26 @@ this gate is what a caller obtains, and they carry no visibility bit of their ow
 
 ## Open seams / future
 
-- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
-  for this module's listable types: `GET /institutions/stats` and enrollment stats over `kindId`/`countryId`/`foundedOn`/`state` and `institutionId`/`programId`/`degreeLevelId`/`status`/`startedOn`; the degree-level bar orders by **ISCED level, not count**. Plus the module's first ontology-registry entry.
-  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+- **Facets & dashboards (M58 tickets 5 + 7, BUILT).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)
+  ships filters + a stats endpoint + a console dashboard for both of this module's listable types:
+  `institution` (ticket 5, `GET /stats/institutions` over `kindId`/`countryId`/`foundedOn`/`state`) and
+  `enrollment` — token `link__studied_at` (ticket 7, `GET /enrollments` + `GET /stats/enrollments` over
+  `institutionId`/`programId`/`unitId`/`groupId`/`degreeLevelId`/`status`/`effectiveFrom`). The
+  degree-level bar orders by **ISCED level, not count**, and shows levels with no enrollments — the
+  first `facet.StrategyCatalog` facet. Catalogued in [facets.md](../architecture/facets.md).
+
+- **The holder read scope, on every person-binding read (M58 ticket 7).** All nine of this module's
+  `GET /persons/{personId}/…` endpoints — enrollments, dorm stays, education appointments and the six
+  reference-layer bindings — now probe the person read scope (D-PersonReadScope) before returning a
+  holder's rows, and answer an unreadable holder with an EMPTY list rather than a 403 (a permission
+  error would confirm the person exists). Until then they gated `education.read` ANYWHERE and returned
+  the rows, so one grant anywhere enumerated any person's education history instance-wide. The
+  top-level `GET /enrollments` folds the same scope INTO its SQL, through the request-pinned
+  connection: the table carries no RLS policy of its own, but the holder semi-join probes
+  `membership_memberships`, which does.
+
+  Writes keep their `education.enrollment.manage` / `education.manage` gates unchanged — the same
+  read-only boundary the document module's probe draws.
 
 - **Operational SIS** (academic terms/calendars, course sections, section-level enrollment with grades,
   assessments, GPA) is **deliberately out of scope** — the module stays external-reference (D-Education

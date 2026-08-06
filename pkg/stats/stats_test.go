@@ -343,6 +343,108 @@ func TestTopNBucketsFallBackWhenAnOrdinalIsMissing(t *testing.T) {
 	assertBuckets(t, got, []Bucket{{Key: "b", Count: 5}, {Key: "a", Count: 1}})
 }
 
+// ---- StrategyCatalog (M58 ticket 7) ----------------------------------------------------------
+
+// catalogFacet is the shape enrollment.degreeLevelId declares: a ref facet over a closed, ordered
+// catalog. The CatalogTable/CatalogOrder fields are read by the module's SQL, not by this package —
+// what this package owns is the ORDER and the absence of a tail bucket.
+func catalogFacet() facet.Facet {
+	return facet.Facet{
+		Key: "degreeLevelId", Kind: facet.KindRef, RefType: "degree_level",
+		Buckets: facet.Buckets{
+			Strategy:       facet.StrategyCatalog,
+			CatalogTable:   "oikumenea.education_degree_levels",
+			CatalogOrder:   "isced_level",
+			IncludeUnknown: true,
+		},
+	}
+}
+
+// The defining property: the CATALOG's ordinal wins over the counts, always — not "when every row
+// happens to carry one", which is topN's rule. A scale sorted by frequency is a ranking, and the
+// whole reason this strategy exists is that "Bachelor, Doctoral, Master" is not an ISCED scale.
+func TestCatalogBucketsOrderByTheCatalogOrdinalNotTheCounts(t *testing.T) {
+	got := dist(t, Assemble(selectOne(t, catalogFacet()), []Group{
+		// The counts and the scale disagree DELIBERATELY — 7 is the largest, 6 the smallest — because a
+		// fixture whose counts happen to descend with the ordinal passes under either rule and proves
+		// nothing. (Found by hand-breaking this guard: the first fixture written here did exactly that.)
+		{Facet: "degreeLevelId", Key: k("isced-8"), Count: 11, Ord: n(8)},
+		{Facet: "degreeLevelId", Key: k("isced-6"), Count: 2, Ord: n(6)},
+		{Facet: "degreeLevelId", Key: k("isced-7"), Count: 40, Ord: n(7)},
+	}))
+	assertBuckets(t, got, []Bucket{
+		{Key: "isced-6", Count: 2}, {Key: "isced-7", Count: 40}, {Key: "isced-8", Count: 11},
+		{Key: BucketUnknown, Count: 0},
+	})
+}
+
+// Zero-count levels arrive from the SQL's LEFT JOIN and must SURVIVE assembly — on a scale an empty
+// level is information ("no doctoral candidates at all"), where on a ranking an absent value is
+// merely outside the top N. Dropping them here would look like a shorter chart and read as a
+// different fact.
+func TestCatalogBucketsKeepEmptyLevels(t *testing.T) {
+	got := dist(t, Assemble(selectOne(t, catalogFacet()), []Group{
+		{Facet: "degreeLevelId", Key: k("isced-6"), Count: 0, Ord: n(6)},
+		{Facet: "degreeLevelId", Key: k("isced-7"), Count: 0, Ord: n(7)},
+		{Facet: "degreeLevelId", Key: k("isced-8"), Count: 40, Ord: n(8)},
+	}))
+	assertBuckets(t, got, []Bucket{
+		{Key: "isced-6", Count: 0}, {Key: "isced-7", Count: 0}, {Key: "isced-8", Count: 40},
+		{Key: BucketUnknown, Count: 0},
+	})
+}
+
+// A row arriving with NO ordinal is a query that failed to join its catalog. It sorts LAST rather
+// than being dropped (a bucket that vanishes is worse than one out of place) and, critically, rather
+// than making the whole distribution fall back to count order the way topN's does — falling back
+// here would silently restore the exact behaviour the strategy exists to prevent.
+func TestCatalogBucketsPinAnUnorderedRowLastWithoutRePricingTheScale(t *testing.T) {
+	got := dist(t, Assemble(selectOne(t, catalogFacet()), []Group{
+		{Facet: "degreeLevelId", Key: k("isced-8"), Count: 40, Ord: n(8)},
+		{Facet: "degreeLevelId", Key: k("orphan"), Count: 999},
+		{Facet: "degreeLevelId", Key: k("isced-6"), Count: 2, Ord: n(6)},
+	}))
+	assertBuckets(t, got, []Bucket{
+		{Key: "isced-6", Count: 2}, {Key: "isced-8", Count: 40}, {Key: "orphan", Count: 999},
+		{Key: BucketUnknown, Count: 0},
+	})
+}
+
+// No `(other)`: the catalog is closed and every row of it is named, so there is no tail to collapse.
+// A key that says otherwise is data, and folding it into a synthetic bucket would hide it.
+func TestCatalogBucketsHaveNoOtherTail(t *testing.T) {
+	got := dist(t, Assemble(selectOne(t, catalogFacet()), []Group{
+		{Facet: "degreeLevelId", Key: k("isced-6"), Count: 40, Ord: n(6)},
+		{Facet: "degreeLevelId", Key: nil, Count: 3},
+	}))
+	for _, b := range got {
+		if b.Key == BucketOther {
+			t.Fatalf("catalog buckets emitted an (other) tail: %+v", got)
+		}
+	}
+	assertBuckets(t, got, []Bucket{{Key: "isced-6", Count: 40}, {Key: BucketUnknown, Count: 3}})
+}
+
+// A catalog facet must NOT contribute a top_n. It has no tail to cut, and Selection.TopN() binding
+// its (absent) cutoff would be the ticket-1 bug in reverse — there, a selection of code facets bound
+// top_n = 0 and collapsed every bucket into `(other)`.
+func TestCatalogFacetsBindNoTopN(t *testing.T) {
+	if got := selectOne(t, catalogFacet()).TopN(); got != 0 {
+		t.Errorf("TopN() = %d for a catalog-only selection, want 0", got)
+	}
+	// …and it must not SUPPRESS one either: a type mixing both (enrollment does — four topN refs
+	// beside the scale) still needs the topN branches' cutoff bound.
+	mixed := facet.Facet{Key: "unitId", Kind: facet.KindRef, RefType: "unit",
+		Buckets: facet.Buckets{Strategy: facet.StrategyTopN, TopN: 15}}
+	sel := Selection{
+		selected: []facet.Facet{catalogFacet(), mixed},
+		set:      map[string]bool{"degreeLevelId": true, "unitId": true},
+	}
+	if got := sel.TopN(); got != 15 {
+		t.Errorf("TopN() = %d for a mixed selection, want 15", got)
+	}
+}
+
 func TestAssembleReadsTheTotalAndKeepsFacetOrder(t *testing.T) {
 	o := person(t)
 	sel, err := Select(o, "sex,status", nil)

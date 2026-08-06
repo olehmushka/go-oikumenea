@@ -609,6 +609,43 @@ func (s *Service) ListEnrollments(ctx context.Context, personID string) ([]domai
 	return s.newRepo(s.pool).ListEnrollmentsByPerson(ctx, personID)
 }
 
+// ListEnrollmentRegister pages the whole enrollment register under the facet filter block (M58 ticket
+// 7 / D-ObjectFacets). subjectPersonID empty is the instance-admin arm; otherwise the repository
+// folds the holder read scope into the query — never a trim afterwards, which on a keyset page would
+// return a short page still carrying a next-page token (R-06).
+//
+// Both arms read through querier(ctx), the REQUEST-PINNED connection — see its comment for why the
+// bare pool is wrong here, and what the live run showed when this shipped with it.
+func (s *Service) ListEnrollmentRegister(ctx context.Context, subjectPersonID string, f domain.EnrollmentFilter, after string, pageSize int) ([]domain.Enrollment, error) {
+	return s.newRepo(s.querier(ctx)).ListEnrollments(ctx, subjectPersonID, f, after, clampPageSize(pageSize)+1)
+}
+
+// EnrollmentStats answers the enrollment dashboard. It takes BOTH the subject and the admin flag
+// rather than deriving one from the other: stats.Compute owns the arm convention, so a machine
+// principal (no subject, not an admin) reads nothing rather than everything.
+func (s *Service) EnrollmentStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.EnrollmentFilter, sel stats.Selection) (stats.Result, error) {
+	repo := s.newRepo(s.querier(ctx))
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
+		return repo.EnrollmentStats(ctx, subject, f, sel)
+	})
+}
+
+// querier returns the REQUEST-PINNED connection when there is one, falling back to the pool.
+//
+// `person_education_enrollments` carries no RLS policy of its own — but the holder read scope probes
+// `membership_memberships`, which does (migration 0005), so the same rule binds that binds the
+// document module's holder semi-join. On an unpinned connection the app.* GUCs are unset,
+// authz_unit_in_reach matches nothing, and the endpoint answers 200 with an EMPTY page to a caller
+// entitled to every row — which reads as "no results" rather than as a fault.
+//
+// This is not hypothetical here: M58 ticket 7 shipped the list on `s.pool` and the LIVE run is what
+// caught it (the insider saw 0 enrollments where SQL with the GUC set returns 14). The integration
+// suite cannot catch it — it connects as a superuser and bypasses RLS — which is why
+// internal/platform/db's source guard now names this module too.
+func (s *Service) querier(ctx context.Context) db.Querier {
+	return db.RequestQuerier(ctx, s.pool)
+}
+
 func (s *Service) CreateEnrollment(ctx context.Context, personID string, in domain.EnrollmentInput) (domain.Enrollment, error) {
 	if err := in.Validate(); err != nil {
 		return domain.Enrollment{}, err

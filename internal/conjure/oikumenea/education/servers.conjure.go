@@ -83,7 +83,43 @@ type EducationService interface {
 	EndAppointment(ctx context.Context, authHeader bearertoken.Token, appointmentIdArg string, requestArg EndAppointmentRequest) (Appointment, error)
 	// Read-only list of the education positions a person holds, enriched with title + institution.
 	ListPersonAppointments(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (PersonAppointmentList, error)
-	ListEnrollments(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (EnrollmentList, error)
+	/*
+	   The enrollments ONE named person holds. Renamed from `listEnrollments` in M58 ticket 7 when
+	   the top-level browse below took that name — the HTTP path is unchanged, and the sibling
+	   `listPersonAppointments` already used this shape.
+
+	   Holder-scoped (D-PersonReadScope): a caller who may not read this person gets an EMPTY list
+	   rather than a 403, because a permission error would confirm the person exists.
+	*/
+	ListPersonEnrollments(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (EnrollmentList, error)
+	/*
+	   Browse the enrollment register, token-paginated, optionally filtered by the facet vocabulary
+	   (M58 ticket 7 / D-ObjectFacets). Gated by education.read.
+
+	   Until M58 ticket 7 an enrollment could be reached only one person at a time, so the
+	   population could be interrogated and never described. This endpoint is the browse mode, and
+	   it is HOLDER-SCOPED in SQL: an instance admin sees every enrollment, and everyone else sees
+	   the enrollments of people they may read (D-PersonReadScope — the holder holds an active
+	   membership in a unit of the caller's reach). The scope is part of the query rather than a
+	   filter over the page, because trimming a keyset page after it is cut returns a short page
+	   with a next-page token still attached (R-06).
+
+	   Every filter arg here is also an arg of `enrollmentStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListEnrollments(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string, pageSizeArg *int, pageTokenArg *string) (EnrollmentPage, error)
+	/*
+	   Facet distributions over the enrollment register — the dashboard half of the enrollment
+	   facet vocabulary (M58 ticket 7 / D-ObjectFacets). Takes exactly the filter args
+	   `listEnrollments` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/enrollments` rather than `/enrollments/stats` because the server's
+	   router rejects a literal path segment that is a sibling of a path parameter — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	EnrollmentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string) (EnrollmentStats, error)
 	CreateEnrollment(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertEnrollmentRequest) (Enrollment, error)
 	UpdateEnrollment(ctx context.Context, authHeader bearertoken.Token, personIdArg string, enrollmentIdArg string, requestArg UpsertEnrollmentRequest) (Enrollment, error)
 	DeleteEnrollment(ctx context.Context, authHeader bearertoken.Token, personIdArg string, enrollmentIdArg string) error
@@ -199,8 +235,14 @@ func RegisterRoutesEducationService(router wrouter.Router, impl EducationService
 	if err := resource.Get("ListPersonAppointments", "/education/v1/persons/{personId}/appointments", httpserver.NewJSONHandler(handler.HandleListPersonAppointments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPersonAppointments route")
 	}
-	if err := resource.Get("ListEnrollments", "/education/v1/persons/{personId}/enrollments", httpserver.NewJSONHandler(handler.HandleListEnrollments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+	if err := resource.Get("ListPersonEnrollments", "/education/v1/persons/{personId}/enrollments", httpserver.NewJSONHandler(handler.HandleListPersonEnrollments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPersonEnrollments route")
+	}
+	if err := resource.Get("ListEnrollments", "/education/v1/enrollments", httpserver.NewJSONHandler(handler.HandleListEnrollments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEnrollments route")
+	}
+	if err := resource.Get("EnrollmentStats", "/education/v1/stats/enrollments", httpserver.NewJSONHandler(handler.HandleEnrollmentStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add enrollmentStats route")
 	}
 	if err := resource.Post("CreateEnrollment", "/education/v1/persons/{personId}/enrollments", httpserver.NewJSONHandler(handler.HandleCreateEnrollment, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createEnrollment route")
@@ -1016,7 +1058,7 @@ func (e *educationServiceHandler) HandleListPersonAppointments(rw http.ResponseW
 	return codecs.JSON.Encode(rw, respArg)
 }
 
-func (e *educationServiceHandler) HandleListEnrollments(rw http.ResponseWriter, req *http.Request) error {
+func (e *educationServiceHandler) HandleListPersonEnrollments(rw http.ResponseWriter, req *http.Request) error {
 	authHeader, err := httpserver.ParseBearerTokenHeader(req)
 	if err != nil {
 		return errors.WrapWithPermissionDenied(err)
@@ -1029,7 +1071,131 @@ func (e *educationServiceHandler) HandleListEnrollments(rw http.ResponseWriter, 
 	if !ok {
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
 	}
-	respArg, err := e.impl.ListEnrollments(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	respArg, err := e.impl.ListPersonEnrollments(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (e *educationServiceHandler) HandleListEnrollments(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var institutionIdArg *string
+	if institutionIdArgStr := req.URL.Query().Get("institutionId"); institutionIdArgStr != "" {
+		institutionIdArgInternal := institutionIdArgStr
+		institutionIdArg = &institutionIdArgInternal
+	}
+	var programIdArg *string
+	if programIdArgStr := req.URL.Query().Get("programId"); programIdArgStr != "" {
+		programIdArgInternal := programIdArgStr
+		programIdArg = &programIdArgInternal
+	}
+	var unitIdArg *string
+	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
+		unitIdArgInternal := unitIdArgStr
+		unitIdArg = &unitIdArgInternal
+	}
+	var groupIdArg *string
+	if groupIdArgStr := req.URL.Query().Get("groupId"); groupIdArgStr != "" {
+		groupIdArgInternal := groupIdArgStr
+		groupIdArg = &groupIdArgInternal
+	}
+	var degreeLevelIdArg *string
+	if degreeLevelIdArgStr := req.URL.Query().Get("degreeLevelId"); degreeLevelIdArgStr != "" {
+		degreeLevelIdArgInternal := degreeLevelIdArgStr
+		degreeLevelIdArg = &degreeLevelIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var effectiveFromFromArg *string
+	if effectiveFromFromArgStr := req.URL.Query().Get("effectiveFromFrom"); effectiveFromFromArgStr != "" {
+		effectiveFromFromArgInternal := effectiveFromFromArgStr
+		effectiveFromFromArg = &effectiveFromFromArgInternal
+	}
+	var effectiveFromToArg *string
+	if effectiveFromToArgStr := req.URL.Query().Get("effectiveFromTo"); effectiveFromToArgStr != "" {
+		effectiveFromToArgInternal := effectiveFromToArgStr
+		effectiveFromToArg = &effectiveFromToArgInternal
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := e.impl.ListEnrollments(req.Context(), bearertoken.Token(authHeader), institutionIdArg, programIdArg, unitIdArg, groupIdArg, degreeLevelIdArg, statusArg, effectiveFromFromArg, effectiveFromToArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (e *educationServiceHandler) HandleEnrollmentStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var institutionIdArg *string
+	if institutionIdArgStr := req.URL.Query().Get("institutionId"); institutionIdArgStr != "" {
+		institutionIdArgInternal := institutionIdArgStr
+		institutionIdArg = &institutionIdArgInternal
+	}
+	var programIdArg *string
+	if programIdArgStr := req.URL.Query().Get("programId"); programIdArgStr != "" {
+		programIdArgInternal := programIdArgStr
+		programIdArg = &programIdArgInternal
+	}
+	var unitIdArg *string
+	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
+		unitIdArgInternal := unitIdArgStr
+		unitIdArg = &unitIdArgInternal
+	}
+	var groupIdArg *string
+	if groupIdArgStr := req.URL.Query().Get("groupId"); groupIdArgStr != "" {
+		groupIdArgInternal := groupIdArgStr
+		groupIdArg = &groupIdArgInternal
+	}
+	var degreeLevelIdArg *string
+	if degreeLevelIdArgStr := req.URL.Query().Get("degreeLevelId"); degreeLevelIdArgStr != "" {
+		degreeLevelIdArgInternal := degreeLevelIdArgStr
+		degreeLevelIdArg = &degreeLevelIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var effectiveFromFromArg *string
+	if effectiveFromFromArgStr := req.URL.Query().Get("effectiveFromFrom"); effectiveFromFromArgStr != "" {
+		effectiveFromFromArgInternal := effectiveFromFromArgStr
+		effectiveFromFromArg = &effectiveFromFromArgInternal
+	}
+	var effectiveFromToArg *string
+	if effectiveFromToArgStr := req.URL.Query().Get("effectiveFromTo"); effectiveFromToArgStr != "" {
+		effectiveFromToArgInternal := effectiveFromToArgStr
+		effectiveFromToArg = &effectiveFromToArgInternal
+	}
+	respArg, err := e.impl.EnrollmentStats(req.Context(), bearertoken.Token(authHeader), facetsArg, institutionIdArg, programIdArg, unitIdArg, groupIdArg, degreeLevelIdArg, statusArg, effectiveFromFromArg, effectiveFromToArg)
 	if err != nil {
 		return err
 	}

@@ -311,6 +311,13 @@ func (s EducationService) ListPersonAppointments(ctx context.Context, token bear
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return educationapi.PersonAppointmentList{}, err
 	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationapi.PersonAppointmentList{}, s.mapError(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationapi.PersonAppointmentList{Appointments: []educationapi.PersonAppointment{}}, nil
+	}
 	rows, err := s.app.ListPersonAppointments(ctx, personID)
 	if err != nil {
 		return educationapi.PersonAppointmentList{}, s.mapError(ctx, err)

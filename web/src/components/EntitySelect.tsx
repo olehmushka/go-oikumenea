@@ -50,7 +50,8 @@ export type EntityKind =
   | "industryClass"
   | "institutionKind"
   | "locationType"
-  | "graph";
+  | "graph"
+  | "degreeLevel";
 
 type Option = { id: string; label: string; hint?: string };
 
@@ -326,6 +327,19 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
       id: str(k.id) ?? "",
       label: pickLabel(map(k.name), locale) || str(k.code) || str(k.id) || "",
       hint: str(k.code),
+    }),
+  },
+  // M58 ticket 7. The ISCED 2011 scale — nine migration-seeded rows, so one page is the whole
+  // catalog and no search param is needed or offered. The dropdown lists them in the order the
+  // endpoint returns (sort_order), which is the same order the dashboard's bars carry; a picker that
+  // sorted alphabetically would put "Bachelor" above "Primary" and read as nonsense.
+  degreeLevel: {
+    path: "/education/v1/degree-levels",
+    pick: (d) => (d as { degreeLevels?: unknown[] })?.degreeLevels ?? [],
+    toOption: (l, locale) => ({
+      id: str(l.id) ?? "",
+      label: pickLabel(map(l.name), locale) || str(l.code) || str(l.id) || "",
+      hint: str(l.code),
     }),
   },
   cardNetwork: {

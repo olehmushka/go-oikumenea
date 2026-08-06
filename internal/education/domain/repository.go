@@ -64,6 +64,14 @@ type Repository interface {
 	UpdateEnrollment(ctx context.Context, personID, id string, in EnrollmentInput) (Enrollment, error)
 	SoftDeleteEnrollment(ctx context.Context, personID, id string) (int64, error)
 	ListEnrollmentsByPerson(ctx context.Context, personID string) ([]Enrollment, error)
+	// ListEnrollments pages the whole register under the facet filter block (M58 ticket 7).
+	// subjectPersonID empty is the INSTANCE-ADMIN arm; otherwise the rows are trimmed to the
+	// enrollments of holders the subject may read (D-PersonReadScope), IN SQL — the adapter picks the
+	// sparse or dense reach shape, which is invisible from here on purpose.
+	ListEnrollments(ctx context.Context, subjectPersonID string, f EnrollmentFilter, after string, lim int) ([]Enrollment, error)
+	// EnrollmentStats is the dashboard aggregate over the SAME candidate set ListEnrollments pages
+	// under the same filter, with the same holder scope folded in.
+	EnrollmentStats(ctx context.Context, subjectPersonID string, f EnrollmentFilter, sel stats.Selection) ([]stats.Group, error)
 	InsertDormitoryStay(ctx context.Context, personID string, in DormInput) (DormitoryStay, error)
 	GetDormitoryStay(ctx context.Context, personID, id string) (DormitoryStay, error)
 	UpdateDormitoryStay(ctx context.Context, personID, id string, in DormInput) (DormitoryStay, error)

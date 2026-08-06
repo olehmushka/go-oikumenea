@@ -254,6 +254,28 @@ var assignmentFacetNargs = map[string][]string{
 	"graphId":         {"graph_id"},
 }
 
+// enrollmentFilterQueries: five, the same five assignment has and for the same reasons — three list
+// shapes (admin / sparse reach / dense reach) and two aggregate arms (admin / holder-scoped, set form
+// only). The reach here goes through the HOLDER rather than a unit column (D-PersonReadScope), which
+// changes the predicate and not the plan-shape count.
+var enrollmentFilterQueries = []struct{ module, query string }{
+	{"education", "ListEnrollmentsPage"},
+	{"education", "ListEnrollmentsPageForSubject"},
+	{"education", "ListEnrollmentsPageForSubjectDense"},
+	{"education", "EnrollmentStats"},
+	{"education", "EnrollmentStatsForSubject"},
+}
+
+var enrollmentFacetNargs = map[string][]string{
+	"institutionId": {"institution_id"},
+	"programId":     {"program_id"},
+	"unitId":        {"unit_id"},
+	"groupId":       {"group_id"},
+	"degreeLevelId": {"degree_level_id"},
+	"status":        {"status"},
+	"effectiveFrom": {"effective_from_from", "effective_from_to"},
+}
+
 var nargRe = regexp.MustCompile(`sqlc\.narg\('([a-z_][a-z0-9_]*)'\)`)
 
 func TestPersonFacetNargsAppearInEveryQuery(t *testing.T) {
@@ -304,6 +326,10 @@ func TestAssignmentFacetNargsAppearInEveryQuery(t *testing.T) {
 	assertFacetNargParity(t, "link__has_role", assignmentFilterQueries, assignmentFacetNargs)
 }
 
+func TestEnrollmentFacetNargsAppearInEveryQuery(t *testing.T) {
+	assertFacetNargParity(t, "link__studied_at", enrollmentFilterQueries, enrollmentFacetNargs)
+}
+
 // TestEveryRegisteredTypeHasANargGroup closes the hole the per-type tests above leave: a NEW facet
 // block added to the catalog with no entry here would simply go unchecked, and the guard would stay
 // green while the drift it exists to catch went unpoliced. Registering a type is therefore a
@@ -313,7 +339,7 @@ func TestEveryRegisteredTypeHasANargGroup(t *testing.T) {
 		"person": true, "unit": true, "link__member_of": true, "order": true, "document": true,
 		"audit": true, "organization": true, "languoid": true,
 		"company": true, "institution": true,
-		"location": true, "link__has_role": true,
+		"location": true, "link__has_role": true, "link__studied_at": true,
 	}
 	// A raw-pgx module has no queries/*.sql for narg parity to read, so the SAME invariant — the list
 	// and the stats path apply one predicate — is proven in rawpgx_test.go by an AST check that both

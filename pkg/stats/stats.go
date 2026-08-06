@@ -334,9 +334,65 @@ func bucketsFor(f facet.Facet, groups []Group) []Bucket {
 		return chronologicalBuckets(f, groups)
 	case facet.StrategyTopN:
 		return topNBuckets(f, groups)
+	case facet.StrategyCatalog:
+		return catalogBuckets(f, groups)
 	default:
 		return []Bucket{}
 	}
+}
+
+// catalogBuckets orders a ref facet's buckets by the CATALOG's own ordinal and emits no `(other)` —
+// the two things that separate it from topN (M58 ticket 7).
+//
+// Where topNBuckets prefers an ordinal when every row happens to carry one, here the ordinal is the
+// whole point, so a row arriving without one is a query that failed to join its catalog: it sorts
+// last rather than silently re-sorting the scale by frequency, which is the exact failure the
+// strategy exists to prevent.
+//
+// The ZERO-COUNT levels come from the SQL, not from here: this package cannot enumerate a catalog it
+// has never read, so the module's aggregate LEFT JOINs CatalogTable and a guard asserts it does. That
+// is why there is no zero-fill loop in the shape identityBuckets has — the declared value set for an
+// enum lives in the catalog declaration, and for this strategy it lives in a table.
+func catalogBuckets(f facet.Facet, groups []Group) []Bucket {
+	type row struct {
+		key   string
+		ord   *int64
+		count int64
+	}
+	var rows []row
+	var unknown int64
+	var sawUnknown bool
+	for _, g := range groups {
+		switch {
+		case g.Key == nil, g.Key != nil && *g.Key == BucketUnknown:
+			unknown += g.Count
+			sawUnknown = true
+		default:
+			rows = append(rows, row{key: *g.Key, ord: g.Ord, count: g.Count})
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		switch {
+		case rows[i].ord == nil && rows[j].ord == nil:
+			return rows[i].key < rows[j].key
+		case rows[i].ord == nil:
+			return false // an unordered row is a join that did not happen — pin it after the scale
+		case rows[j].ord == nil:
+			return true
+		case *rows[i].ord != *rows[j].ord:
+			return *rows[i].ord < *rows[j].ord
+		default:
+			return rows[i].key < rows[j].key
+		}
+	})
+	out := make([]Bucket, 0, len(rows)+1)
+	for _, r := range rows {
+		out = append(out, Bucket{Key: r.key, Count: r.count})
+	}
+	if sawUnknown || f.Buckets.IncludeUnknown {
+		out = append(out, Bucket{Key: BucketUnknown, Count: unknown})
+	}
+	return out
 }
 
 // identityBuckets emits one bucket per declared value, IN CHART ORDER and zero-filled, so a chart's

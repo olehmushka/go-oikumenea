@@ -119,9 +119,9 @@ type Config struct {
 // Claims is the minimal verified projection the middleware needs: the federation key (issuer,
 // subject), the optional asserted email, and the optional JIT claim value.
 type Claims struct {
-	Issuer   string
-	Subject  string
-	Email    string
+	Issuer  string
+	Subject string
+	Email   string
 	// EmailVerified is the `email_verified` claim. It is load-bearing ONLY for D-JIT's attribute arm:
 	// matching an unverified address would let anyone able to assert someone else's email at the IdP
 	// claim their account, so that arm requires it to be present AND true (fail-closed).

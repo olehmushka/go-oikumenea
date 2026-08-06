@@ -23,13 +23,32 @@ import (
 
 // ReferenceService adapts *application.Service to educationrefapi.EducationReferenceService.
 type ReferenceService struct {
-	app *application.Service
-	pep *pep.Enforcer
+	app    *application.Service
+	pep    *pep.Enforcer
+	person PersonReader
 }
 
 // NewReferenceService builds the reference transport adapter over the education application service.
-func NewReferenceService(app *application.Service, enforcer *pep.Enforcer) ReferenceService {
-	return ReferenceService{app: app, pep: enforcer}
+// The person reader answers the holder read scope for the six person-binding reads below (M58 ticket
+// 7) — see EducationService.holderReadable for why every one of them needs it.
+func NewReferenceService(app *application.Service, enforcer *pep.Enforcer, person PersonReader) ReferenceService {
+	return ReferenceService{app: app, pep: enforcer, person: person}
+}
+
+// holderReadable is the ReferenceService's copy of the EducationService probe: instance admins pass,
+// everyone else is answered by the person reader (D-PersonReadScope). Duplicated as a two-line method
+// rather than shared through a base struct, because the two transports are separate generated
+// interfaces and a shared embedded helper would make the gate easy to inherit without choosing it —
+// the same reasoning that made gateOrgs a sibling of gateUnits rather than a flag on it (ticket 4).
+func (s ReferenceService) holderReadable(ctx context.Context, personID string) (bool, error) {
+	subject, isAdmin, err := s.pep.SubjectAuthority(ctx)
+	if err != nil {
+		return false, err
+	}
+	if isAdmin {
+		return true, nil
+	}
+	return s.person.ReadablePerson(ctx, subject, personID)
 }
 
 var _ educationrefapi.EducationReferenceService = ReferenceService{}
@@ -835,6 +854,13 @@ func (s ReferenceService) ListPublicationAuthorships(ctx context.Context, t bear
 	if err := s.pep.RequireAnywhere(ctx, t, refReadPerm); err != nil {
 		return educationrefapi.PublicationAuthorshipList{}, err
 	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationrefapi.PublicationAuthorshipList{}, s.err(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationrefapi.PublicationAuthorshipList{Authorships: []educationrefapi.PublicationAuthorship{}}, nil
+	}
 	rows, err := s.app.ListPublicationAuthorships(ctx, personID)
 	if err != nil {
 		return educationrefapi.PublicationAuthorshipList{}, s.err(ctx, err)
@@ -880,6 +906,13 @@ func (s ReferenceService) DeletePublicationAuthorship(ctx context.Context, t bea
 func (s ReferenceService) ListResearchMemberships(ctx context.Context, t bearertoken.Token, personID string) (educationrefapi.ResearchMembershipList, error) {
 	if err := s.pep.RequireAnywhere(ctx, t, refReadPerm); err != nil {
 		return educationrefapi.ResearchMembershipList{}, err
+	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationrefapi.ResearchMembershipList{}, s.err(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationrefapi.ResearchMembershipList{Memberships: []educationrefapi.ResearchMembership{}}, nil
 	}
 	rows, err := s.app.ListResearchMemberships(ctx, personID)
 	if err != nil {
@@ -927,6 +960,13 @@ func (s ReferenceService) ListGrantHoldings(ctx context.Context, t bearertoken.T
 	if err := s.pep.RequireAnywhere(ctx, t, refReadPerm); err != nil {
 		return educationrefapi.GrantHoldingList{}, err
 	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationrefapi.GrantHoldingList{}, s.err(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationrefapi.GrantHoldingList{Holdings: []educationrefapi.GrantHolding{}}, nil
+	}
 	rows, err := s.app.ListGrantHoldings(ctx, personID)
 	if err != nil {
 		return educationrefapi.GrantHoldingList{}, s.err(ctx, err)
@@ -972,6 +1012,13 @@ func (s ReferenceService) DeleteGrantHolding(ctx context.Context, t bearertoken.
 func (s ReferenceService) ListGovernanceMemberships(ctx context.Context, t bearertoken.Token, personID string) (educationrefapi.GovernanceMembershipList, error) {
 	if err := s.pep.RequireAnywhere(ctx, t, refReadPerm); err != nil {
 		return educationrefapi.GovernanceMembershipList{}, err
+	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationrefapi.GovernanceMembershipList{}, s.err(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationrefapi.GovernanceMembershipList{Memberships: []educationrefapi.GovernanceMembership{}}, nil
 	}
 	rows, err := s.app.ListGovernanceMemberships(ctx, personID)
 	if err != nil {
@@ -1019,6 +1066,13 @@ func (s ReferenceService) ListQualificationAwards(ctx context.Context, t bearert
 	if err := s.pep.RequireAnywhere(ctx, t, refReadPerm); err != nil {
 		return educationrefapi.QualificationAwardList{}, err
 	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationrefapi.QualificationAwardList{}, s.err(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationrefapi.QualificationAwardList{Awards: []educationrefapi.QualificationAward{}}, nil
+	}
 	rows, err := s.app.ListQualificationAwards(ctx, personID)
 	if err != nil {
 		return educationrefapi.QualificationAwardList{}, s.err(ctx, err)
@@ -1064,6 +1118,13 @@ func (s ReferenceService) DeleteQualificationAward(ctx context.Context, t bearer
 func (s ReferenceService) ListScholarshipAwards(ctx context.Context, t bearertoken.Token, personID string) (educationrefapi.ScholarshipAwardList, error) {
 	if err := s.pep.RequireAnywhere(ctx, t, refReadPerm); err != nil {
 		return educationrefapi.ScholarshipAwardList{}, err
+	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationrefapi.ScholarshipAwardList{}, s.err(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationrefapi.ScholarshipAwardList{Awards: []educationrefapi.ScholarshipAward{}}, nil
 	}
 	rows, err := s.app.ListScholarshipAwards(ctx, personID)
 	if err != nil {
