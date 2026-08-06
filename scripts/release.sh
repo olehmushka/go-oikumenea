@@ -161,18 +161,33 @@ docker_logged_in() {
 # committed sources no longer match the contract ships wrong types to every consumer, and it is
 # invisible: the package builds, type-checks and imports cleanly — it is simply describing an API the
 # server does not serve. The generators both have a --verify mode for exactly this.
+#
+# A FAILED CHECK IS NOT A VERDICT. Both generators exit non-zero for two very different reasons — the
+# output differs from the contract, or the generator could not run at all — and reporting the second
+# as the first sends you off to run `make sdk`, which fails the same way and explains nothing. That
+# is exactly what happened when a `clients/go/v0.1.0` tag broke godel's version derivation: the
+# release said "the generated TypeScript SDK is STALE" about an SDK that was perfectly current.
+#
+# So the output is captured and shown. Distinguishing the two automatically is not worth it — the
+# generators' own messages are clear once you can see them.
 verify_generated_matches_contract() {
-  local which="$1"
+  local which="$1" out rc
   case "$which" in
     go)
       say "checking the Go mirrors against api/*.conjure.yml…"
-      scripts/gen-action-params.sh --verify >/dev/null \
-        || die "the IR-derived Go mirrors are STALE — run scripts/gen-action-params.sh and commit before releasing."
+      out="$(scripts/gen-action-params.sh --verify 2>&1)"; rc=$?
+      [[ $rc -eq 0 ]] || die "the Go mirror check FAILED (exit $rc). Either the mirrors are stale — run
+       scripts/gen-action-params.sh and commit — or the generator itself could not run. Its output:
+
+$out"
       ;;
     ts)
       say "checking clients/typescript/src/generated against api/*.conjure.yml…"
-      scripts/gen-ts-client.sh --verify >/dev/null \
-        || die "the generated TypeScript SDK is STALE — run 'make sdk' and commit before releasing."
+      out="$(scripts/gen-ts-client.sh --verify 2>&1)"; rc=$?
+      [[ $rc -eq 0 ]] || die "the TypeScript SDK check FAILED (exit $rc). Either the generated sources are
+       stale — run 'make sdk' and commit — or the generator itself could not run. Its output:
+
+$out"
       ;;
   esac
 }

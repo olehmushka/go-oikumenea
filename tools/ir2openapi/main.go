@@ -122,6 +122,26 @@ func extractIR(godelw string) ([]byte, error) {
 	cmd := exec.Command(godelw, "conjure-publish",
 		"--group-id", "local.openapi.gen", "--no-pom",
 		"--repository", "local", "--url", fmt.Sprintf("http://127.0.0.1:%d", port))
+	// GIT_DIR is pointed at nothing on purpose, and it is load-bearing.
+	//
+	// godel derives the product VERSION from `git describe --tags` and puts it in the publish path.
+	// This repo's Go SDK is a nested module, so Go requires its tags to be named `clients/go/vX.Y.Z`
+	// — a version string containing SLASHES. The moment the first such tag existed, godel began
+	// building a path out of it and publishing failed:
+	//
+	//   open /tmp/…/conjure-platform/platform/clients/go/v0.1.0/platform/platform-clients/go/v0.1.0.conjure.json:
+	//   no such file or directory
+	//
+	// …which surfaced here as the far less helpful "godel published no IR (stderr: )", and broke
+	// EVERY IR-derived generator at once: this tool, gen-ts-client.sh, gen-action-params.sh, their
+	// drift guards, and `make openapi`.
+	//
+	// The version is meaningless in this context — nothing is really published; conjure-publish is
+	// only being used to make godel hand over the IR, and the "repository" is a throwaway HTTP server
+	// a few lines above. So the fix is to deny godel a git repo to derive from, which makes it report
+	// `unspecified` and use a path with no slashes in it. Scoped to this subprocess: the parent
+	// process's git is untouched, and no tag has to be renamed to suit a build tool.
+	cmd.Env = append(os.Environ(), "GIT_DIR=/nonexistent-ir2openapi-version-shim")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	// conjure-publish exits non-zero on the checksum step; ignore the error and rely on the capture.
