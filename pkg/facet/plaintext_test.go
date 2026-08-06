@@ -30,7 +30,14 @@ import (
 var (
 	createRe  = regexp.MustCompile(`CREATE TABLE (?:IF NOT EXISTS )?(oikumenea\.[a-z_]+)`)
 	columnRe  = regexp.MustCompile(`^\s{2,}([a-z_][a-z0-9_]*)\s+([a-z]}?[a-z0-9_ ()]*)`)
-	commentRe = regexp.MustCompile(`COMMENT ON COLUMN (oikumenea\.[a-z_]+)\.([a-z_][a-z0-9_]*) IS '([a-z:]+)'`)
+	// ` +IS`, not ` IS`: a migration may ALIGN a block of COMMENT ON COLUMN statements (0011's
+	// authz_unit_org does), and a single-space pattern silently skips every aligned line. That is not
+	// cosmetic — an unparsed comment reads as "no classification", so an aligned pii:special column
+	// would be INVISIBLE to TestNoSpecialCategoryColumnIsFaceted's contrapositive sweep while the
+	// sweep's non-vacuity floor still passed on the 500-odd columns it did see. 11 columns were being
+	// skipped when this was found (M59); none was pii:special, so nothing had slipped through — the
+	// sweep was correct by luck rather than by construction, which is the state a guard must not be in.
+	commentRe = regexp.MustCompile(`COMMENT ON COLUMN (oikumenea\.[a-z_]+)\.([a-z_][a-z0-9_]*) +IS '([a-z:]+)'`)
 	// The envelope-encryption artefact suffixes actually used in migrations/ (`wrapped_dek` appears
 	// both bare and prefixed). A facet may never name one of these regardless of its declared tier.
 	cipherRe = regexp.MustCompile(`(^|_)(ciphertext|blind_index|bidx|wrapped_dek)$`)

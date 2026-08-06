@@ -143,12 +143,14 @@ func (r *Repository) MembershipStats(ctx context.Context, subjectPersonID string
 		rows, err := r.q.MembershipStatsForSubject(ctx, membershipsql.MembershipStatsForSubjectParams{
 			SubjectPersonID:     subjectPersonID,
 			UnitID:              fa.unitID,
+			OrgID:               fa.orgID,
 			PersonID:            fa.personID,
 			PositionID:          fa.positionID,
 			Status:              fa.status,
 			EffectiveFromAfter:  fa.effectiveFromAfter,
 			EffectiveFromBefore: fa.effectiveFromBefore,
 			WantUnitID:          w.unitID,
+			WantOrg:             w.org,
 			WantPersonID:        w.personID,
 			WantPositionID:      w.positionID,
 			WantStatus:          w.status,
@@ -166,12 +168,14 @@ func (r *Repository) MembershipStats(ctx context.Context, subjectPersonID string
 	}
 	rows, err := r.q.MembershipStats(ctx, membershipsql.MembershipStatsParams{
 		UnitID:              fa.unitID,
+		OrgID:               fa.orgID,
 		PersonID:            fa.personID,
 		PositionID:          fa.positionID,
 		Status:              fa.status,
 		EffectiveFromAfter:  fa.effectiveFromAfter,
 		EffectiveFromBefore: fa.effectiveFromBefore,
 		WantUnitID:          w.unitID,
+		WantOrg:             w.org,
 		WantPersonID:        w.personID,
 		WantPositionID:      w.positionID,
 		WantStatus:          w.status,
@@ -191,13 +195,14 @@ func (r *Repository) MembershipStats(ctx context.Context, subjectPersonID string
 // membershipStatsWantFlags is one selection projected onto the per-branch flags the query binds; an
 // unselected facet's branch is skipped by the planner, not merely dropped from the response.
 type membershipStatsWantFlags struct {
-	unitID, personID, positionID, status, effectiveFrom bool
-	topN                                                int32
+	unitID, org, personID, positionID, status, effectiveFrom bool
+	topN                                                     int32
 }
 
 func membershipStatsWants(sel stats.Selection) membershipStatsWantFlags {
 	return membershipStatsWantFlags{
 		unitID:        sel.Wants("unitId"),
+		org:           sel.Wants("org"),
 		personID:      sel.Wants("personId"),
 		positionID:    sel.Wants("positionId"),
 		status:        sel.Wants("status"),

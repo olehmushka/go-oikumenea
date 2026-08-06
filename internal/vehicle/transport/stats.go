@@ -40,6 +40,9 @@ func (s VehicleService) VehicleStats(
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return vehicleapi.VehicleStats{}, err
 	}
+	if err := s.requireFilterCodes(ctx, token, map[string]bool{"registrationCountry": registrationCountry != nil}); err != nil {
+		return vehicleapi.VehicleStats{}, err
+	}
 	sel, err := selectVehicleFacets(ctx, s, token, strOr(facets))
 	if err != nil {
 		return vehicleapi.VehicleStats{}, err
@@ -53,6 +56,28 @@ func (s VehicleService) VehicleStats(
 		TotalCount: int(res.TotalCount),
 		Facets:     toAPIVehicleDistributions(res),
 	}, nil
+}
+
+// requireFilterCodes enforces the LIST side of D-ObjectFacets rule 2 (M59): a gated facet's filter arg
+// may be USED only by a caller holding the facet's own read code. facet.FilterReadCodes decides WHICH
+// codes a request needs — pure and catalog-driven, so gating a facet in the catalog covers both
+// endpoints here at once — and the existing PEP produces this module's own 403.
+//
+// registrationCountry is the case it was written for: the country lives on vehicle_registrations, a
+// link whose own endpoints require vehicle.registration.read, so a vehicle.read caller filtering by it
+// would recover the gated fact one value at a time. Omitting the arg gates nothing — the fleet list
+// itself is still a plain vehicle.read.
+func (s VehicleService) requireFilterCodes(ctx context.Context, token bearertoken.Token, supplied map[string]bool) error {
+	o, ok := facet.Default.Get("vehicle")
+	if !ok {
+		return nil // unreachable past the boot-time MustBeBound; a missing catalog gates nothing new
+	}
+	for _, code := range o.FilterReadCodes(supplied) {
+		if err := s.pep.RequireAnywhere(ctx, token, code); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // vehicleFilter is the ONE place a request's facet args become the domain filter, shared by the list

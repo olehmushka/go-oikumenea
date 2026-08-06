@@ -47,6 +47,9 @@ var (
 	chartToneRe       = regexp.MustCompile(`\btone: \{([^}]*)\}`)
 	chartToneKeyRe    = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*|"[^"]*")\s*:\s*"[^"]*"`)
 	chartSplitParamRe = regexp.MustCompile(`splitBy: \{ param: "([^"]*)"`)
+	// `source: { path: "…", type: "…", carry: ["a", "b"] }` — the cross-source chart (M59).
+	chartSourceRe      = regexp.MustCompile(`source: \{ path: "([^"]*)", type: "([^"]*)", carry: \[([^\]]*)\] \}`)
+	chartCarryMemberRe = regexp.MustCompile(`"([^"]*)"`)
 )
 
 // dashboardExempt lists registered object types that deliberately ship no dashboard, with the reason.
@@ -62,6 +65,10 @@ type consoleChart struct {
 	facet     string
 	toneKeys  []string
 	splitByOn string
+	// The cross-source declaration (M59), empty for an ordinary chart.
+	sourcePath  string
+	sourceType  string
+	sourceCarry []string
 }
 
 type consoleDashboard struct {
@@ -149,6 +156,18 @@ func parseConsoleCharts(t *testing.T, typeToken, arr string) []consoleChart {
 		if m := chartSplitParamRe.FindStringSubmatch(obj); m != nil {
 			c.splitByOn = m[1]
 		}
+		if m := chartSourceRe.FindStringSubmatch(obj); m != nil {
+			c.sourcePath, c.sourceType = m[1], m[2]
+			for _, q := range chartCarryMemberRe.FindAllStringSubmatch(m[3], -1) {
+				c.sourceCarry = append(c.sourceCarry, q[1])
+			}
+		} else if strings.Contains(obj, "source:") {
+			// The literal moved out of the one shape the regex knows. Loud, because a silently
+			// unparsed source turns every check below into the ORDINARY-chart checks, which would
+			// then demand the facet exist on the HOST type and mislead rather than fail honestly.
+			t.Errorf("%s: %s chart %q declares a `source:` the guard cannot parse — keep it on one line as `source: { path: …, type: …, carry: […] }`",
+				consoleRegistryPath, typeToken, c.key)
+		}
 		if c.key == "" {
 			t.Errorf("%s: %s has a ChartDef with no `key:` — the guard cannot check it", consoleRegistryPath, typeToken)
 			continue
@@ -197,11 +216,53 @@ func compareDashboards(cat []ObjectType, parsed map[string]consoleDashboard, pat
 			}
 			seen[c.key] = true
 
-			f, ok := byKey[c.facet]
+			// A CROSS-SOURCE chart (M59) draws another type's aggregate, so every check below must
+			// be made against THAT type: its facets label the buckets, its stats endpoint answers the
+			// request, and its list is where the segments link. Checking it against the host would
+			// pass a chart that 400s on every load — the host declares no such facet.
+			owner := o
+			ownerKeys := byKey
+			if c.sourceType != "" {
+				src, found := catByType(cat, c.sourceType)
+				if !found {
+					problems = append(problems, fmt.Sprintf(
+						"%s.%s: source type %q is not registered — the chart would fetch an endpoint no catalog describes",
+						o.Type, c.key, c.sourceType))
+					continue
+				}
+				owner = src
+				ownerKeys = map[string]Facet{}
+				for _, sf := range src.Facets {
+					ownerKeys[sf.Key] = sf
+				}
+				if want, known := paths[src.Type]; known && c.sourcePath != want {
+					problems = append(problems, fmt.Sprintf(
+						"%s.%s: source path %q, but the contract serves %s's stats at %q",
+						o.Type, c.key, c.sourcePath, src.Type, want))
+				}
+				// Every carried param must be a real filter arg of BOTH endpoints: of the source,
+				// or the request silently ignores it and the chart counts a wider set than the
+				// dashboard around it claims; and of the host, or the param can never be set on
+				// this page and the carry is dead code that reads as scoping.
+				for _, p := range c.sourceCarry {
+					if !isFacetArg(src, p) {
+						problems = append(problems, fmt.Sprintf(
+							"%s.%s: carries %q, which is not a facet arg of the source type %s — the source would ignore it and the chart would count a WIDER set than this dashboard",
+							o.Type, c.key, p, src.Type))
+					}
+					if !isFacetArg(o, p) {
+						problems = append(problems, fmt.Sprintf(
+							"%s.%s: carries %q, which is not a facet arg of %s — the host dashboard can never set it",
+							o.Type, c.key, p, o.Type))
+					}
+				}
+			}
+
+			f, ok := ownerKeys[c.facet]
 			if !ok {
 				problems = append(problems, fmt.Sprintf(
-					"%s: chart %q draws facet %q, which the catalog does not declare — an undeclared key is a 400 on the WHOLE stats request, so this blanks the dashboard",
-					o.Type, c.key, c.facet))
+					"%s: chart %q draws facet %q, which %s does not declare — an undeclared key is a 400 on the WHOLE stats request, so this blanks the dashboard",
+					o.Type, c.key, c.facet, owner.Type))
 				continue
 			}
 
@@ -223,10 +284,10 @@ func compareDashboards(cat []ObjectType, parsed map[string]consoleDashboard, pat
 
 			// A pyramid fetches one extra request per split value, narrowed by that param. The param
 			// must be a real facet arg or the extra requests silently return the unsplit set.
-			if c.splitByOn != "" && !isFacetArg(o, c.splitByOn) {
+			if c.splitByOn != "" && !isFacetArg(owner, c.splitByOn) {
 				problems = append(problems, fmt.Sprintf(
 					"%s.%s: splitBy param %q is not a facet arg of %s — each wing would be the whole set",
-					o.Type, c.key, c.splitByOn, o.Type))
+					o.Type, c.key, c.splitByOn, owner.Type))
 			}
 		}
 	}
@@ -247,6 +308,15 @@ func compareDashboards(cat []ObjectType, parsed map[string]consoleDashboard, pat
 
 	sort.Strings(problems)
 	return problems
+}
+
+func catByType(cat []ObjectType, typeToken string) (ObjectType, bool) {
+	for _, o := range cat {
+		if o.Type == typeToken {
+			return o, true
+		}
+	}
+	return ObjectType{}, false
 }
 
 func isFacetArg(o ObjectType, arg string) bool {
@@ -454,6 +524,52 @@ func TestDashboardGuardFiresOnAViolation(t *testing.T) {
 			name: "the whole block dropped",
 			dash: map[string]consoleDashboard{},
 			want: "no `dashboard:` block",
+		},
+		// ── the cross-source arm (M59) ──────────────────────────────────────
+		{
+			name: "a sourced chart pointed at a type nobody registers",
+			dash: map[string]consoleDashboard{"person": {
+				path: "/person/v1/stats/persons",
+				charts: []consoleChart{{
+					key: "x", form: "bar", facet: "unitId",
+					sourcePath: "/membership/v1/stats/memberships", sourceType: "link__member_of",
+				}},
+			}},
+			want: "is not registered",
+		},
+		{
+			name: "a sourced chart drawing a facet the SOURCE does not declare",
+			dash: map[string]consoleDashboard{"person": {
+				path: "/person/v1/stats/persons",
+				charts: []consoleChart{{
+					key: "x", form: "bar", facet: "nosuch",
+					sourcePath: "/person/v1/stats/persons", sourceType: "person",
+				}},
+			}},
+			want: "does not declare",
+		},
+		{
+			name: "a sourced chart fetching a path the contract does not serve",
+			dash: map[string]consoleDashboard{"person": {
+				path: "/person/v1/stats/persons",
+				charts: []consoleChart{{
+					key: "x", form: "bar", facet: "sex",
+					sourcePath: "/person/v1/persons/stats", sourceType: "person",
+				}},
+			}},
+			want: "but the contract serves",
+		},
+		{
+			name: "a carried param the source would silently ignore",
+			dash: map[string]consoleDashboard{"person": {
+				path: "/person/v1/stats/persons",
+				charts: []consoleChart{{
+					key: "x", form: "bar", facet: "sex",
+					sourcePath: "/person/v1/stats/persons", sourceType: "person",
+					sourceCarry: []string{"org"},
+				}},
+			}},
+			want: "not a facet arg of the source type",
 		},
 	}
 	for _, tc := range cases {

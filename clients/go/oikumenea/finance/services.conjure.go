@@ -30,7 +30,7 @@ type FinanceServiceClient interface {
 	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `accountStats`. The
 	   IBAN is never listed. Gated by `finance.read`.
 	*/
-	ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
 	/*
 	   Facet distributions over the account registry — the dashboard half of the facet vocabulary
 	   (M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)
@@ -49,7 +49,7 @@ type FinanceServiceClient interface {
 	   The path is `/stats/accounts` rather than `/accounts/stats` because the server's router
 	   rejects a literal path segment that is a sibling of `{accountId}`.
 	*/
-	AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error)
+	AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string) (AccountStats, error)
 	// Returns the account with the decrypted IBAN for authorized callers.
 	GetAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (Account, error)
 	UpdateAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, requestArg UpdateAccountRequest) (Account, error)
@@ -196,7 +196,7 @@ func (c *financeServiceClient) CreateAccount(ctx context.Context, authHeader bea
 	return *returnVal, nil
 }
 
-func (c *financeServiceClient) ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
+func (c *financeServiceClient) ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
 	var returnVal *AccountPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAccounts"))
@@ -214,6 +214,9 @@ func (c *financeServiceClient) ListAccounts(ctx context.Context, authHeader bear
 	}
 	if statusArg != nil {
 		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if holderKindArg != nil {
+		queryParams.Set("holderKind", fmt.Sprint(*holderKindArg))
 	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
@@ -233,7 +236,7 @@ func (c *financeServiceClient) ListAccounts(ctx context.Context, authHeader bear
 	return *returnVal, nil
 }
 
-func (c *financeServiceClient) AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error) {
+func (c *financeServiceClient) AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string) (AccountStats, error) {
 	var returnVal *AccountStats
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("AccountStats"))
@@ -254,6 +257,9 @@ func (c *financeServiceClient) AccountStats(ctx context.Context, authHeader bear
 	}
 	if statusArg != nil {
 		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if holderKindArg != nil {
+		queryParams.Set("holderKind", fmt.Sprint(*holderKindArg))
 	}
 	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
@@ -547,7 +553,7 @@ type FinanceServiceClientWithAuth interface {
 	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `accountStats`. The
 	   IBAN is never listed. Gated by `finance.read`.
 	*/
-	ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
 	/*
 	   Facet distributions over the account registry — the dashboard half of the facet vocabulary
 	   (M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)
@@ -566,7 +572,7 @@ type FinanceServiceClientWithAuth interface {
 	   The path is `/stats/accounts` rather than `/accounts/stats` because the server's router
 	   rejects a literal path segment that is a sibling of `{accountId}`.
 	*/
-	AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error)
+	AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string) (AccountStats, error)
 	// Returns the account with the decrypted IBAN for authorized callers.
 	GetAccount(ctx context.Context, accountIdArg string) (Account, error)
 	UpdateAccount(ctx context.Context, accountIdArg string, requestArg UpdateAccountRequest) (Account, error)
@@ -646,12 +652,12 @@ func (c *financeServiceClientWithAuth) CreateAccount(ctx context.Context, reques
 	return c.client.CreateAccount(ctx, c.authHeader, requestArg)
 }
 
-func (c *financeServiceClientWithAuth) ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
-	return c.client.ListAccounts(ctx, c.authHeader, institutionIdArg, currencyArg, accountTypeIdArg, statusArg, pageSizeArg, pageTokenArg)
+func (c *financeServiceClientWithAuth) ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
+	return c.client.ListAccounts(ctx, c.authHeader, institutionIdArg, currencyArg, accountTypeIdArg, statusArg, holderKindArg, pageSizeArg, pageTokenArg)
 }
 
-func (c *financeServiceClientWithAuth) AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error) {
-	return c.client.AccountStats(ctx, c.authHeader, facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg)
+func (c *financeServiceClientWithAuth) AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string) (AccountStats, error) {
+	return c.client.AccountStats(ctx, c.authHeader, facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg, holderKindArg)
 }
 
 func (c *financeServiceClientWithAuth) GetAccount(ctx context.Context, accountIdArg string) (Account, error) {
@@ -759,20 +765,20 @@ func (c *financeServiceClientWithTokenProvider) CreateAccount(ctx context.Contex
 	return c.client.CreateAccount(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *financeServiceClientWithTokenProvider) ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
+func (c *financeServiceClientWithTokenProvider) ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(AccountPage), err
 	}
-	return c.client.ListAccounts(ctx, bearertoken.Token(token), institutionIdArg, currencyArg, accountTypeIdArg, statusArg, pageSizeArg, pageTokenArg)
+	return c.client.ListAccounts(ctx, bearertoken.Token(token), institutionIdArg, currencyArg, accountTypeIdArg, statusArg, holderKindArg, pageSizeArg, pageTokenArg)
 }
 
-func (c *financeServiceClientWithTokenProvider) AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error) {
+func (c *financeServiceClientWithTokenProvider) AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, holderKindArg *string) (AccountStats, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(AccountStats), err
 	}
-	return c.client.AccountStats(ctx, bearertoken.Token(token), facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg)
+	return c.client.AccountStats(ctx, bearertoken.Token(token), facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg, holderKindArg)
 }
 
 func (c *financeServiceClientWithTokenProvider) GetAccount(ctx context.Context, accountIdArg string) (Account, error) {

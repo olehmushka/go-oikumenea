@@ -157,14 +157,18 @@ func (s FinanceService) ListAccounts(
 	currency *string,
 	accountTypeID *string,
 	status *string,
+	holderKind *string,
 	pageSize *int,
 	pageToken *string,
 ) (financeapi.AccountPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return financeapi.AccountPage{}, err
 	}
+	if err := s.requireFilterCodes(ctx, token, "account", map[string]bool{"holderKind": holderKind != nil}); err != nil {
+		return financeapi.AccountPage{}, err
+	}
 	limit := pageSizeOr(pageSize)
-	rows, err := s.app.ListAccounts(ctx, decodeToken(pageToken), accountFilter(institutionID, currency, accountTypeID, status), limit)
+	rows, err := s.app.ListAccounts(ctx, decodeToken(pageToken), accountFilter(institutionID, currency, accountTypeID, status, holderKind), limit)
 	if err != nil {
 		return financeapi.AccountPage{}, s.mapError(ctx, err)
 	}

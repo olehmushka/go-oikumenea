@@ -22,11 +22,11 @@ import (
 // identical arm dispatch, differing only in aggregating rather than paging. That is not tidiness — a
 // dashboard computed over a different candidate set than its list is a chart that describes rows the
 // list will not return.
-func (s Service) MembershipStats(ctx context.Context, token bearertoken.Token, facets *string, unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore *string) (membershipapi.MembershipStats, error) {
+func (s Service) MembershipStats(ctx context.Context, token bearertoken.Token, facets *string, orgID, unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore *string) (membershipapi.MembershipStats, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermMembershipRead)); err != nil {
 		return membershipapi.MembershipStats{}, err
 	}
-	filter, err := membershipFilter(unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore)
+	filter, err := membershipFilter(orgID, unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore)
 	if err != nil {
 		return membershipapi.MembershipStats{}, s.mapError(ctx, err, errCtx{})
 	}

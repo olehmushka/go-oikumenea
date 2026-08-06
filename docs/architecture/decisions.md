@@ -2831,6 +2831,55 @@ implementation and recorded so the remaining tickets do not re-litigate them:
   needed since M56, made explicit after this ticket shipped the bug and the live run found it
   (M58 ticket 7).
 
+**AMENDED (M59) — rule 2 has a LIST side, and it is deliberately not symmetric with the stats side.**
+Rule 2 above says what a dashboard does with a facet the caller may not read: omit it, never a zeroed
+bucket, never a 403. It never said what a LIST does when that same caller *filters* by it, because
+until M59 no facet carried a code and the question could not arise. It arises now, and only one of the
+three possible answers is honest:
+
+- **Honour it** — the response then answers a question about an attribute the caller may not read.
+  Repeated with different values it is an oracle: binary-searching `registrationCountry` recovers each
+  vehicle's registration country exactly, which is precisely what `vehicle.registration.read` gates.
+- **Ignore it** — the page silently contains rows the caller asked to exclude, and nothing in the
+  response says so. A filter that fails OPEN is the dangerous direction, the same reasoning that makes
+  an unparseable date bound an error rather than a dropped predicate.
+- **Refuse it — 403, naming the code.** It discloses nothing the caller did not already supply, and it
+  is the only answer that is true about what happened.
+
+So a gated facet's **filter arg requires its code**; its **distribution is omitted** without it. The
+asymmetry is the point: a 403 on `/stats` would leak the same bit the omission hides (the request
+merely named a dimension), while a 403 on a filter leaks nothing (the request named a VALUE). The
+decision is which code, and that is data: `ObjectType.FilterReadCodes(supplied)` returns the codes a
+request needs given the args it actually carried, so a newly gated facet is covered by declaration
+alone, and the module's existing PEP produces its own 403.
+
+**AMENDED (M59) — a facet inherits the read code of the SURFACE it reads, not the tier of the column
+it names.** Rule 2's mandatory arm keys on the column's `pii:` tier, which is necessary but not
+sufficient, and M58 ticket 3 shipped the gap: `vehicle.registrationCountry` groups
+`vehicle_registrations.country_id`, a `pii:none` column, so no guard asked for a code — while
+`ListRegistrations` and `ListPersonVehicles` both require `vehicle.registration.read` from a base role
+of their own. A caller with plain `vehicle.read` could therefore group and filter the fleet by
+registration country, deriving one value at a time what those endpoints refuse to return. The tier
+answers "how sensitive is this value"; a cross-table facet also discloses a RELATIONSHIP, and the
+relationship has its own code (D-LinkPermissions). Both gated facets now inherit one
+(`vehicle.registrationCountry` → `vehicle.registration.read`, `account.holderKind` →
+`finance.holder.read`), and a guard holds every facet whose `Table` is a separately-gated surface to
+carrying a code. Rule 2's stats-side and list-side behaviours are otherwise unchanged — this is about
+which facets are *in scope* for them (M59).
+
+**AMENDED (M59) — a dashboard chart may be drawn from ANOTHER module's stats endpoint.** "One endpoint
+per module, so a whole dashboard is one round-trip" holds as the shape and stops being an absolute:
+one catalogued component was never a distribution of the type whose dashboard it belongs to. The unit
+dashboard's headcount-by-unit counts MEMBERSHIPS, so M57 left it unbuilt rather than draw it
+dishonestly — the unit dashboard is org-scoped and `membershipStats` shipped no `org` arg, so the
+chart would have mixed organizations. `ChartDef.source` names the endpoint, the registry type whose
+facets label the buckets and whose LIST the segments link to, and `carry`: an **allowlist** of the host
+dashboard's params that travel with the request. An allowlist rather than the whole filter set,
+because forwarding a filter the source does not ship would silently widen the chart relative to the
+dashboard around it; the build-time guard holds every carried param to being a real arg of BOTH
+endpoints, and the chart's facet to being declared by the SOURCE. The cost is one extra request per
+such chart, paid only by a dashboard that declares one (M59).
+
 The **filter half** of "counts are computed inside the visibility predicate" is now real: one
 `PersonFilter` drives both list paths, folded into the SQL of all five queries, because a Go-side
 re-filter after the page is cut returns a short page with a `nextPageToken` (the R-06 failure). The

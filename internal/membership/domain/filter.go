@@ -37,7 +37,13 @@ type MembershipFilter struct {
 	// UnitID matches the unit EXACTLY — it does NOT expand to the subtree, the opposite of
 	// person.unitId. A membership names the one unit the person belongs to; expanding would
 	// double-count a person against every ancestor.
-	UnitID     *string
+	UnitID *string
+	// OrgID matches the ORGANIZATION of the membership's unit, resolved through the RLS-exempt
+	// authz_unit_org projection (M55, migration 0011) rather than tenant_units — which is RLS-FORCED,
+	// so a semi-join into it from this module's queries would be trimmed by a policy written for unit
+	// reads. It is what lets an org-scoped dashboard (the unit dashboard) draw a membership chart
+	// without mixing organizations.
+	OrgID      *string
 	PersonID   *string
 	PositionID *string
 	Status     *string
@@ -51,7 +57,7 @@ type MembershipFilter struct {
 
 // IsZero reports whether the filter constrains nothing — the plain-listing case.
 func (f MembershipFilter) IsZero() bool {
-	return f.UnitID == nil && f.PersonID == nil && f.PositionID == nil && f.Status == nil &&
+	return f.UnitID == nil && f.OrgID == nil && f.PersonID == nil && f.PositionID == nil && f.Status == nil &&
 		f.EffectiveFromAfter == nil && f.EffectiveFromBefore == nil
 }
 
@@ -71,6 +77,7 @@ func (f MembershipFilter) Validate() error {
 		val *string
 	}{
 		{"unitId", f.UnitID},
+		{"org", f.OrgID},
 		{"personId", f.PersonID},
 		{"positionId", f.PositionID},
 	} {

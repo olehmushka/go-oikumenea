@@ -20,6 +20,7 @@ var listArgs = map[string][]ArgSpec{
 	"account": {
 		{Name: "accountTypeId", Type: "string", Optional: true},
 		{Name: "currency", Type: "string", Optional: true},
+		{Name: "holderKind", Type: "string", Optional: true},
 		{Name: "institutionId", Type: "string", Optional: true},
 		{Name: "pageSize", Type: "integer", Optional: true},
 		{Name: "pageToken", Type: "string", Optional: true},
@@ -113,6 +114,7 @@ var listArgs = map[string][]ArgSpec{
 	"link__member_of": {
 		{Name: "effectiveFromAfter", Type: "string", Optional: true},
 		{Name: "effectiveFromBefore", Type: "string", Optional: true},
+		{Name: "org", Type: "string", Optional: true},
 		{Name: "pageSize", Type: "integer", Optional: true},
 		{Name: "pageToken", Type: "string", Optional: true},
 		{Name: "personId", Type: "string", Optional: true},
@@ -225,6 +227,7 @@ var statsArgs = map[string][]ArgSpec{
 		{Name: "accountTypeId", Type: "string", Optional: true},
 		{Name: "currency", Type: "string", Optional: true},
 		{Name: "facets", Type: "string", Optional: true},
+		{Name: "holderKind", Type: "string", Optional: true},
 		{Name: "institutionId", Type: "string", Optional: true},
 		{Name: "status", Type: "string", Optional: true},
 	},
@@ -307,6 +310,7 @@ var statsArgs = map[string][]ArgSpec{
 		{Name: "effectiveFromAfter", Type: "string", Optional: true},
 		{Name: "effectiveFromBefore", Type: "string", Optional: true},
 		{Name: "facets", Type: "string", Optional: true},
+		{Name: "org", Type: "string", Optional: true},
 		{Name: "personId", Type: "string", Optional: true},
 		{Name: "positionId", Type: "string", Optional: true},
 		{Name: "status", Type: "string", Optional: true},

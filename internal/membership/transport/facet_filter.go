@@ -17,7 +17,7 @@ import (
 // `datetime` is an instant and is deliberately not used for a calendar bound). Every VALUE check
 // lives in MembershipFilter.Validate, run once in the application layer, so the admin and read-scope
 // paths reject identically.
-func membershipFilter(unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore *string) (domain.MembershipFilter, error) {
+func membershipFilter(orgID, unitID, personID, positionID, status, effectiveFromAfter, effectiveFromBefore *string) (domain.MembershipFilter, error) {
 	after, err := parseFacetDate("effectiveFromAfter", effectiveFromAfter)
 	if err != nil {
 		return domain.MembershipFilter{}, err
@@ -28,6 +28,7 @@ func membershipFilter(unitID, personID, positionID, status, effectiveFromAfter, 
 	}
 	return domain.MembershipFilter{
 		UnitID:              trimmedPtr(unitID),
+		OrgID:               trimmedPtr(orgID),
 		PersonID:            trimmedPtr(personID),
 		PositionID:          trimmedPtr(positionID),
 		Status:              trimmedPtr(status),

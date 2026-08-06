@@ -87,6 +87,7 @@ var membershipFilterQueries = []struct{ module, query string }{
 
 var membershipFacetNargs = map[string][]string{
 	"unitId":        {"unit_id"},
+	"org":           {"org_id"},
 	"personId":      {"person_id"},
 	"positionId":    {"position_id"},
 	"status":        {"status"},

@@ -96,18 +96,25 @@ export async function Dashboard({ type, search }: { type: string; search: string
     }
   }
 
+  // A chart with a `source` reads ANOTHER module's stats endpoint (M59), so it is its own request:
+  // one per such chart, carrying only the params both types ship. It is fetched beside the extras
+  // above and lands in the same `side` map, keyed by the chart.
+  const sourced = dash.charts.filter((c) => c.source);
+
   let main: StatsResponse;
   const side = new Map<string, StatsResponse>();
   try {
     const ok = await oikumenea();
-    const get = (query: string) =>
-      ok.request("GET", dash.path, { query }) as Promise<StatsResponse>;
+    const get = (path: string, query: string) =>
+      ok.request("GET", path, { query }) as Promise<StatsResponse>;
     const [head, ...rest] = await Promise.all([
-      get(statsQuery(def, sp, facetsCsv(dash.charts.map((c) => c.facet)))),
-      ...extras.map((e) => get(e.query)),
+      get(dash.path, statsQuery(def, sp, facetsCsv(dash.charts.filter((c) => !c.source).map((c) => c.facet)))),
+      ...extras.map((e) => get(dash.path, e.query)),
+      ...sourced.map((c) => get(c.source!.path, sourceQuery(c, sp))),
     ]);
     main = head;
     extras.forEach((e, i) => side.set(e.id, rest[i]));
+    sourced.forEach((c, i) => side.set(c.key, rest[extras.length + i]));
   } catch (e) {
     return <ErrorNotice error={e} />;
   }
@@ -128,6 +135,26 @@ export async function Dashboard({ type, search }: { type: string; search: string
       </p>
     </div>
   );
+}
+
+/**
+ * The request a cross-source chart makes: the SOURCE type's stats endpoint, asked for that chart's
+ * facet alone, carrying only the host dashboard's params named in `carry`.
+ *
+ * Built from the source's own def so its filter vocabulary decides how a param is read — and NOT from
+ * the host's whole search string, which would forward filters the source does not ship. A carried
+ * param the URL does not set is simply absent, so an unfiltered host dashboard asks an unfiltered
+ * question.
+ */
+function sourceQuery(chart: ChartDef, sp: URLSearchParams): string {
+  const src = chart.source!;
+  const srcDef = OBJECT_TYPES[src.type];
+  const carried = new URLSearchParams();
+  for (const p of src.carry) {
+    const v = sp.get(p);
+    if (v) carried.set(p, v);
+  }
+  return statsQuery(srcDef, carried, facetsCsv([chart.facet]));
 }
 
 // ── one chart ───────────────────────────────────────────────────────────────
@@ -151,14 +178,33 @@ function Chart({
   chart,
   main,
   side,
-  ctx,
+  ctx: hostCtx,
 }: {
   chart: ChartDef;
   main: StatsResponse;
   side: Map<string, StatsResponse>;
   ctx: Ctx;
 }) {
-  const buckets = distribution(main, chart.facet);
+  let ctx = hostCtx;
+  // A sourced chart's numbers, labels and links all belong to the OTHER type: its response, its
+  // facet vocabulary, its list. Re-pointing ctx here (rather than at the call site) keeps every card
+  // below unchanged — they read ctx.def to label a bucket and to build a segment's href, and both
+  // must now speak the source's language.
+  let res = main;
+  if (chart.source) {
+    const sourced = side.get(chart.key);
+    const srcDef = OBJECT_TYPES[chart.source.type];
+    if (!sourced || !srcDef) return null;
+    const carried = new URLSearchParams();
+    for (const p of chart.source.carry) {
+      const v = hostCtx.sp.get(p);
+      if (v) carried.set(p, v);
+    }
+    ctx = { ...hostCtx, def: srcDef, sp: carried, total: sourced.totalCount };
+    res = sourced;
+  }
+
+  const buckets = distribution(res, chart.facet);
   // ABSENT is not EMPTY: a facet whose read code the caller lacks is omitted from the response
   // (D-ObjectFacets rule 2), and drawing a zeroed chart would invent a number they may not read.
   if (buckets === undefined) return null;

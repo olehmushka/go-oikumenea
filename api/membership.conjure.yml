@@ -359,6 +359,10 @@ services:
               facet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`
               alone, which is the cheap way to ask only "how many". An undeclared facet key is a
               Membership:MembershipInvalid; a facet the caller may not READ is not an error — it is simply absent.
+          org:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listMemberships`. This is what makes a headcount-by-unit chart drawable beneath an org-scoped unit dashboard.
           unitId:
             type: optional<string>
             param-type: query
@@ -406,6 +410,14 @@ services:
           pageToken:
             type: optional<string>
             param-type: query
+          org:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — organization RID. The membership row does not carry one; this matches the
+              organization of the membership's UNIT (a semi-join through `tenant_units`). Optional,
+              unlike `listUnits`' required `org`: an unscoped membership listing is already reach-bounded
+              and is the honest total.
           unitId:
             type: optional<string>
             param-type: query

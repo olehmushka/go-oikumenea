@@ -1184,6 +1184,26 @@
         ],
         "type": "object"
       },
+      "AssignmentStats": {
+        "description": "Facet distributions over the SAME set `listAssignments` returns under the same filters,\nwith the reach trim folded INTO the count (M58 ticket 6 / D-ObjectFacets).\n\nTWO arms. An instance admin counts every grant; anyone else counts only grants whose\ntarget unit is within their `assignment.read` reach — the same question the `targetUnitId`\nfilter has always asked, asked for many units at once. The trim is computed over\n`assignment.read` SPECIFICALLY and not over the `'%.read'` family that every other module's\nreach predicate uses: generic read-reach is a strict superset, so borrowing it here would\nwiden a surface rather than describe it.\n\nACTIVE ONLY. `listAssignments` returns active grants (`revokedAt` null) and this counts the\nsame population, so `totalCount` is a count of ACTIVE grants — not of rows in the grant\ntable. A revoked grant is a security artefact whose reachability is an authz read-surface\ndecision rather than a facet-vocabulary one, which is why the default stands and why there\nis no `active` facet to make a one-bar chart out of.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "Association": {
         "description": "A symmetric association / conflict-of-interest / prohibited-contact link (D-PersonRelationships; Link link__associated_with).",
         "properties": {
@@ -4503,6 +4523,43 @@
         ],
         "type": "object"
       },
+      "EnrollmentPage": {
+        "properties": {
+          "enrollments": {
+            "items": {
+              "$ref": "#/components/schemas/Enrollment"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "enrollments"
+        ],
+        "type": "object"
+      },
+      "EnrollmentStats": {
+        "description": "Facet distributions over the SAME set `listEnrollments` returns under the same filters, with\nthe holder read-scope folded INTO the count (M58 ticket 7 / D-ObjectFacets).\n\nAn enrollment carries no unit of its own — it is scoped THROUGH ITS HOLDER\n(D-PersonReadScope), exactly as a document is: an instance admin counts everything, and\neveryone else counts the enrollments of the people they may read (a person is readable when\nthey hold an active membership in a unit of the caller's reach). Folded into SQL rather than\napplied to the page, because trimming after the fact is right for a page and wrong for a\ncount. `totalCount` therefore equals the rows exhaustively paging `listEnrollments` under\nthese filters would return.\n\nThe `degreeLevelId` distribution is ordered by ISCED LEVEL, not by count, and includes\nlevels with no enrollments at all: it is a scale, and a scale re-sorted by frequency reads\nas if a doctorate ranked below a bachelor's. It carries no `(other)` bucket for the same\nreason — every level is named.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "Ethnicity": {
         "description": "A person's self-declared ethnicity (D-PhysicalIdentity / D-SpecialPII, M31). The declared value\nis envelope-encrypted at rest; `code` is the DECRYPTED catalog code returned only to authorized\nreaders. A crypto-erased tombstone returns an empty code.\n",
         "properties": {
@@ -6914,6 +6971,26 @@
         },
         "required": [
           "locations"
+        ],
+        "type": "object"
+      },
+      "LocationStats": {
+        "description": "Facet distributions over the SAME set `listLocations` returns under the same arguments —\nthe dashboard half of the location facet vocabulary (M58 ticket 6 / D-ObjectFacets).\n\nONE visibility arm, and no subject: a location carries no owner, no unit and no\npublic/shadow bit (D-Location — a referencing module owns the *meaning* of a place on its\nown link), so `location.read` held anywhere is the whole gate and there is no second arm\nfor a visibility decision to make. That is languoid's shape — the ABSENCE of a decision —\nand NOT the audit ledger's, which is a decision made entirely by which connection the\nquery runs on.\n\nTHE SPATIAL WINDOW COUNTS. Unlike a tree-walk arg, a radius or bounding box is a predicate\nover the listed table itself, so it narrows this aggregate exactly as it narrows the list\nand the same mode precedence applies (`query` beats radius beats bbox). `totalCount`\ntherefore equals the rows exhaustively paging `listLocations` under these arguments would\nreturn, in every one of the four modes.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
         ],
         "type": "object"
       },
@@ -16196,10 +16273,11 @@
     },
     "/authorization/v1/assignments": {
       "get": {
-        "description": "List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read).",
+        "description": "List ACTIVE assignments, token-paginated. Gated on `assignment.read` held anywhere, and\nreach-trimmed: an instance admin sees every grant, anyone else sees only grants whose\ntarget unit is within their `assignment.read` reach.\n\nEvery argument is an optional FACET filter (M58 ticket 6 / D-ObjectFacets). Until then this\nendpoint required exactly one of `subjectPersonId`/`targetUnitId` and there was no way to\nask for \"the grants\"; Assignment:AssignmentInvalid is no longer returned for that reason.\n\nTwo things this changed rather than added, both deliberate:\n- the `subjectPersonId` arm used to be gated on `assignment.read` held ANYWHERE with no\n  trim, so one grant anywhere enumerated any person's authority everywhere. It is now\n  trimmed like every other arm, so it can only narrow.\n- the `targetUnitId` arm used to 403 when the caller could not reach the named unit; it now\n  returns an empty page. The row set is identical.\n\nACTIVE ONLY, and that default stands: `revokedAt` rows are never returned, so there is no\n`active` or `expiresAt` filter (a distribution whose every row is active is a chart with\none bar).\n",
         "operationId": "AuthorizationService_listAssignments",
         "parameters": [
           {
+            "description": "Facet filter — the subject person's RID.",
             "in": "query",
             "name": "subjectPersonId",
             "required": false,
@@ -16208,8 +16286,36 @@
             }
           },
           {
+            "description": "Facet filter — the target unit's RID. EXACT match, not subtree-expanding.",
             "in": "query",
             "name": "targetUnitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — the granted role's RID.",
+            "in": "query",
+            "name": "roleId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `unit` | `subtree`.",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — the cascade graph's RID; set for subtree grants only.",
+            "in": "query",
+            "name": "graphId",
             "required": false,
             "schema": {
               "type": "string"
@@ -16255,7 +16361,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read).",
+        "summary": "List ACTIVE assignments, token-paginated. Gated on `assignment.read` held anywhere, and",
         "tags": [
           "AuthorizationService"
         ]
@@ -16878,6 +16984,94 @@
           }
         },
         "summary": "Edit a custom role (instance-scope role.update). Base roles return Role:RoleImmutable.",
+        "tags": [
+          "AuthorizationService"
+        ]
+      }
+    },
+    "/authorization/v1/stats/assignments": {
+      "get": {
+        "description": "Facet distributions over the active grant population — the dashboard half of the assignment\nfacet vocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the filter args\n`listAssignments` takes, minus paging, so a dashboard and a list are two renderings of one\nrequest state.\n\nThe path is `/stats/assignments` rather than `/assignments/stats` because the server's\nrouter rejects a literal path segment that is a sibling of `{assignmentId}`.\n",
+        "operationId": "AuthorizationService_assignmentStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`roleId,scope`). Omitted or empty =\nevery facet the caller may read; an explicit list of nothing (`facets=,`) returns\n`totalCount` alone. An undeclared facet key is an Assignment:AssignmentInvalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listAssignments`.",
+            "in": "query",
+            "name": "subjectPersonId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listAssignments`.",
+            "in": "query",
+            "name": "targetUnitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listAssignments`.",
+            "in": "query",
+            "name": "roleId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listAssignments`.",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listAssignments`.",
+            "in": "query",
+            "name": "graphId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the active grant population — the dashboard half of the assignment",
         "tags": [
           "AuthorizationService"
         ]
@@ -20848,6 +21042,129 @@
         ]
       }
     },
+    "/education/v1/enrollments": {
+      "get": {
+        "description": "Browse the enrollment register, token-paginated, optionally filtered by the facet vocabulary\n(M58 ticket 7 / D-ObjectFacets). Gated by education.read.\n\nUntil M58 ticket 7 an enrollment could be reached only one person at a time, so the\npopulation could be interrogated and never described. This endpoint is the browse mode, and\nit is HOLDER-SCOPED in SQL: an instance admin sees every enrollment, and everyone else sees\nthe enrollments of people they may read (D-PersonReadScope — the holder holds an active\nmembership in a unit of the caller's reach). The scope is part of the query rather than a\nfilter over the page, because trimming a keyset page after it is cut returns a short page\nwith a next-page token still attached (R-06).\n\nEvery filter arg here is also an arg of `enrollmentStats`, and a chart segment's key is a\nusable value for the arg it came from — that is what makes a dashboard and a list two\nrenderings of one request state.\n",
+        "operationId": "EducationService_listEnrollments",
+        "parameters": [
+          {
+            "description": "Facet filter — the institution organization RID (M41 — an institution IS a tenant organization).",
+            "in": "query",
+            "name": "institutionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — program RID (`oikumenea.education_programs`). Nullable column; setting it excludes enrollments with no recorded program.",
+            "in": "query",
+            "name": "programId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — the tenant unit (faculty / department) RID. EXACT match, NOT\nsubtree-expanding: an enrollment sits on one unit, and a filter that quietly expanded\nwould count a row once per descendant. Nullable column.\n",
+            "in": "query",
+            "name": "unitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — study-group RID (`oikumenea.education_groups`). Nullable column.",
+            "in": "query",
+            "name": "groupId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — ISCED degree-level RID (`oikumenea.education_degree_levels`). Nullable column.",
+            "in": "query",
+            "name": "degreeLevelId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `enrolled` | `graduated` | `withdrawn` | `expelled` | `on_leave`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on the intake date (YYYY-MM-DD). Excludes enrollments with no recorded date.",
+            "in": "query",
+            "name": "effectiveFromFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on the intake date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "effectiveFromTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Browse the enrollment register, token-paginated, optionally filtered by the facet vocabulary",
+        "tags": [
+          "EducationService"
+        ]
+      }
+    },
     "/education/v1/governance-bodies/{bodyId}": {
       "delete": {
         "operationId": "EducationReferenceService_deleteGovernanceBody",
@@ -22762,7 +23079,8 @@
     },
     "/education/v1/persons/{personId}/enrollments": {
       "get": {
-        "operationId": "EducationService_listEnrollments",
+        "description": "The enrollments ONE named person holds. Renamed from `listEnrollments` in M58 ticket 7 when\nthe top-level browse below took that name — the HTTP path is unchanged, and the sibling\n`listPersonAppointments` already used this shape.\n\nHolder-scoped (D-PersonReadScope): a caller who may not read this person gets an EMPTY list\nrather than a 403, because a permission error would confirm the person exists.\n",
+        "operationId": "EducationService_listPersonEnrollments",
         "parameters": [
           {
             "in": "path",
@@ -22795,6 +23113,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
+        "summary": "The enrollments ONE named person holds. Renamed from `listEnrollments` in M58 ticket 7 when",
         "tags": [
           "EducationService"
         ]
@@ -25346,6 +25665,121 @@
         ]
       }
     },
+    "/education/v1/stats/enrollments": {
+      "get": {
+        "description": "Facet distributions over the enrollment register — the dashboard half of the enrollment\nfacet vocabulary (M58 ticket 7 / D-ObjectFacets). Takes exactly the filter args\n`listEnrollments` takes, minus paging, so a dashboard and a list are two renderings of one\nrequest state.\n\nThe path is `/stats/enrollments` rather than `/enrollments/stats` because the server's\nrouter rejects a literal path segment that is a sibling of a path parameter — see the\nroute-conflict guard in `internal/platform/transport`.\n",
+        "operationId": "EducationService_enrollmentStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`status,degreeLevelId`). Omitted or\nempty = every facet the caller may read; an explicit list of nothing (`facets=,`)\nreturns `totalCount` alone. An undeclared facet key is an Education:Invalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listEnrollments`.",
+            "in": "query",
+            "name": "institutionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listEnrollments`.",
+            "in": "query",
+            "name": "programId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listEnrollments`.",
+            "in": "query",
+            "name": "unitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listEnrollments`.",
+            "in": "query",
+            "name": "groupId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listEnrollments`.",
+            "in": "query",
+            "name": "degreeLevelId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listEnrollments`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listEnrollments`.",
+            "in": "query",
+            "name": "effectiveFromFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listEnrollments`.",
+            "in": "query",
+            "name": "effectiveFromTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the enrollment register — the dashboard half of the enrollment",
+        "tags": [
+          "EducationService"
+        ]
+      }
+    },
     "/education/v1/stats/institutions": {
       "get": {
         "description": "Facet distributions over the institution registry — the dashboard half of the institution\nfacet vocabulary (M58 ticket 5 / D-ObjectFacets). Takes exactly the filter args\n`listInstitutions` takes, minus paging, so a dashboard and a list are two renderings of one\nrequest state.\n\nThe path is `/stats/institutions` rather than `/institutions/stats` because the server's\nrouter rejects a literal path segment that is a sibling of `{institutionId}` — see the\nroute-conflict guard in `internal/platform/transport`.\n",
@@ -26330,6 +26764,15 @@
             }
           },
           {
+            "description": "Facet filter — `person` | `company`, the kind of the account's ACTIVE PRIMARY holder\n(`finance_account_holders`). GATED: supplying it requires `finance.holder.read`, the same\ncode `listAccountHolders` requires, and a caller without it gets a 403 rather than a\nsilently-ignored filter (D-ObjectFacets rule 2, list side). Omitting it gates nothing.\n",
+            "in": "query",
+            "name": "holderKind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "pageSize",
             "required": false,
@@ -27108,6 +27551,15 @@
             "description": "Facet filter — `active` | `closed` | `frozen`.",
             "in": "query",
             "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `person` | `company`, the kind of the account's ACTIVE PRIMARY holder\n(`finance_account_holders`). GATED: supplying it requires `finance.holder.read`, the same\ncode `listAccountHolders` requires, and a caller without it gets a 403 rather than a\nsilently-ignored filter (D-ObjectFacets rule 2, list side). Omitting it gates nothing.\n",
+            "in": "query",
+            "name": "holderKind",
             "required": false,
             "schema": {
               "type": "string"
@@ -28996,7 +29448,7 @@
     },
     "/location/v1/locations": {
       "get": {
-        "description": "Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the\naddress fields — no spatial window required), or a radius (lat + lng + radiusM, via\nST_DWithin), or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired\nwhen none is given.\n",
+        "description": "Browse, spatial or text query, token-paginated. FOUR modes, selected by which arguments are\npresent and resolved in this precedence (M58 ticket 6):\n\n1. `query` — case-insensitive match on the address fields (locality, admin areas, street,\n   MGRS, raw address);\n2. a radius — `lat` + `lng` + `radiusM`, via ST_DWithin, nearest first;\n3. a bounding box — `minLat` + `minLng` + `maxLat` + `maxLng`;\n4. BROWSE — none of the above: the whole registry in RID order.\n\nMode 4 is new; before it, no window meant Location:QueryWindowRequired, and there was no way\nto ask for \"the locations\" at all. That error is now vestigial (see its docs).\n\n`countryId` and `typeId` are FACET filters (D-ObjectFacets) and apply in EVERY mode — they\nnarrow the window rather than replacing it. `locationStats` takes the same arguments and\ndescribes the same set.\n",
         "operationId": "LocationService_listLocations",
         "parameters": [
           {
@@ -29087,6 +29539,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Facet filter — the country's RID (geo_countries). Applies in every mode.",
+            "in": "query",
+            "name": "countryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — the place-type's RID (location_location_types). Applies in every mode.",
+            "in": "query",
+            "name": "typeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -29111,7 +29581,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the",
+        "summary": "Browse, spatial or text query, token-paginated. FOUR modes, selected by which arguments are",
         "tags": [
           "LocationService"
         ]
@@ -29282,6 +29752,146 @@
         ]
       }
     },
+    "/location/v1/stats/locations": {
+      "get": {
+        "description": "Facet distributions over the location registry — the dashboard half of the location facet\nvocabulary (M58 ticket 6 / D-ObjectFacets). Takes exactly the arguments `listLocations`\ntakes, minus paging, so a dashboard and a list are two renderings of one request state —\nINCLUDING the spatial window, which is a predicate over the listed table and therefore\ncounts (see LocationStats).\n\nThe path is `/stats/locations` rather than `/locations/stats` because the server's router\nrejects a literal path segment that is a sibling of `{locationId}`.\n",
+        "operationId": "LocationService_locationStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`countryId,typeId`). Omitted or empty =\nevery facet the caller may read; an explicit list of nothing (`facets=,`) returns\n`totalCount` alone. An undeclared facet key is a Location:Invalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Spatial window — see `listLocations`.",
+            "in": "query",
+            "name": "lat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Spatial window — see `listLocations`.",
+            "in": "query",
+            "name": "lng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Spatial window — see `listLocations`.",
+            "in": "query",
+            "name": "radiusM",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Spatial window — see `listLocations`.",
+            "in": "query",
+            "name": "minLat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Spatial window — see `listLocations`.",
+            "in": "query",
+            "name": "minLng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Spatial window — see `listLocations`.",
+            "in": "query",
+            "name": "maxLat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Spatial window — see `listLocations`.",
+            "in": "query",
+            "name": "maxLng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Facet filter — see `listLocations`.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listLocations`.",
+            "in": "query",
+            "name": "countryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listLocations`.",
+            "in": "query",
+            "name": "typeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the location registry — the dashboard half of the location facet",
+        "tags": [
+          "LocationService"
+        ]
+      }
+    },
     "/membership/v1/memberships": {
       "get": {
         "description": "List memberships across every unit the caller may read, token-paginated, narrowed by the\nmembership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only\nmemberships whose unit falls in their effective readable reach; every filter below is\napplied INSIDE that reach, before the page is cut, so a filtered page is never short and\nits cursor is never wrong.\n\nUnlike `GET /units/{unitId}/members` and `GET /persons/{personId}/memberships`, which\nreturn ACTIVE memberships only, this endpoint returns EVERY status by default — an\nunfiltered listing is the honest total. Narrow with `status`.\n\nThe facet filters combine with AND. They are ordinary structural predicates and do NOT\nwiden what the caller may see: filtering can only narrow the visible set.\n",
@@ -29299,6 +29909,15 @@
           {
             "in": "query",
             "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — organization RID. The membership row does not carry one; this matches the\norganization of the membership's UNIT (a semi-join through `tenant_units`). Optional,\nunlike `listUnits`' required `org`: an unscoped membership listing is already reach-bounded\nand is the honest total.\n",
+            "in": "query",
+            "name": "org",
             "required": false,
             "schema": {
               "type": "string"
@@ -29733,6 +30352,15 @@
             "description": "Optional comma-separated facet keys to compute (`status,unitId`). Omitted or empty = every\nfacet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`\nalone, which is the cheap way to ask only \"how many\". An undeclared facet key is a\nMembership:MembershipInvalid; a facet the caller may not READ is not an error — it is simply absent.\n",
             "in": "query",
             "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listMemberships`. This is what makes a headcount-by-unit chart drawable beneath an org-scoped unit dashboard.",
+            "in": "query",
+            "name": "org",
             "required": false,
             "schema": {
               "type": "string"
