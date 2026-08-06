@@ -45,7 +45,11 @@ ROOT="$(pwd)"
 
 # ── configuration ───────────────────────────────────────────────────────────────────────────────
 NAMESPACE="${RELEASE_NAMESPACE:-olehmushka}"
-REGISTRIES=("ghcr.io/${NAMESPACE}" "docker.io/${NAMESPACE}")
+# Both registries by default; --registries=docker.io narrows it. Narrowing exists because the two are
+# authenticated differently and one can be ready before the other — a single buildx invocation carries
+# every tag, so an unauthenticated GHCR fails the whole build INCLUDING the Docker Hub half that would
+# have worked.
+RELEASE_REGISTRIES="${RELEASE_REGISTRIES:-ghcr.io,docker.io}"
 PLATFORMS="${RELEASE_PLATFORMS:-linux/amd64,linux/arm64}"
 NPM_PACKAGE="oikumenea-client"
 
@@ -134,6 +138,21 @@ ensure_tag() {
   run git tag -a "$tag" -m "$msg"
 }
 
+# docker_logged_in HOST — best-effort: is there a stored credential for this registry? Docker Hub is
+# keyed by its legacy index URL rather than by hostname, which is why this is a lookup rather than a
+# string compare. A credential HELPER stores nothing in the file, so its presence counts as
+# "assume authenticated" — the push itself stays the real test; this only catches the common case
+# early, which is the case that was hit.
+docker_logged_in() {
+  local host="$1" cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+  [[ -f "$cfg" ]] || return 1
+  local key="$host"
+  [[ "$host" == "docker.io" ]] && key="index.docker.io"
+  grep -q "\"[^\"]*${key}" "$cfg" && return 0
+  grep -q '"credsStore"' "$cfg" && return 0
+  return 1
+}
+
 # ── the contract gate ───────────────────────────────────────────────────────────────────────────
 # Both SDKs are GENERATED from api/*.conjure.yml (D-ClientSDK / D-Conjure). Publishing one whose
 # committed sources no longer match the contract ships wrong types to every consumer, and it is
@@ -161,6 +180,13 @@ cmd_images() {
   require_semver "$version"
   require_clean_tree
 
+  local REGISTRIES=()
+  local host
+  for host in ${RELEASE_REGISTRIES//,/ }; do
+    REGISTRIES+=("${host}/${NAMESPACE}")
+  done
+  [[ ${#REGISTRIES[@]} -gt 0 ]] || die "no registries selected (--registries=ghcr.io,docker.io)"
+
   local revision; revision="$(git rev-parse HEAD)"
   local created;  created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   local minor="${version%.*}"
@@ -185,6 +211,23 @@ cmd_images() {
        …or build a single platform:       scripts/release.sh images <version> --platforms=linux/amd64"
     fi
   done
+
+  # CREDENTIAL PREFLIGHT. buildx pushes at EXPORT time, i.e. after every layer is built — so a missing
+  # login surfaces as `failed to fetch anonymous token … 403` ten minutes into a release, with the word
+  # "anonymous" as the only clue that nothing was ever sent.
+  if [[ $PUSH -eq 1 ]]; then
+    local reg rhost
+    for reg in "${REGISTRIES[@]}"; do
+      rhost="${reg%%/*}"
+      if ! docker_logged_in "$rhost"; then
+        die "not logged in to ${rhost} — the push would fail at export, AFTER the whole build.
+       ghcr.io:    echo <PAT-with-write:packages> | docker login ghcr.io -u ${NAMESPACE} --password-stdin
+       docker.io:  docker login docker.io
+       …or push only where you ARE authenticated:  --registries=<host>
+       …or let CI do it: push a v* tag (GHCR uses the built-in GITHUB_TOKEN there)."
+      fi
+    done
+  fi
 
   # A multi-platform build cannot load into the local daemon — the docker image store holds one
   # platform per tag. So without --push it is built and thrown away, which still proves every
@@ -400,6 +443,7 @@ for arg in "$@"; do
     --push)         PUSH=1 ;;
     --allow-dirty)  ALLOW_DIRTY=1 ;;
     --platforms=*)  PLATFORMS="${arg#*=}" ;;
+    --registries=*) RELEASE_REGISTRIES="${arg#*=}" ;;
     -*)             die "unknown flag: $arg" ;;
     *)              [[ -z "$VERSION" ]] || die "unexpected argument: $arg"; VERSION="${arg#v}" ;;
   esac
