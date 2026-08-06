@@ -62,6 +62,12 @@ func TestModuleListPathsUseTheRequestPinnedConnection(t *testing.T) {
 		// pinned connection is not defence in depth here, it IS the defence. Unpinned, the ledger
 		// dashboard answers a confident zero to an instance admin.
 		{"audit", []string{"Query", "Stats"}, "reader", "db.RequestDBTX"},
+		// M58 ticket 7. person_education_enrollments has NO policy either, and its read-scope arm probes
+		// membership_memberships exactly as document's does — the same rule, the same table, one module
+		// later. It is in this table because the ticket shipped it on the bare pool and the LIVE run is
+		// what caught it: the guard was right and simply had never been pointed at this module, which is
+		// the same shape as a drift guard reading a stale mirror.
+		{"education", []string{"ListEnrollmentRegister", "EnrollmentStats"}, "", ""},
 	}
 
 	for _, c := range cases {

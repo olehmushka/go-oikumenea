@@ -421,6 +421,30 @@ function Widget({
           unscopedLabel="pick a brand first"
         />
       );
+    // M58 ticket 7. Programs are listable only per institution and groups only per unit, so both are
+    // scoped rather than flat pickers — the position→unit shape. Their dashboard bars stay clickable
+    // either way: a chart segment sets the arg directly and needs no parent chosen first, which is
+    // what keeps a scoped control from making a facet unreachable.
+    case "program":
+      return (
+        <ScopedSelect
+          path={val(f.dependsOn ?? "") ? `/education/v1/institutions/${encodeURIComponent(val(f.dependsOn!))}/programs` : null}
+          pick={(d) => (d as { programs?: unknown[] })?.programs ?? []}
+          value={val(p0)}
+          onChange={(id) => set(p0, id)}
+          unscopedLabel="pick an institution first"
+        />
+      );
+    case "studyGroup":
+      return (
+        <ScopedSelect
+          path={val(f.dependsOn ?? "") ? `/education/v1/units/${encodeURIComponent(val(f.dependsOn!))}/groups` : null}
+          pick={(d) => (d as { groups?: unknown[] })?.groups ?? []}
+          value={val(p0)}
+          onChange={(id) => set(p0, id)}
+          unscopedLabel="pick a unit first"
+        />
+      );
     default:
       return (
         <EntitySelect

@@ -859,6 +859,18 @@ under the `app.readable_units` RLS predicate — read scoping is this app-layer 
 is authoritative; a person→unit reach-join is a noted hardening seam). Resolves the person/document
 read-scope seam.
 
+**The rule binds EVERY person-binding read, not only person and document (M58 ticket 7).** Any table
+whose rows describe one named person — education enrollments, dorm stays, education appointments, the
+education reference-layer bindings — is under this projection, and a reader of those rows must be
+able to read the holder by the rule above. That was not a new decision in ticket 7; it was already
+what this block says, and it had simply never been implemented outside `document`. Nine education
+endpoints gated their module read code ANYWHERE and returned the rows, so one grant anywhere
+enumerated any person's education history instance-wide, from M20 until the sweep. Two shapes satisfy
+it and the choice is the endpoint's: a per-person read PROBES the holder and answers an unreadable
+one with an **empty list, never a 403** (a permission error confirms the person exists), while a
+top-level list FOLDS the projection into its SQL, because a Go-side trim after a keyset page is cut
+returns a short page still carrying a next-page token (R-06).
+
 ### D-PersonBio — Person bio fields: structured names, birthdate, ISO 5218 sex
 
 **Decision.** `person` gains **bio/identity** fields beyond the original three name columns. The
@@ -2796,6 +2808,28 @@ implementation and recorded so the remaining tickets do not re-litigate them:
   argument would make `'%'`, i.e. every permission, expressible by a typo at a call site. The 0017
   trio is untouched: its plans are measured, and the differential test holds the family to one answer
   (M58 ticket 6).
+- **A ref facet over a CLOSED, ORDERED catalog is a scale, and topN destroys it (`StrategyCatalog`).**
+  Ranking by count is right for an open or large value set and wrong for one carrying a scale:
+  `enrollment.degreeLevelId` points at the nine ISCED 2011 levels, and sorted by frequency that chart
+  reads "Bachelor, Doctoral, Master". The strategy orders by the referenced catalog's own ordinal,
+  emits **every** row including the zero-count ones (on a scale an absent level is information, where
+  on a ranking an absent value is merely outside the top N), and has no `(other)` tail — a closed
+  catalog has no tail to collapse. It is the ref analogue of `StrategyIdentity` and the same rule
+  `KindEnum.Values` has carried since M56, reaching the case where the ordered set lives in a table
+  rather than in a CHECK constraint. Like `Profile` and unlike `Ledger` its claim is **CHECKABLE**, so
+  that is what replaces an argument: `Register` refuses it off a ref facet or without both
+  `CatalogTable` and `CatalogOrder`, and a guard parses the migrations to assert the facet's column
+  really FK-references that catalog and that the ordinal is really one of its columns. The zero-count
+  buckets come from the module's SQL (a LEFT JOIN over the catalog), because the kernel cannot
+  enumerate a catalog it has never read (M58 ticket 7).
+- **A table with no RLS policy can still need the request-pinned connection.** The rule "list paths
+  read through `db.RequestQuerier`" was written for tables carrying a policy; `enrollment` carries
+  none, and its holder read scope probes `membership_memberships`, which does. Unpinned, the `app.*`
+  GUCs are unset, every reach predicate matches nothing, and the endpoint answers 200 with an EMPTY
+  page to a caller entitled to every row. What decides the rule is therefore not whether the LISTED
+  table has a policy but whether any table the query TOUCHES does — the same reading `document` has
+  needed since M56, made explicit after this ticket shipped the bug and the live run found it
+  (M58 ticket 7).
 
 The **filter half** of "counts are computed inside the visibility predicate" is now real: one
 `PersonFilter` drives both list paths, folded into the SQL of all five queries, because a Go-side

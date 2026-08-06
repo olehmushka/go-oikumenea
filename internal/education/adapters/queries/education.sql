@@ -473,6 +473,287 @@ SELECT * FROM oikumenea.person_education_enrollments
 WHERE person_id = @person_id AND deleted_at IS NULL
 ORDER BY effective_from DESC NULLS LAST, id;
 
+-- ============================ top-level facet-filtered list (M58 ticket 7 / D-ObjectFacets) ============================
+-- GET /enrollments. Two shapes, ONE filter block, byte-identical between them: the admin path and the
+-- holder-scoped path must select the same rows for the same filters, differing ONLY by the visibility
+-- predicate. sqlparity_test.go proves the block is present in both with no database.
+--
+-- person_education_enrollments carries NO unit column and NO RLS policy (0007): enrollments are
+-- scoped THROUGH THE HOLDER (D-PersonReadScope), exactly as documents are. The scoped arm therefore
+-- folds the holder semi-join — the person has an active membership in a unit of the subject's reach —
+-- rather than a unit predicate. Note that `unit_id` on the enrollment is NOT that predicate: it is the
+-- faculty the person studied in, an attribute of the row and a facet, and gating on it would answer a
+-- different question (whose faculty is reachable) from the one the read scope asks (whose person is).
+--
+-- The reach here is the GENERIC '%.read' family (authz_readable_units), not the permission-
+-- parameterised form migration 0023 added for listAssignments — and the difference between the two
+-- cases is which question the trim is asking. `listAssignments`' per-unit arm had always demanded
+-- `assignment.read` on that specific unit, so borrowing the generic family would have WIDENED it.
+-- Here the trim is not asking about education authority at all: the endpoint has already checked
+-- `education.read`, and what remains is "may this subject read this PERSON", which is the
+-- D-PersonReadScope projection and is the generic question by definition. Same composition documents
+-- use, and the same one holderReadable() applies row-by-row on the per-person endpoints.
+
+-- name: ListEnrollmentsPage :many
+-- Instance-admin path: every enrollment, keyset-paginated by RID.
+SELECT * FROM oikumenea.person_education_enrollments e
+WHERE e.deleted_at IS NULL
+  AND (@after = '' OR e.id::text > @after)
+  AND (sqlc.narg('institution_id')::uuid IS NULL OR e.institution_id = sqlc.narg('institution_id')::uuid)
+  AND (sqlc.narg('program_id')::uuid IS NULL OR e.program_id = sqlc.narg('program_id')::uuid)
+  AND (sqlc.narg('unit_id')::uuid IS NULL OR e.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('group_id')::uuid IS NULL OR e.group_id = sqlc.narg('group_id')::uuid)
+  AND (sqlc.narg('degree_level_id')::uuid IS NULL OR e.degree_level_id = sqlc.narg('degree_level_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR e.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('effective_from_from')::date IS NULL OR e.effective_from >= sqlc.narg('effective_from_from')::date)
+  AND (sqlc.narg('effective_from_to')::date IS NULL OR e.effective_from <= sqlc.narg('effective_from_to')::date)
+ORDER BY e.id
+LIMIT @lim;
+
+-- name: ListEnrollmentsPageForSubject :many
+-- Read-scope path: the same set restricted to enrollments whose HOLDER the subject may read. The reach
+-- set is UNCORRELATED (it reads only @subject_person_id), so the planner evaluates it once and probes
+-- a hash instead of re-deriving the closure per candidate enrollment.
+SELECT * FROM oikumenea.person_education_enrollments e
+WHERE e.deleted_at IS NULL
+  AND (@after = '' OR e.id::text > @after)
+  AND (sqlc.narg('institution_id')::uuid IS NULL OR e.institution_id = sqlc.narg('institution_id')::uuid)
+  AND (sqlc.narg('program_id')::uuid IS NULL OR e.program_id = sqlc.narg('program_id')::uuid)
+  AND (sqlc.narg('unit_id')::uuid IS NULL OR e.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('group_id')::uuid IS NULL OR e.group_id = sqlc.narg('group_id')::uuid)
+  AND (sqlc.narg('degree_level_id')::uuid IS NULL OR e.degree_level_id = sqlc.narg('degree_level_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR e.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('effective_from_from')::date IS NULL OR e.effective_from >= sqlc.narg('effective_from_from')::date)
+  AND (sqlc.narg('effective_from_to')::date IS NULL OR e.effective_from <= sqlc.narg('effective_from_to')::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = e.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units(@subject_person_id)))
+ORDER BY e.id
+LIMIT @lim;
+
+-- name: CountReadableUnitsForDispatch :one
+-- The capped reach-cardinality probe the sparse/dense list dispatch reads (migration 0017). Capped,
+-- because the question is never "how big is the reach" but "is it past the threshold".
+SELECT oikumenea.authz_readable_unit_count(@subject_person_id, @cap::integer) AS n;
+
+-- name: ListEnrollmentsPageForSubjectDense :many
+-- DENSE-reach plan shape of the query above, byte-identical in its filter block and differing ONLY in
+-- how the holder's reach is applied: a per-row point probe instead of a materialized reach set. See
+-- migration 0017 for the measured reason both shapes exist — at root reach materializing the reach
+-- makes the planner drive from it and build a person hash, so the LIMIT never terminates early. The
+-- adapter dispatches on CountReadableUnitsForDispatch.
+SELECT * FROM oikumenea.person_education_enrollments e
+WHERE e.deleted_at IS NULL
+  AND (@after = '' OR e.id::text > @after)
+  AND (sqlc.narg('institution_id')::uuid IS NULL OR e.institution_id = sqlc.narg('institution_id')::uuid)
+  AND (sqlc.narg('program_id')::uuid IS NULL OR e.program_id = sqlc.narg('program_id')::uuid)
+  AND (sqlc.narg('unit_id')::uuid IS NULL OR e.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('group_id')::uuid IS NULL OR e.group_id = sqlc.narg('group_id')::uuid)
+  AND (sqlc.narg('degree_level_id')::uuid IS NULL OR e.degree_level_id = sqlc.narg('degree_level_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR e.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('effective_from_from')::date IS NULL OR e.effective_from >= sqlc.narg('effective_from_from')::date)
+  AND (sqlc.narg('effective_from_to')::date IS NULL OR e.effective_from <= sqlc.narg('effective_from_to')::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = e.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND oikumenea.authz_unit_readable_by(m.unit_id, @subject_person_id))
+ORDER BY e.id
+LIMIT @lim;
+
+-- ============================ enrollment dashboard aggregates (M58 ticket 7) ============================
+--
+-- The degreeLevelId branch is the first CATALOG-ORDERED distribution (facet.StrategyCatalog). It is
+-- shaped unlike every ref branch above it in two ways, both of which are the strategy rather than a
+-- local choice: it drives from `education_degree_levels` through a LEFT JOIN, so an ISCED level with
+-- no enrollments still emits a bucket with count 0 (on a scale an empty level is information), and it
+-- carries `isced_level` in the `ord` column, which is what pkg/stats sorts by instead of the counts.
+-- There is no `(other)` bucket and no top_n: the catalog has nine rows and every one of them is named.
+-- Its NULL bucket is a separate UNION arm because the LEFT JOIN cannot produce one — GROUP BY 2 there
+-- is load-bearing, since an ungrouped count(*) would emit a zero row even when the facet is not
+-- selected.
+
+-- name: EnrollmentStats :many
+-- The INSTANCE-ADMIN dashboard aggregate: the candidate CTE carries ListEnrollmentsPage's filter block
+-- VERBATIM, then one branch per facet, each skipped by the planner when its want_* flag is false.
+WITH cand AS MATERIALIZED (
+  SELECT e.id, e.institution_id, e.program_id, e.unit_id, e.group_id, e.degree_level_id, e.status, e.effective_from
+  FROM oikumenea.person_education_enrollments e
+  WHERE e.deleted_at IS NULL
+  AND (sqlc.narg('institution_id')::uuid IS NULL OR e.institution_id = sqlc.narg('institution_id')::uuid)
+  AND (sqlc.narg('program_id')::uuid IS NULL OR e.program_id = sqlc.narg('program_id')::uuid)
+  AND (sqlc.narg('unit_id')::uuid IS NULL OR e.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('group_id')::uuid IS NULL OR e.group_id = sqlc.narg('group_id')::uuid)
+  AND (sqlc.narg('degree_level_id')::uuid IS NULL OR e.degree_level_id = sqlc.narg('degree_level_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR e.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('effective_from_from')::date IS NULL OR e.effective_from >= sqlc.narg('effective_from_from')::date)
+  AND (sqlc.narg('effective_from_to')::date IS NULL OR e.effective_from <= sqlc.narg('effective_from_to')::date)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'institutionId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.institution_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_institution_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'programId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.program_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_program_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'groupId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.group_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_group_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'degreeLevelId'::text, dl.id::text, coalesce(g.n, 0)::bigint, dl.isced_level::bigint
+FROM oikumenea.education_degree_levels dl
+LEFT JOIN (SELECT c.degree_level_id AS k, count(*) AS n
+           FROM cand c
+           WHERE sqlc.arg('want_degree_level_id')::boolean
+           GROUP BY 1) g ON g.k = dl.id
+WHERE sqlc.arg('want_degree_level_id')::boolean AND dl.deleted_at IS NULL
+UNION ALL
+SELECT 'degreeLevelId'::text, NULL::text, count(*)::bigint, NULL::bigint
+FROM cand c
+WHERE sqlc.arg('want_degree_level_id')::boolean AND c.degree_level_id IS NULL
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_status')::boolean GROUP BY c.status
+UNION ALL
+SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_effective_from')::boolean GROUP BY 2;
+
+-- name: EnrollmentStatsForSubject :many
+-- The READ-SCOPE arm. Enrollments carry no unit, so reach goes THROUGH THE HOLDER: the same active-
+-- membership semi-join ListEnrollmentsPageForSubject uses, folded into the candidate set. An
+-- unreadable holder's enrollments are therefore absent from the count rather than counted and
+-- trimmed — which is what makes totalCount equal the rows exhaustive paging returns.
+--
+-- One scoped query, not two: the aggregate has no LIMIT, so the sparse/dense dispatch the LIST needs
+-- does not apply here (M57's measurement — the set form wins at every reach once the LIMIT is gone).
+WITH cand AS MATERIALIZED (
+  SELECT e.id, e.institution_id, e.program_id, e.unit_id, e.group_id, e.degree_level_id, e.status, e.effective_from
+  FROM oikumenea.person_education_enrollments e
+  WHERE e.deleted_at IS NULL
+  AND (sqlc.narg('institution_id')::uuid IS NULL OR e.institution_id = sqlc.narg('institution_id')::uuid)
+  AND (sqlc.narg('program_id')::uuid IS NULL OR e.program_id = sqlc.narg('program_id')::uuid)
+  AND (sqlc.narg('unit_id')::uuid IS NULL OR e.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('group_id')::uuid IS NULL OR e.group_id = sqlc.narg('group_id')::uuid)
+  AND (sqlc.narg('degree_level_id')::uuid IS NULL OR e.degree_level_id = sqlc.narg('degree_level_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR e.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('effective_from_from')::date IS NULL OR e.effective_from >= sqlc.narg('effective_from_from')::date)
+  AND (sqlc.narg('effective_from_to')::date IS NULL OR e.effective_from <= sqlc.narg('effective_from_to')::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = e.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units(@subject_person_id)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'institutionId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.institution_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_institution_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'programId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.program_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_program_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'groupId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.group_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_group_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'degreeLevelId'::text, dl.id::text, coalesce(g.n, 0)::bigint, dl.isced_level::bigint
+FROM oikumenea.education_degree_levels dl
+LEFT JOIN (SELECT c.degree_level_id AS k, count(*) AS n
+           FROM cand c
+           WHERE sqlc.arg('want_degree_level_id')::boolean
+           GROUP BY 1) g ON g.k = dl.id
+WHERE sqlc.arg('want_degree_level_id')::boolean AND dl.deleted_at IS NULL
+UNION ALL
+SELECT 'degreeLevelId'::text, NULL::text, count(*)::bigint, NULL::bigint
+FROM cand c
+WHERE sqlc.arg('want_degree_level_id')::boolean AND c.degree_level_id IS NULL
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_status')::boolean GROUP BY c.status
+UNION ALL
+SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_effective_from')::boolean GROUP BY 2;
+
 -- name: InsertDormitoryStay :one
 INSERT INTO oikumenea.person_dormitory_stays (person_id, building_id, room, status, effective_from, effective_to)
 VALUES (@person_id, @building_id, sqlc.narg('room'), COALESCE(sqlc.narg('status'), 'active'),

@@ -465,7 +465,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// config flip. education/company keep a lifted service var because unified search fans them in below.
 	var educationSvc *educationapp.Service
 	if install.ModuleEnabled("education") {
-		educationSvc, err = education.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
+		educationSvc, err = education.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer, personSvc)
 		if err != nil {
 			cleanup()
 			return nil, err

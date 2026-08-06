@@ -122,7 +122,19 @@ export type RefControl =
   // use it until this ticket gave assignments a list.
   | "locationType"
   | "role"
-  | "graph";
+  | "graph"
+  // M58 ticket 7. `unit` and `person` are already above and are REUSED by the enrollment filters —
+  // an enrollment's faculty is the same tenant unit every other filter picks. `institution` is a
+  // control here for the first time although EntitySelect has had the KIND since M20: the facet's
+  // RefType is `organization` (an institution IS a tenant organization — M41), but the useful picker
+  // is the education list, which is the same rows narrowed to the ones that can appear here, and it
+  // carries server-side search where the generic org dropdown does not. `program` and `studyGroup`
+  // are SCOPED controls (a programme is listable only per institution, a group only per unit), which
+  // is why they name their parent through dependsOn; `degreeLevel` is the closed ISCED scale.
+  | "institution"
+  | "program"
+  | "studyGroup"
+  | "degreeLevel";
 
 /**
  * One filterable dimension of an object type — the console half of a `pkg/facet` Facet.
@@ -902,6 +914,92 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Granted at", value: (a) => s(a.grantedAt) },
       { label: "Expires at", value: (a) => s(a.expiresAt) },
       { label: "Revoked at", value: (a) => s(a.revokedAt) },
+    ],
+  },
+
+  link__studied_at: {
+    type: "link__studied_at",
+    kind: "link",
+    label: "Enrollment",
+    labelPlural: "Enrollments",
+    module: "education",
+    requires: "education.read",
+    blurb: "Reified person ↔ institution study link — an ISCED level, a programme, a faculty and a status, effective-dated.",
+    // M58 ticket 7, the LAST type of the tranche. Until it, enrollments could be read only one person
+    // at a time (`GET /persons/{id}/enrollments`), so the register could be interrogated and never
+    // described. The rows here are HOLDER-scoped server-side (D-PersonReadScope): a non-admin sees the
+    // enrollments of people they may read, and the chart beside the list counts exactly the same set.
+    list: {
+      path: "/education/v1/enrollments",
+      search: "?pageSize=50",
+      parse: pageParse("enrollments"),
+    },
+    // No `get`: the contract ships no GET /enrollments/{id}. The table suppresses the row-click drawer
+    // for a type with no detail endpoint rather than opening one that immediately errors.
+    title: (e) => `${ridTail(s(e.personId)!)} → ${ridTail(s(e.institutionId)!)}`,
+    subtitle: (e) => s(e.status),
+    columns: [
+      { key: "personId", header: "Person", value: (e) => ridTail(s(e.personId)!), render: "mono" },
+      { key: "institutionId", header: "Institution", value: (e) => ridTail(s(e.institutionId)!), render: "mono" },
+      { key: "fieldOfStudy", header: "Field of study", value: (e) => s(e.fieldOfStudy) },
+      { key: "status", header: "Status", value: (e) => s(e.status), render: "pill", tone: (e) => statusTone(e.status) },
+      { key: "effectiveFrom", header: "Intake", value: (e) => s(e.effectiveFrom) },
+      { key: "effectiveTo", header: "Until", value: (e) => s(e.effectiveTo) },
+    ],
+    filters: [
+      { key: "institutionId", kind: "ref", label: "Institution", params: ["institutionId"], control: "institution" },
+      { key: "programId", kind: "ref", label: "Programme", params: ["programId"], control: "program", dependsOn: "institutionId",
+        hint: "Programmes are listed per institution, so pick one first — or click a bar on the programme chart, which needs no parent." },
+      { key: "unitId", kind: "ref", label: "Faculty / department", params: ["unitId"], control: "unit",
+        hint: "EXACT unit — not the subtree. This is where the person studied, not who may read the row." },
+      { key: "groupId", kind: "ref", label: "Study group", params: ["groupId"], control: "studyGroup", dependsOn: "unitId" },
+      { key: "degreeLevelId", kind: "ref", label: "Degree level", params: ["degreeLevelId"], control: "degreeLevel",
+        hint: "The ISCED 2011 scale, 0–8." },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "enrolled", label: "Enrolled" },
+          { value: "on_leave", label: "On leave" },
+          { value: "graduated", label: "Graduated" },
+          { value: "withdrawn", label: "Withdrawn" },
+          { value: "expelled", label: "Expelled" },
+        ],
+      },
+      {
+        key: "effectiveFrom", kind: "date-range", label: "Intake",
+        params: ["effectiveFromFrom", "effectiveFromTo"],
+        buckets: "dateTrunc",
+        hint: "Inclusive bounds; either one excludes enrollments with no recorded intake date.",
+      },
+    ],
+    dashboard: {
+      path: "/education/v1/stats/enrollments",
+      charts: [
+        { key: "degreeLevelId", title: "Degree level", form: "bar", facet: "degreeLevelId", orientation: "horizontal",
+          note: "ISCED 2011 order, NOT by count — a scale sorted by frequency is a ranking. Levels with no enrollments are shown as empty bars on purpose: on a scale an absent level is information." },
+        { key: "status", title: "Cohort status", form: "donut", facet: "status",
+          note: "Lifecycle order: the two in-progress states, then the three terminal ones." },
+        { key: "effectiveFrom", title: "Intake per month", form: "bar", facet: "effectiveFrom",
+          note: "(unknown) is enrollments with no recorded intake date." },
+        { key: "institutionId", title: "Top institutions", form: "bar", facet: "institutionId", orientation: "horizontal" },
+        { key: "unitId", title: "Top faculties", form: "bar", facet: "unitId", orientation: "horizontal" },
+        { key: "programId", title: "Top programmes", form: "bar", facet: "programId", orientation: "horizontal" },
+        { key: "groupId", title: "Top study groups", form: "bar", facet: "groupId", orientation: "horizontal" },
+      ],
+    },
+    properties: [
+      { label: "Person", value: (e) => s(e.personId), render: "mono" },
+      { label: "Institution", value: (e) => s(e.institutionId), render: "mono" },
+      { label: "Programme", value: (e) => s(e.programId), render: "mono" },
+      { label: "Faculty / department", value: (e) => s(e.unitId), render: "mono" },
+      { label: "Study group", value: (e) => s(e.groupId), render: "mono" },
+      { label: "Degree level", value: (e) => s(e.degreeLevelId), render: "mono" },
+      { label: "Field of study", value: (e) => s(e.fieldOfStudy) },
+      { label: "Student number", value: (e) => s(e.studentNumber) },
+      { label: "Status", value: (e) => s(e.status), render: "pill", tone: (e) => statusTone(e.status) },
+      { label: "Qualification", value: (e) => s(e.qualification) },
+      { label: "Intake", value: (e) => s(e.effectiveFrom) },
+      { label: "Until", value: (e) => s(e.effectiveTo) },
     ],
   },
 

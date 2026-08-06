@@ -44,17 +44,46 @@ const (
 	catalogManagePerm = string(authzdomain.PermEducationCatalogManage)
 )
 
+// PersonReader is the read-scope seam (D-PersonReadScope): may this subject read this person? The
+// same one-method interface the document module declares, and answered by the same person-service SQL
+// point probe (R-02.1) — education asks the question, it does not own the answer.
+type PersonReader interface {
+	ReadablePerson(ctx context.Context, subjectPersonID, personID string) (bool, error)
+}
+
 // EducationService adapts *application.Service to the generated educationapi.EducationService interface.
 type EducationService struct {
-	app *application.Service
-	loc *locapp.Service
-	pep *pep.Enforcer
+	app    *application.Service
+	loc    *locapp.Service
+	pep    *pep.Enforcer
+	person PersonReader
 }
 
 // NewService builds the transport adapter over the education application service, the localization
-// service (name maps), and the PEP enforcer.
-func NewService(app *application.Service, loc *locapp.Service, enforcer *pep.Enforcer) EducationService {
-	return EducationService{app: app, loc: loc, pep: enforcer}
+// service (name maps), the PEP enforcer, and the person reader the holder read scope is answered by.
+func NewService(app *application.Service, loc *locapp.Service, enforcer *pep.Enforcer, person PersonReader) EducationService {
+	return EducationService{app: app, loc: loc, pep: enforcer, person: person}
+}
+
+// holderReadable reports whether the request subject may read the given holder person under the
+// read-scope projection (D-PersonReadScope): instance admins pass; anyone else is answered by the
+// person reader's SQL reach point probe (R-02.1).
+//
+// Used by EVERY person-binding read in this module (M58 ticket 7). Until then education applied no
+// holder scope at all: each of those endpoints gated `education.read` ANYWHERE and then returned the
+// rows, so a single grant anywhere enumerated any person's education history instance-wide — the
+// decision has required this projection since D-PersonReadScope, and only documents implemented it. A
+// caller who fails the probe gets an EMPTY list, never a 403: a permission error would confirm the
+// person exists, which is the same reasoning that makes a gated-out shadow row a NotFound.
+func (s EducationService) holderReadable(ctx context.Context, personID string) (bool, error) {
+	subject, isAdmin, err := s.pep.SubjectAuthority(ctx)
+	if err != nil {
+		return false, err
+	}
+	if isAdmin {
+		return true, nil
+	}
+	return s.person.ReadablePerson(ctx, subject, personID)
 }
 
 var _ educationapi.EducationService = EducationService{}

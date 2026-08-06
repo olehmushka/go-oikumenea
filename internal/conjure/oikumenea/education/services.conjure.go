@@ -80,7 +80,43 @@ type EducationServiceClient interface {
 	EndAppointment(ctx context.Context, authHeader bearertoken.Token, appointmentIdArg string, requestArg EndAppointmentRequest) (Appointment, error)
 	// Read-only list of the education positions a person holds, enriched with title + institution.
 	ListPersonAppointments(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (PersonAppointmentList, error)
-	ListEnrollments(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (EnrollmentList, error)
+	/*
+	   The enrollments ONE named person holds. Renamed from `listEnrollments` in M58 ticket 7 when
+	   the top-level browse below took that name — the HTTP path is unchanged, and the sibling
+	   `listPersonAppointments` already used this shape.
+
+	   Holder-scoped (D-PersonReadScope): a caller who may not read this person gets an EMPTY list
+	   rather than a 403, because a permission error would confirm the person exists.
+	*/
+	ListPersonEnrollments(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (EnrollmentList, error)
+	/*
+	   Browse the enrollment register, token-paginated, optionally filtered by the facet vocabulary
+	   (M58 ticket 7 / D-ObjectFacets). Gated by education.read.
+
+	   Until M58 ticket 7 an enrollment could be reached only one person at a time, so the
+	   population could be interrogated and never described. This endpoint is the browse mode, and
+	   it is HOLDER-SCOPED in SQL: an instance admin sees every enrollment, and everyone else sees
+	   the enrollments of people they may read (D-PersonReadScope — the holder holds an active
+	   membership in a unit of the caller's reach). The scope is part of the query rather than a
+	   filter over the page, because trimming a keyset page after it is cut returns a short page
+	   with a next-page token still attached (R-06).
+
+	   Every filter arg here is also an arg of `enrollmentStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListEnrollments(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string, pageSizeArg *int, pageTokenArg *string) (EnrollmentPage, error)
+	/*
+	   Facet distributions over the enrollment register — the dashboard half of the enrollment
+	   facet vocabulary (M58 ticket 7 / D-ObjectFacets). Takes exactly the filter args
+	   `listEnrollments` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/enrollments` rather than `/enrollments/stats` because the server's
+	   router rejects a literal path segment that is a sibling of a path parameter — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	EnrollmentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string) (EnrollmentStats, error)
 	CreateEnrollment(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertEnrollmentRequest) (Enrollment, error)
 	UpdateEnrollment(ctx context.Context, authHeader bearertoken.Token, personIdArg string, enrollmentIdArg string, requestArg UpsertEnrollmentRequest) (Enrollment, error)
 	DeleteEnrollment(ctx context.Context, authHeader bearertoken.Token, personIdArg string, enrollmentIdArg string) error
@@ -718,19 +754,114 @@ func (c *educationServiceClient) ListPersonAppointments(ctx context.Context, aut
 	return *returnVal, nil
 }
 
-func (c *educationServiceClient) ListEnrollments(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (EnrollmentList, error) {
+func (c *educationServiceClient) ListPersonEnrollments(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (EnrollmentList, error) {
 	var returnVal *EnrollmentList
 	var requestParams []httpclient.RequestParam
-	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListEnrollments"))
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPersonEnrollments"))
 	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
 	requestParams = append(requestParams, httpclient.WithPathf("/education/v1/persons/%s/enrollments", url.PathEscape(fmt.Sprint(personIdArg))))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Get(ctx, requestParams...); err != nil {
-		return *new(EnrollmentList), werror.WrapWithContextParams(ctx, err, "listEnrollments failed")
+		return *new(EnrollmentList), werror.WrapWithContextParams(ctx, err, "listPersonEnrollments failed")
 	}
 	if returnVal == nil {
-		return *new(EnrollmentList), werror.ErrorWithContextParams(ctx, "listEnrollments response cannot be nil")
+		return *new(EnrollmentList), werror.ErrorWithContextParams(ctx, "listPersonEnrollments response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *educationServiceClient) ListEnrollments(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string, pageSizeArg *int, pageTokenArg *string) (EnrollmentPage, error) {
+	var returnVal *EnrollmentPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListEnrollments"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/education/v1/enrollments"))
+	queryParams := make(url.Values)
+	if institutionIdArg != nil {
+		queryParams.Set("institutionId", fmt.Sprint(*institutionIdArg))
+	}
+	if programIdArg != nil {
+		queryParams.Set("programId", fmt.Sprint(*programIdArg))
+	}
+	if unitIdArg != nil {
+		queryParams.Set("unitId", fmt.Sprint(*unitIdArg))
+	}
+	if groupIdArg != nil {
+		queryParams.Set("groupId", fmt.Sprint(*groupIdArg))
+	}
+	if degreeLevelIdArg != nil {
+		queryParams.Set("degreeLevelId", fmt.Sprint(*degreeLevelIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if effectiveFromFromArg != nil {
+		queryParams.Set("effectiveFromFrom", fmt.Sprint(*effectiveFromFromArg))
+	}
+	if effectiveFromToArg != nil {
+		queryParams.Set("effectiveFromTo", fmt.Sprint(*effectiveFromToArg))
+	}
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(EnrollmentPage), werror.WrapWithContextParams(ctx, err, "listEnrollments failed")
+	}
+	if returnVal == nil {
+		return *new(EnrollmentPage), werror.ErrorWithContextParams(ctx, "listEnrollments response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *educationServiceClient) EnrollmentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string) (EnrollmentStats, error) {
+	var returnVal *EnrollmentStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("EnrollmentStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/education/v1/stats/enrollments"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if institutionIdArg != nil {
+		queryParams.Set("institutionId", fmt.Sprint(*institutionIdArg))
+	}
+	if programIdArg != nil {
+		queryParams.Set("programId", fmt.Sprint(*programIdArg))
+	}
+	if unitIdArg != nil {
+		queryParams.Set("unitId", fmt.Sprint(*unitIdArg))
+	}
+	if groupIdArg != nil {
+		queryParams.Set("groupId", fmt.Sprint(*groupIdArg))
+	}
+	if degreeLevelIdArg != nil {
+		queryParams.Set("degreeLevelId", fmt.Sprint(*degreeLevelIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if effectiveFromFromArg != nil {
+		queryParams.Set("effectiveFromFrom", fmt.Sprint(*effectiveFromFromArg))
+	}
+	if effectiveFromToArg != nil {
+		queryParams.Set("effectiveFromTo", fmt.Sprint(*effectiveFromToArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(EnrollmentStats), werror.WrapWithContextParams(ctx, err, "enrollmentStats failed")
+	}
+	if returnVal == nil {
+		return *new(EnrollmentStats), werror.ErrorWithContextParams(ctx, "enrollmentStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -915,7 +1046,43 @@ type EducationServiceClientWithAuth interface {
 	EndAppointment(ctx context.Context, appointmentIdArg string, requestArg EndAppointmentRequest) (Appointment, error)
 	// Read-only list of the education positions a person holds, enriched with title + institution.
 	ListPersonAppointments(ctx context.Context, personIdArg string) (PersonAppointmentList, error)
-	ListEnrollments(ctx context.Context, personIdArg string) (EnrollmentList, error)
+	/*
+	   The enrollments ONE named person holds. Renamed from `listEnrollments` in M58 ticket 7 when
+	   the top-level browse below took that name — the HTTP path is unchanged, and the sibling
+	   `listPersonAppointments` already used this shape.
+
+	   Holder-scoped (D-PersonReadScope): a caller who may not read this person gets an EMPTY list
+	   rather than a 403, because a permission error would confirm the person exists.
+	*/
+	ListPersonEnrollments(ctx context.Context, personIdArg string) (EnrollmentList, error)
+	/*
+	   Browse the enrollment register, token-paginated, optionally filtered by the facet vocabulary
+	   (M58 ticket 7 / D-ObjectFacets). Gated by education.read.
+
+	   Until M58 ticket 7 an enrollment could be reached only one person at a time, so the
+	   population could be interrogated and never described. This endpoint is the browse mode, and
+	   it is HOLDER-SCOPED in SQL: an instance admin sees every enrollment, and everyone else sees
+	   the enrollments of people they may read (D-PersonReadScope — the holder holds an active
+	   membership in a unit of the caller's reach). The scope is part of the query rather than a
+	   filter over the page, because trimming a keyset page after it is cut returns a short page
+	   with a next-page token still attached (R-06).
+
+	   Every filter arg here is also an arg of `enrollmentStats`, and a chart segment's key is a
+	   usable value for the arg it came from — that is what makes a dashboard and a list two
+	   renderings of one request state.
+	*/
+	ListEnrollments(ctx context.Context, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string, pageSizeArg *int, pageTokenArg *string) (EnrollmentPage, error)
+	/*
+	   Facet distributions over the enrollment register — the dashboard half of the enrollment
+	   facet vocabulary (M58 ticket 7 / D-ObjectFacets). Takes exactly the filter args
+	   `listEnrollments` takes, minus paging, so a dashboard and a list are two renderings of one
+	   request state.
+
+	   The path is `/stats/enrollments` rather than `/enrollments/stats` because the server's
+	   router rejects a literal path segment that is a sibling of a path parameter — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	EnrollmentStats(ctx context.Context, facetsArg *string, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string) (EnrollmentStats, error)
 	CreateEnrollment(ctx context.Context, personIdArg string, requestArg UpsertEnrollmentRequest) (Enrollment, error)
 	UpdateEnrollment(ctx context.Context, personIdArg string, enrollmentIdArg string, requestArg UpsertEnrollmentRequest) (Enrollment, error)
 	DeleteEnrollment(ctx context.Context, personIdArg string, enrollmentIdArg string) error
@@ -1066,8 +1233,16 @@ func (c *educationServiceClientWithAuth) ListPersonAppointments(ctx context.Cont
 	return c.client.ListPersonAppointments(ctx, c.authHeader, personIdArg)
 }
 
-func (c *educationServiceClientWithAuth) ListEnrollments(ctx context.Context, personIdArg string) (EnrollmentList, error) {
-	return c.client.ListEnrollments(ctx, c.authHeader, personIdArg)
+func (c *educationServiceClientWithAuth) ListPersonEnrollments(ctx context.Context, personIdArg string) (EnrollmentList, error) {
+	return c.client.ListPersonEnrollments(ctx, c.authHeader, personIdArg)
+}
+
+func (c *educationServiceClientWithAuth) ListEnrollments(ctx context.Context, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string, pageSizeArg *int, pageTokenArg *string) (EnrollmentPage, error) {
+	return c.client.ListEnrollments(ctx, c.authHeader, institutionIdArg, programIdArg, unitIdArg, groupIdArg, degreeLevelIdArg, statusArg, effectiveFromFromArg, effectiveFromToArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *educationServiceClientWithAuth) EnrollmentStats(ctx context.Context, facetsArg *string, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string) (EnrollmentStats, error) {
+	return c.client.EnrollmentStats(ctx, c.authHeader, facetsArg, institutionIdArg, programIdArg, unitIdArg, groupIdArg, degreeLevelIdArg, statusArg, effectiveFromFromArg, effectiveFromToArg)
 }
 
 func (c *educationServiceClientWithAuth) CreateEnrollment(ctx context.Context, personIdArg string, requestArg UpsertEnrollmentRequest) (Enrollment, error) {
@@ -1371,12 +1546,28 @@ func (c *educationServiceClientWithTokenProvider) ListPersonAppointments(ctx con
 	return c.client.ListPersonAppointments(ctx, bearertoken.Token(token), personIdArg)
 }
 
-func (c *educationServiceClientWithTokenProvider) ListEnrollments(ctx context.Context, personIdArg string) (EnrollmentList, error) {
+func (c *educationServiceClientWithTokenProvider) ListPersonEnrollments(ctx context.Context, personIdArg string) (EnrollmentList, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(EnrollmentList), err
 	}
-	return c.client.ListEnrollments(ctx, bearertoken.Token(token), personIdArg)
+	return c.client.ListPersonEnrollments(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *educationServiceClientWithTokenProvider) ListEnrollments(ctx context.Context, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string, pageSizeArg *int, pageTokenArg *string) (EnrollmentPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(EnrollmentPage), err
+	}
+	return c.client.ListEnrollments(ctx, bearertoken.Token(token), institutionIdArg, programIdArg, unitIdArg, groupIdArg, degreeLevelIdArg, statusArg, effectiveFromFromArg, effectiveFromToArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *educationServiceClientWithTokenProvider) EnrollmentStats(ctx context.Context, facetsArg *string, institutionIdArg *string, programIdArg *string, unitIdArg *string, groupIdArg *string, degreeLevelIdArg *string, statusArg *string, effectiveFromFromArg *string, effectiveFromToArg *string) (EnrollmentStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(EnrollmentStats), err
+	}
+	return c.client.EnrollmentStats(ctx, bearertoken.Token(token), facetsArg, institutionIdArg, programIdArg, unitIdArg, groupIdArg, degreeLevelIdArg, statusArg, effectiveFromFromArg, effectiveFromToArg)
 }
 
 func (c *educationServiceClientWithTokenProvider) CreateEnrollment(ctx context.Context, personIdArg string, requestArg UpsertEnrollmentRequest) (Enrollment, error) {

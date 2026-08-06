@@ -131,6 +131,12 @@ func run(ctx context.Context, dsn, configPath string, seed int64, reset bool) er
 			if err := s.seedGrantSpread(); err != nil {
 				return fmt.Errorf("refresh grant spread: %w", err)
 			}
+			// M58 ticket 7, on this path for the reason above: every seeded enrollment carried one
+			// institution, one programme, status 'enrolled' and NULL everywhere else, so four of the
+			// seven facets had nothing to describe.
+			if err := s.spreadEnrollmentFacets(); err != nil {
+				return fmt.Errorf("refresh enrollment facets: %w", err)
+			}
 			if err := tx.Commit(ctx); err != nil {
 				return fmt.Errorf("commit: %w", err)
 			}
@@ -164,6 +170,9 @@ func run(ctx context.Context, dsn, configPath string, seed int64, reset bool) er
 	}
 	if err := s.seedGrantSpread(); err != nil {
 		return fmt.Errorf("grant spread: %w", err)
+	}
+	if err := s.spreadEnrollmentFacets(); err != nil {
+		return fmt.Errorf("enrollment facet spread: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

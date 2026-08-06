@@ -79,6 +79,29 @@ const (
 	StrategyBands Strategy = "bands"
 	// StrategyBool emits exactly two buckets.
 	StrategyBool Strategy = "bool"
+	// StrategyCatalog emits one bucket per row of the catalog a ref facet POINTS AT, in that catalog's
+	// own ordinal order, including zero-count ones and with no "other" bucket — the ref analogue of
+	// StrategyIdentity (M58 ticket 7).
+	//
+	// Every other ref facet ranks by count, which is right for an open or large value set: the question
+	// "which institutions appear most" has no other order. It is wrong for a ref column whose target is
+	// a closed catalog carrying a SCALE. enrollment.degreeLevelId points at education_degree_levels —
+	// nine migration-seeded ISCED 2011 levels, 0..8 — and a scale re-sorted by frequency is a ranking,
+	// not a scale: "Bachelor, Doctoral, Master" reads as if doctorates outranked masters. The same
+	// reasoning already governs KindEnum, whose Values are declared IN CHART ORDER; this is that rule
+	// reaching the case where the ordered set lives in a table instead of a CHECK constraint.
+	//
+	// Zero-count buckets are emitted for the same reason StrategyIdentity emits them and topN does not:
+	// on a scale, an EMPTY level is information (no doctoral candidates at all), whereas on a ranking an
+	// absent value is simply not in the top N.
+	//
+	// It is deliberately hard to take. Register refuses it on anything but a ref facet, and refuses it
+	// without both CatalogTable and CatalogOrder; a guard then parses the migrations and asserts the
+	// facet's Column really FK-references CatalogTable and that CatalogOrder is really a column of it —
+	// so the claim "this is a closed ordered catalog" is checked against the DDL rather than argued,
+	// the shape the Profile escape established in ticket 5. A facet over an open value set (a person, a
+	// unit, an organization) has no ordinal to name and keeps StrategyTopN.
+	StrategyCatalog Strategy = "catalog"
 )
 
 // Band is one half-open bucket [Lo, Hi) of a StrategyBands facet. A nil bound is unbounded, so the
@@ -98,6 +121,14 @@ type Buckets struct {
 	Grain string
 	// Bands are the half-open buckets; StrategyBands only.
 	Bands []Band
+	// CatalogTable is the schema-qualified table a StrategyCatalog facet's buckets ARE — the catalog
+	// its Column references. StrategyCatalog only, and required by it: the aggregate LEFT JOINs this
+	// table so that a level with no rows still gets a bucket.
+	CatalogTable string
+	// CatalogOrder is the column of CatalogTable the buckets are ordered by (isced_level, sort_order,
+	// ordinal — whatever that catalog's own scale is). StrategyCatalog only, and required by it; the
+	// whole point of the strategy is that the order comes from the catalog rather than from the counts.
+	CatalogOrder string
 	// IncludeUnknown emits a distinct "(unknown)" bucket for NULL. MANDATORY for a nullable column —
 	// plaintext_test.go reads the DDL and fails a nullable column that omits it, so the mandatory
 	// (unknown) bucket facets.md promises is an invariant rather than a habit.
@@ -528,6 +559,11 @@ func validateFacet(objectType string, f Facet) error {
 			"identity buckets come from a CHECK set (one value per row) and a date or band bucket is "+
 			"a single row's single value, so neither CAN overlap", where)
 	}
+	if f.NonPartitioning != "" && f.Buckets.Strategy == StrategyCatalog {
+		return fmt.Errorf("%s: NonPartitioning is not available to a catalog facet — its buckets are "+
+			"the rows of a catalog the column holds ONE value of, so they cannot overlap any more than "+
+			"an enum's can (M58 ticket 7)", where)
+	}
 	return validateBuckets(where, f)
 }
 
@@ -580,6 +616,29 @@ func validateBuckets(where string, f Facet) error {
 		if f.Kind != KindBool {
 			return fmt.Errorf("%s: bool buckets require a bool facet", where)
 		}
+	case StrategyCatalog:
+		// Ref only: the buckets ARE the referenced catalog's rows, so there has to be a reference.
+		if f.Kind != KindRef {
+			return fmt.Errorf("%s: catalog buckets require a ref facet — the buckets are the rows of "+
+				"the catalog the column POINTS AT, so a facet with nothing to point at has no catalog "+
+				"to enumerate", where)
+		}
+		// Both halves are mandatory, and each carries half the claim: the table says WHICH closed set
+		// the buckets come from, the column says what makes it ordered. A catalog facet without an
+		// ordinal is just a topN facet that has stopped ranking.
+		if b.CatalogTable == "" {
+			return fmt.Errorf("%s: catalog buckets require CatalogTable (the catalog whose rows are "+
+				"the buckets)", where)
+		}
+		if !strings.HasPrefix(b.CatalogTable, "oikumenea.") {
+			return fmt.Errorf("%s: CatalogTable %q must be schema-qualified (oikumenea.<module>_*)",
+				where, b.CatalogTable)
+		}
+		if b.CatalogOrder == "" {
+			return fmt.Errorf("%s: catalog buckets require CatalogOrder — the strategy exists BECAUSE "+
+				"the order comes from the catalog's own scale and not from the counts; without one, "+
+				"declare StrategyTopN and rank honestly", where)
+		}
 	case "":
 		return fmt.Errorf("%s: no bucket Strategy (M57 groups by this; declare it now)", where)
 	default:
@@ -593,6 +652,12 @@ func validateBuckets(where string, f Facet) error {
 	}
 	if len(b.Bands) > 0 && b.Strategy != StrategyBands {
 		return fmt.Errorf("%s: Bands are meaningful only for the bands strategy", where)
+	}
+	if b.CatalogTable != "" && b.Strategy != StrategyCatalog {
+		return fmt.Errorf("%s: CatalogTable is meaningful only for the catalog strategy", where)
+	}
+	if b.CatalogOrder != "" && b.Strategy != StrategyCatalog {
+		return fmt.Errorf("%s: CatalogOrder is meaningful only for the catalog strategy", where)
 	}
 	return nil
 }

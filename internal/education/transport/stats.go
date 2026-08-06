@@ -73,6 +73,65 @@ func selectInstitutionFacets(ctx context.Context, s EducationService, token bear
 	return sel, nil
 }
 
+// ============================ enrollment dashboard (M58 ticket 7) ============================
+
+func (s EducationService) EnrollmentStats(ctx context.Context, token bearertoken.Token, facets *string, institutionID, programID, unitID, groupID, degreeLevelID, status, effectiveFromFrom, effectiveFromTo *string) (educationapi.EnrollmentStats, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+		return educationapi.EnrollmentStats{}, err
+	}
+	sel, err := selectEnrollmentFacets(ctx, s, token, strOr(facets))
+	if err != nil {
+		return educationapi.EnrollmentStats{}, err
+	}
+	subject, isAdmin, err := s.pep.SubjectAuthority(ctx)
+	if err != nil {
+		return educationapi.EnrollmentStats{}, s.mapError(ctx, err)
+	}
+	// Both the subject AND the admin flag go down: stats.Compute owns the arm convention, so a
+	// non-admin with no subject (a machine principal) reads nothing rather than everything.
+	res, err := s.app.EnrollmentStats(ctx, subject, isAdmin,
+		enrollmentFilterFrom(institutionID, programID, unitID, groupID, degreeLevelID, status, effectiveFromFrom, effectiveFromTo), sel)
+	if err != nil {
+		return educationapi.EnrollmentStats{}, s.mapError(ctx, err)
+	}
+	return educationapi.EnrollmentStats{TotalCount: int(res.TotalCount), Facets: toAPIFacetDistributions(res)}, nil
+}
+
+// enrollmentFilterFrom builds the enrollment facet filter from the raw query args. Shared by
+// ListEnrollments and EnrollmentStats so a list and its dashboard cannot read the same URL
+// differently — the property the sqlc parity guard proves for the SQL half.
+func enrollmentFilterFrom(institutionID, programID, unitID, groupID, degreeLevelID, status, effectiveFromFrom, effectiveFromTo *string) domain.EnrollmentFilter {
+	return domain.EnrollmentFilter{
+		InstitutionID:     institutionID,
+		ProgramID:         programID,
+		UnitID:            unitID,
+		GroupID:           groupID,
+		DegreeLevelID:     degreeLevelID,
+		Status:            status,
+		EffectiveFromFrom: effectiveFromFrom,
+		EffectiveFromTo:   effectiveFromTo,
+	}
+}
+
+// selectEnrollmentFacets resolves the `facets` CSV against the catalog: an undeclared key is a caller
+// error, a facet whose read code the caller lacks is silently omitted (D-ObjectFacets rule 2).
+func selectEnrollmentFacets(ctx context.Context, s EducationService, token bearertoken.Token, csv string) (stats.Selection, error) {
+	o, ok := facet.Default.Get("link__studied_at")
+	if !ok { // unreachable past the boot-time MustBeBound; loud beats an empty dashboard
+		return stats.Selection{}, educationapi.NewInvalid("enrollment facets are not registered")
+	}
+	sel, err := stats.Select(o, csv, func(code string) (bool, error) {
+		return s.pep.AllowedAnywhere(ctx, token, code)
+	})
+	if err != nil {
+		if errors.Is(err, stats.ErrUnknownFacet) {
+			return stats.Selection{}, educationapi.NewInvalid(fmt.Sprintf("%v", err))
+		}
+		return stats.Selection{}, err
+	}
+	return sel, nil
+}
+
 // toAPIFacetDistributions maps the kernel result onto the generated wire types.
 func toAPIFacetDistributions(res stats.Result) []educationapi.FacetDistribution {
 	out := make([]educationapi.FacetDistribution, 0, len(res.Distributions))

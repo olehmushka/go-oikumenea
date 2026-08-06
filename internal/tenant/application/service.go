@@ -10,9 +10,9 @@ package application
 
 import (
 	"context"
-	"strings"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"

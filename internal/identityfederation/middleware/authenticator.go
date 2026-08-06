@@ -170,7 +170,7 @@ func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons Pe
 		// Read off the validator rather than added to this already-positional signature: every arg
 		// appended here has to be threaded through main.go correctly, and a silently mis-ordered bool
 		// or string is exactly the kind of mistake a match MODE must not be exposed to.
-		jitMatch: validator.JITMatch(),
+		jitMatch:  validator.JITMatch(),
 		authority: authority, pool: pool,
 		principals: principals, principalAuthority: principalAuthority,
 	}

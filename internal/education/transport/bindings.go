@@ -14,9 +14,18 @@ import (
 
 // ============================ enrollments ============================
 
-func (s EducationService) ListEnrollments(ctx context.Context, token bearertoken.Token, personID string) (educationapi.EnrollmentList, error) {
+// ListPersonEnrollments returns ONE named person's enrollments. Renamed from ListEnrollments in M58
+// ticket 7, when the top-level browse below took that name; the HTTP path is unchanged.
+func (s EducationService) ListPersonEnrollments(ctx context.Context, token bearertoken.Token, personID string) (educationapi.EnrollmentList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return educationapi.EnrollmentList{}, err
+	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationapi.EnrollmentList{}, s.mapError(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationapi.EnrollmentList{Enrollments: []educationapi.Enrollment{}}, nil
 	}
 	rows, err := s.app.ListEnrollments(ctx, personID)
 	if err != nil {
@@ -27,6 +36,55 @@ func (s EducationService) ListEnrollments(ctx context.Context, token bearertoken
 		out = append(out, enrollmentAPI(e))
 	}
 	return educationapi.EnrollmentList{Enrollments: out}, nil
+}
+
+// ListEnrollments is the top-level facet-filtered browse (M58 ticket 7 / D-ObjectFacets).
+//
+// Where ListPersonEnrollments gates on ONE named holder and hides an unreadable one as an empty list,
+// this endpoint has no holder to probe: the holder read scope (D-PersonReadScope) is folded into the
+// query itself, so an unreadable holder's enrollments are simply not in the result set. Not merely an
+// optimization — a Go-side holder check after the keyset page was cut would return a page SHORTER
+// than pageSize while still handing back a nextPageToken (R-06).
+func (s EducationService) ListEnrollments(ctx context.Context, token bearertoken.Token, institutionID, programID, unitID, groupID, degreeLevelID, status, effectiveFromFrom, effectiveFromTo *string, pageSize *int, pageToken *string) (educationapi.EnrollmentPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+		return educationapi.EnrollmentPage{}, err
+	}
+	subject, isAdmin, err := s.pep.SubjectAuthority(ctx)
+	if err != nil {
+		return educationapi.EnrollmentPage{}, s.mapError(ctx, err)
+	}
+	// A non-admin with no subject is a machine principal (M51): no person identity, no reach, and so
+	// no readable holders. It reads nothing rather than everything — the rule stats.Compute writes down
+	// for the aggregate half, applied here by hand because the list has no Compute to own it.
+	if !isAdmin && subject == "" {
+		return educationapi.EnrollmentPage{Enrollments: []educationapi.Enrollment{}}, nil
+	}
+	arm := subject
+	if isAdmin {
+		arm = "" // the instance-admin arm carries no scope predicate
+	}
+	limit := pageSizeOr(pageSize)
+	// One filter for the whole vocabulary, built once and passed down BOTH arms — the list and its
+	// dashboard must never read the same URL differently.
+	filter := enrollmentFilterFrom(institutionID, programID, unitID, groupID, degreeLevelID, status, effectiveFromFrom, effectiveFromTo)
+	rows, err := s.app.ListEnrollmentRegister(ctx, arm, filter, decodeToken(pageToken), limit)
+	if err != nil {
+		return educationapi.EnrollmentPage{}, s.mapError(ctx, err)
+	}
+	next := ""
+	if len(rows) > limit {
+		rows = rows[:limit]
+		next = encodeToken(rows[len(rows)-1].ID)
+	}
+	out := make([]educationapi.Enrollment, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, enrollmentAPI(e))
+	}
+	page := educationapi.EnrollmentPage{Enrollments: out}
+	if next != "" {
+		page.NextPageToken = &next
+	}
+	return page, nil
 }
 
 func (s EducationService) CreateEnrollment(ctx context.Context, token bearertoken.Token, personID string, req educationapi.UpsertEnrollmentRequest) (educationapi.Enrollment, error) {
@@ -81,6 +139,13 @@ func enrollmentAPI(e domain.Enrollment) educationapi.Enrollment {
 func (s EducationService) ListDormitoryStays(ctx context.Context, token bearertoken.Token, personID string) (educationapi.DormitoryStayList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return educationapi.DormitoryStayList{}, err
+	}
+	ok, err := s.holderReadable(ctx, personID)
+	if err != nil {
+		return educationapi.DormitoryStayList{}, s.mapError(ctx, err)
+	}
+	if !ok { // holder not readable by this subject (D-PersonReadScope): hide as an empty list
+		return educationapi.DormitoryStayList{DormitoryStays: []educationapi.DormitoryStay{}}, nil
 	}
 	rows, err := s.app.ListDormitoryStays(ctx, personID)
 	if err != nil {

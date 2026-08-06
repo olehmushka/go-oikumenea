@@ -109,6 +109,15 @@ var statsAggregateGroups = []struct {
 		{"authorization", "AssignmentStats"},
 		{"authorization", "AssignmentStatsForSubject"},
 	}},
+	// M58 ticket 7 — enrollment: admin vs holder-scoped, no search twin (an enrollment has no name of
+	// its own either) and no dense aggregate variant, for the same reason assignment has none. The
+	// degreeLevelId branch is the first that is NOT one SELECT per facet: a catalog-ordered facet is a
+	// LEFT JOIN over its catalog plus a separate NULL arm, so the byte-identity this guard asserts
+	// between the two arms covers both halves of it.
+	{"link__studied_at", []struct{ module, query string }{
+		{"education", "EnrollmentStats"},
+		{"education", "EnrollmentStatsForSubject"},
+	}},
 }
 
 // TestEveryRegisteredTypeHasAnAggregateGroup is the coverage floor: a type registered in the catalog

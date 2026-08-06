@@ -29,13 +29,17 @@ import (
 // in-transaction — D-Audit), the localization service (translatable name maps), and the tenant service
 // (institutions are `university`-domain orgs and units are tenant units — M41 / D-UnifiedOrgGraph), then
 // registers the EducationService onto the witchcraft router. It owns no resources of its own.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, tenant *tenantapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
+// The `person` argument is the read-scope seam (D-PersonReadScope), added in M58 ticket 7: every
+// person-binding read in this module — enrollments, dorm stays, appointments and the six reference-
+// layer bindings — asks it whether the caller may read the holder before returning that person's
+// rows.
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, tenant *tenantapp.Service, enforcer *pep.Enforcer, person transport.PersonReader) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 	svc := application.NewService(pool, repoFor, audit, tenant)
-	if err := educationapi.RegisterRoutesEducationService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
+	if err := educationapi.RegisterRoutesEducationService(info.Router, transport.NewService(svc, loc, enforcer, person)); err != nil {
 		return nil, werror.Wrap(err, "register education service routes")
 	}
-	if err := educationrefapi.RegisterRoutesEducationReferenceService(info.Router, transport.NewReferenceService(svc, enforcer)); err != nil {
+	if err := educationrefapi.RegisterRoutesEducationReferenceService(info.Router, transport.NewReferenceService(svc, enforcer, person)); err != nil {
 		return nil, werror.Wrap(err, "register education reference service routes")
 	}
 	return svc, nil

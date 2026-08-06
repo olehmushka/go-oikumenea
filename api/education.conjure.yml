@@ -230,6 +230,30 @@ types:
         fields:
           totalCount: integer
           facets: list<FacetDistribution>
+      EnrollmentPage:
+        fields:
+          enrollments: list<Enrollment>
+          nextPageToken: optional<string>
+      EnrollmentStats:
+        docs: |
+          Facet distributions over the SAME set `listEnrollments` returns under the same filters, with
+          the holder read-scope folded INTO the count (M58 ticket 7 / D-ObjectFacets).
+
+          An enrollment carries no unit of its own — it is scoped THROUGH ITS HOLDER
+          (D-PersonReadScope), exactly as a document is: an instance admin counts everything, and
+          everyone else counts the enrollments of the people they may read (a person is readable when
+          they hold an active membership in a unit of the caller's reach). Folded into SQL rather than
+          applied to the page, because trimming after the fact is right for a page and wrong for a
+          count. `totalCount` therefore equals the rows exhaustively paging `listEnrollments` under
+          these filters would return.
+
+          The `degreeLevelId` distribution is ordered by ISCED LEVEL, not by count, and includes
+          levels with no enrollments at all: it is a scale, and a scale re-sorted by frequency reads
+          as if a doctorate ranked below a bachelor's. It carries no `(other)` bucket for the same
+          reason — every level is named.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       PositionPage:
         fields:
           positions: list<EducationPosition>
@@ -723,11 +747,130 @@ services:
         args:
           personId: { type: string, param-type: path }
         returns: PersonAppointmentList
-      listEnrollments:
+      listPersonEnrollments:
         http: GET /persons/{personId}/enrollments
+        docs: |
+          The enrollments ONE named person holds. Renamed from `listEnrollments` in M58 ticket 7 when
+          the top-level browse below took that name — the HTTP path is unchanged, and the sibling
+          `listPersonAppointments` already used this shape.
+
+          Holder-scoped (D-PersonReadScope): a caller who may not read this person gets an EMPTY list
+          rather than a 403, because a permission error would confirm the person exists.
         args:
           personId: { type: string, param-type: path }
         returns: EnrollmentList
+      listEnrollments:
+        http: GET /enrollments
+        docs: |
+          Browse the enrollment register, token-paginated, optionally filtered by the facet vocabulary
+          (M58 ticket 7 / D-ObjectFacets). Gated by education.read.
+
+          Until M58 ticket 7 an enrollment could be reached only one person at a time, so the
+          population could be interrogated and never described. This endpoint is the browse mode, and
+          it is HOLDER-SCOPED in SQL: an instance admin sees every enrollment, and everyone else sees
+          the enrollments of people they may read (D-PersonReadScope — the holder holds an active
+          membership in a unit of the caller's reach). The scope is part of the query rather than a
+          filter over the page, because trimming a keyset page after it is cut returns a short page
+          with a next-page token still attached (R-06).
+
+          Every filter arg here is also an arg of `enrollmentStats`, and a chart segment's key is a
+          usable value for the arg it came from — that is what makes a dashboard and a list two
+          renderings of one request state.
+        args:
+          institutionId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — the institution organization RID (M41 — an institution IS a tenant organization).
+          programId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — program RID (`oikumenea.education_programs`). Nullable column; setting it excludes enrollments with no recorded program.
+          unitId:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — the tenant unit (faculty / department) RID. EXACT match, NOT
+              subtree-expanding: an enrollment sits on one unit, and a filter that quietly expanded
+              would count a row once per descendant. Nullable column.
+          groupId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — study-group RID (`oikumenea.education_groups`). Nullable column.
+          degreeLevelId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — ISCED degree-level RID (`oikumenea.education_degree_levels`). Nullable column.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `enrolled` | `graduated` | `withdrawn` | `expelled` | `on_leave`.
+          effectiveFromFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on the intake date (YYYY-MM-DD). Excludes enrollments with no recorded date.
+          effectiveFromTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on the intake date (YYYY-MM-DD).
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: EnrollmentPage
+      enrollmentStats:
+        http: GET /stats/enrollments
+        docs: |
+          Facet distributions over the enrollment register — the dashboard half of the enrollment
+          facet vocabulary (M58 ticket 7 / D-ObjectFacets). Takes exactly the filter args
+          `listEnrollments` takes, minus paging, so a dashboard and a list are two renderings of one
+          request state.
+
+          The path is `/stats/enrollments` rather than `/enrollments/stats` because the server's
+          router rejects a literal path segment that is a sibling of a path parameter — see the
+          route-conflict guard in `internal/platform/transport`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`status,degreeLevelId`). Omitted or
+              empty = every facet the caller may read; an explicit list of nothing (`facets=,`)
+              returns `totalCount` alone. An undeclared facet key is an Education:Invalid.
+          institutionId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listEnrollments`.
+          programId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listEnrollments`.
+          unitId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listEnrollments`.
+          groupId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listEnrollments`.
+          degreeLevelId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listEnrollments`.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listEnrollments`.
+          effectiveFromFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listEnrollments`.
+          effectiveFromTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listEnrollments`.
+        returns: EnrollmentStats
       createEnrollment:
         http: POST /persons/{personId}/enrollments
         args:

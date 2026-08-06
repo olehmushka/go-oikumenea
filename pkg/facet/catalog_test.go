@@ -34,10 +34,13 @@ func TestDefaultRegistryBuilds(t *testing.T) {
 	// one: `location` (three windowed branches and a 400 when given none, hence the first ClassWindow
 	// args) and `link__has_role` (exactly one of subjectPersonId/targetUnitId required, hence a reach
 	// trim asked for ONE permission code rather than the '%.read' family).
+	// Ticket 7 added the last of the tranche, `link__studied_at` — the third type with no list mode,
+	// and the first whose visibility comes from neither a unit column nor a shadow bit but from its
+	// HOLDER (D-PersonReadScope), hence the document plan shapes rather than any M58 type's.
 	want := []string{
 		"person", "unit", "organization", "link__member_of", "order", "document", "audit",
 		"external_organization", "taxon", "languoid", "vehicle", "account", "card",
-		"company", "institution", "location", "link__has_role",
+		"company", "institution", "location", "link__has_role", "link__studied_at",
 	}
 	for _, w := range want {
 		o, ok := Default.Get(w)

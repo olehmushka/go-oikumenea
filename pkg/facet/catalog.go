@@ -22,6 +22,7 @@ func catalog() []ObjectType {
 		personType(), unitType(), organizationType(), membershipType(), orderType(), documentType(),
 		auditType(), externalOrgType(), taxonType(), languoidType(), vehicleType(), accountType(),
 		cardType(), companyType(), institutionType(), locationType(), assignmentType(),
+		enrollmentType(),
 	}
 }
 
@@ -1465,12 +1466,20 @@ func institutionType() ObjectType {
 // Every faceted column is pii:none. So are the six address parts and type_id itself — but only as of
 // migration 0023: the sweep found them unclassified, which is the fifth such gap in six tickets.
 func locationType() ObjectType {
+	// NOTE (M58 ticket 7): this comment used to sit BETWEEN Type: and Module: below, where it broke
+	// genfacetargs' strict binding regex — the generator refused to run at all, so the mirror the arg
+	// guards read could not be regenerated from ticket 6 onward. The committed mirror happened to be
+	// correct (it was generated before the comment was added), which is why nothing went red: a
+	// generator that cannot run and a mirror that is already right look identical until the next
+	// contract change. The error message anticipated a FIELD slipping in and the strictness is worth
+	// keeping, so the comment moved rather than the regex loosening.
+	//
+	// The Go package is `geo`, not `location`: this module owns BOTH the country/gazetteer registry
+	// (D-Geo, D-GeoPlaces) and the location model (D-Location), and Module names the DIRECTORY the
+	// guards read queries/*.sql from. The doc, the RID service and the table prefix all say
+	// `location`; only the package says `geo`.
 	return ObjectType{
-		Type: "location",
-		// The Go package is `geo`, not `location`: this module owns BOTH the country/gazetteer registry
-		// (D-Geo, D-GeoPlaces) and the location model (D-Location), and Module names the DIRECTORY the
-		// guards read queries/*.sql from. The doc, the RID service and the table prefix all say
-		// `location`; only the package says `geo`.
+		Type:          "location",
 		Module:        "geo",
 		ListEndpoint:  "LocationService.listLocations",
 		StatsEndpoint: "LocationService.locationStats",
@@ -1555,6 +1564,137 @@ func locationType() ObjectType {
 				Why:    "bounding-box corner (with minLat/minLng/maxLat)",
 				Drives: "ListLocationsInBbox",
 			},
+		},
+	}
+}
+
+// ── enrollment (link__studied_at) ────────────────────────────────────────────
+//
+// M58 ticket 7, the LAST type of the M58 tranche, and the third faceted reified link (D-Ontology)
+// after link__member_of and link__has_role.
+//
+// It had no unconditional list either — `GET /persons/{personId}/enrollments` is one person at a
+// time, so the enrollment register could be interrogated and never described. What makes it unlike
+// the two links before it is WHERE the visibility comes from: `person_education_enrollments` carries
+// no unit column at all, so there is no unit predicate to write and no shadow bit to gate on. It is
+// scoped THROUGH ITS HOLDER (D-PersonReadScope), which makes `document` — not any M58 type — the
+// precedent: reach reaches a row by way of the person who holds it, via that person's active
+// memberships. TWO arms, {instance-admin, holder-scoped}, and the holder semi-join lives INSIDE the
+// query for the R-06 reason documents record (a Go-side trim after the keyset page is cut returns a
+// short page still carrying a next-page token).
+//
+// THE HOLDER SCOPE WAS NOT BEING APPLIED ANYWHERE IN EDUCATION when this ticket started: every
+// person-binding read gated `education.read` ANYWHERE and then returned the rows, so one grant
+// anywhere enumerated any person's education history instance-wide. That is a defect in the nine
+// existing endpoints rather than in this new one; it is fixed in the same ticket (see
+// internal/education/transport), and this list was never allowed to inherit it.
+//
+// `degreeLevelId` is the first CATALOG-ORDERED facet (StrategyCatalog): ISCED 2011 is a scale, and a
+// scale sorted by frequency is a ranking. See the strategy's own comment for why it is checkable
+// rather than merely declared.
+//
+// Not faceted, deliberately: `fieldOfStudy` is free TEXT with no catalog behind it (a `code` facet at
+// best, and on real data a long tail of near-duplicate spellings — the catalogued four never asked
+// for it), `qualification` is the same shape, and `studentNumber` is an identifier of a person at an
+// institution, which is identity data to be read on a row and never a chart axis.
+func enrollmentType() ObjectType {
+	return ObjectType{
+		Type:          "link__studied_at",
+		Module:        "education",
+		ListEndpoint:  "EducationService.listEnrollments",
+		StatsEndpoint: "EducationService.enrollmentStats",
+		Facets: []Facet{
+			{
+				Key:     "institutionId",
+				Kind:    KindRef,
+				Table:   "oikumenea.person_education_enrollments",
+				Column:  "institution_id",
+				RefType: "organization",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "-> oikumenea.tenant_organizations. The RefType is `organization`, not " +
+					"`institution`: M41/D-UnifiedOrgGraph folded institutions onto the tenant org graph, " +
+					"so there is no institution token to point at and the FK really is to the org table " +
+					"(the same reading account.institutionId takes). NOT NULL.",
+			},
+			{
+				Key:     "programId",
+				Kind:    KindRef,
+				Table:   "oikumenea.person_education_enrollments",
+				Column:  "program_id",
+				RefType: "program",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "-> oikumenea.education_programs. Nullable. facets.md recorded this column as " +
+					"NOT EXISTING (the ticket-2 survey); it does — added by an ALTER ~750 lines below " +
+					"the CREATE TABLE in the same consolidated migration, which is the vehicle.color " +
+					"trap ticket 3 recorded: since the 46->15 consolidation a table's shape is no " +
+					"longer its CREATE TABLE. The catalogue entry is corrected, not worked around.",
+			},
+			{
+				Key:     "unitId",
+				Kind:    KindRef,
+				Table:   "oikumenea.person_education_enrollments",
+				Column:  "unit_id",
+				RefType: "unit",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "The faculty/department the enrollment sits in -> oikumenea.tenant_units (M41). " +
+					"EXACT match, NOT subtree-expanding — the rule membership.unitId and " +
+					"assignment.targetUnitId both carry: a filter that quietly expanded would count one " +
+					"enrollment once per descendant. Nullable, and it is NOT the visibility column — " +
+					"this table is holder-scoped, so a NULL here hides nothing.",
+			},
+			{
+				Key:     "groupId",
+				Kind:    KindRef,
+				Table:   "oikumenea.person_education_enrollments",
+				Column:  "group_id",
+				RefType: "group",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note:    "-> oikumenea.education_groups, the study cohort. Nullable.",
+			},
+			{
+				Key:     "degreeLevelId",
+				Kind:    KindRef,
+				Table:   "oikumenea.person_education_enrollments",
+				Column:  "degree_level_id",
+				RefType: "degree_level",
+				Buckets: Buckets{
+					Strategy:       StrategyCatalog,
+					CatalogTable:   "oikumenea.education_degree_levels",
+					CatalogOrder:   "isced_level",
+					IncludeUnknown: true,
+				},
+				Note: "-> oikumenea.education_degree_levels, the migration-seeded ISCED 2011 scale " +
+					"(nine levels, 0..8). The first StrategyCatalog facet: ordered by isced_level with " +
+					"every level present including the empty ones, because on a scale an absent level " +
+					"is information. Nullable, so the (unknown) bucket is enrollments with no recorded " +
+					"level — real missing data here, unlike assignment.graphId's structural NULL.",
+			},
+			{
+				Key:     "status",
+				Kind:    KindEnum,
+				Table:   "oikumenea.person_education_enrollments",
+				Column:  "status",
+				Values:  []string{"enrolled", "on_leave", "graduated", "withdrawn", "expelled"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "Declared in LIFECYCLE order rather than by frequency or alphabetically: the two " +
+					"in-progress states first, then the three terminal ones, which is the order a " +
+					"cohort is reasoned about (the same rule assignment.scope follows).",
+			},
+			{
+				Key:     "effectiveFrom",
+				Kind:    KindDateRange,
+				Table:   "oikumenea.person_education_enrollments",
+				Column:  "effective_from",
+				Buckets: Buckets{Strategy: StrategyDateTrunc, Grain: "month", IncludeUnknown: true},
+				Note: "The INTAKE date. facets.md catalogued this as `startedOn`, which is the half of " +
+					"the ticket-2 survey's defect note that was right — no such column exists. Nullable. " +
+					"Month grain, not the year grain institution.foundedOn takes: a student register " +
+					"spans a few years and its shape is the intake cycle within them.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor over the enrollment RID (pkg/listing codec)"},
 		},
 	}
 }
