@@ -18,7 +18,7 @@ import (
 // ---- affiliation types ----
 
 func (s ReligionService) ListAffiliationTypes(ctx context.Context, token bearertoken.Token) (religionapi.AffiliationTypeList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.AffiliationTypeList{}, err
 	}
 	types, err := s.app.ListAffiliationTypes(ctx)

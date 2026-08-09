@@ -19,7 +19,7 @@ import (
 // ---- grade categories ----
 
 func (s ReligionService) ListGradeCategories(ctx context.Context, token bearertoken.Token) (religionapi.GradeCategoryList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.GradeCategoryList{}, err
 	}
 	cats, err := s.app.ListGradeCategories(ctx)
@@ -59,7 +59,7 @@ func (s ReligionService) UpsertGradeCategory(ctx context.Context, token bearerto
 // ---- clergy grades ----
 
 func (s ReligionService) ListClergyGrades(ctx context.Context, token bearertoken.Token, tradition *string) (religionapi.ClergyGradeList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.ClergyGradeList{}, err
 	}
 	grades, err := s.app.ListClergyGrades(ctx, strOr(tradition))
@@ -106,7 +106,7 @@ func clergyGradeAPI(g domain.ClergyGrade, name map[string]string) religionapi.Cl
 // ---- office types ----
 
 func (s ReligionService) ListOfficeTypes(ctx context.Context, token bearertoken.Token) (religionapi.OfficeTypeList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.OfficeTypeList{}, err
 	}
 	types, err := s.app.ListOfficeTypes(ctx)
@@ -146,7 +146,7 @@ func (s ReligionService) UpsertOfficeType(ctx context.Context, token bearertoken
 // ---- clergy credentials ----
 
 func (s ReligionService) ListPersonClergyCredentials(ctx context.Context, token bearertoken.Token, personID string) (religionapi.ClergyCredentialList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.ClergyCredentialList{}, err
 	}
 	rows, err := s.app.ListPersonClergyCredentials(ctx, personID)

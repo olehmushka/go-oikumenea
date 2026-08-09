@@ -19,7 +19,7 @@ import (
 // ---- site types ----
 
 func (s ReligionService) ListSiteTypes(ctx context.Context, token bearertoken.Token) (religionapi.SiteTypeList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.SiteTypeList{}, err
 	}
 	types, err := s.app.ListSiteTypes(ctx)
@@ -59,7 +59,7 @@ func (s ReligionService) UpsertSiteType(ctx context.Context, token bearertoken.T
 // ---- service types ----
 
 func (s ReligionService) ListServiceTypes(ctx context.Context, token bearertoken.Token) (religionapi.ServiceTypeList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.ServiceTypeList{}, err
 	}
 	types, err := s.app.ListServiceTypes(ctx)
@@ -236,7 +236,7 @@ func (s ReligionService) DeleteAlias(ctx context.Context, token bearertoken.Toke
 // ---- discovery search ----
 
 func (s ReligionService) SearchSites(ctx context.Context, token bearertoken.Token, lat, lng, radiusM, minLat, minLng, maxLat, maxLng *float64, religion, language *string, dayOfWeek *int, onlineOnly *bool, query *string, pageSize *int) (religionapi.DiscoverySitePage, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.DiscoverySitePage{}, err
 	}
 	q := domain.DiscoveryQuery{

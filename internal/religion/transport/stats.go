@@ -35,7 +35,7 @@ func (s ReligionService) TaxonStats(
 	classification *string,
 	query *string,
 ) (religionapi.TaxonStats, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.TaxonStats{}, err
 	}
 	sel, err := selectTaxonFacets(ctx, s, token, strOr(facets))

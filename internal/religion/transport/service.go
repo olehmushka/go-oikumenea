@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package transport implements the generated religionapi.ReligionService (D-Religion, M22). It PEP-gates
-// each op (taxonomy/catalog reads on religion.read and writes on religion.catalog.manage — instance
-// reference data, satisfied anywhere; per-unit org ops on religionorg.manage, checked against the unit
-// over the canonical graph), assembles translatable names as locale->text maps via the localization
-// service, and maps domain sentinels to the Conjure Religion:* errors. Generated code is never hand-edited.
+// each op (taxonomy/catalog/discovery reads on religion.read via RequireServiceOrPerson — a service
+// principal holding the grant or a person via the PDP — and writes on religion.catalog.manage via
+// RequireAnywhere, person-only, instance reference data; per-unit org ops on religionorg.manage, checked
+// against the unit over the canonical graph), assembles translatable names as locale->text maps via the
+// localization service, and maps domain sentinels to the Conjure Religion:* errors. Generated code is
+// never hand-edited.
 package transport
 
 import (
@@ -66,7 +68,7 @@ var _ religionapi.ReligionService = ReligionService{}
 // ============================ catalogs ============================
 
 func (s ReligionService) ListTaxonRanks(ctx context.Context, token bearertoken.Token) (religionapi.TaxonRankList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.TaxonRankList{}, err
 	}
 	ranks, err := s.app.ListTaxonRanks(ctx)
@@ -100,7 +102,7 @@ func (s ReligionService) UpsertTaxonRank(ctx context.Context, token bearertoken.
 }
 
 func (s ReligionService) ListClassifications(ctx context.Context, token bearertoken.Token) (religionapi.ClassificationList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.ClassificationList{}, err
 	}
 	cls, err := s.app.ListClassifications(ctx)
@@ -130,7 +132,7 @@ func (s ReligionService) UpsertClassification(ctx context.Context, token bearert
 }
 
 func (s ReligionService) ListOrgKinds(ctx context.Context, token bearertoken.Token) (religionapi.OrgKindList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.OrgKindList{}, err
 	}
 	kinds, err := s.app.ListOrgKinds(ctx)
@@ -168,7 +170,7 @@ func (s ReligionService) UpsertOrgKind(ctx context.Context, token bearertoken.To
 }
 
 func (s ReligionService) ListPolicyKinds(ctx context.Context, token bearertoken.Token) (religionapi.PolicyKindList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.PolicyKindList{}, err
 	}
 	kinds, err := s.app.ListPolicyKinds(ctx)
@@ -208,7 +210,7 @@ func (s ReligionService) UpsertPolicyKind(ctx context.Context, token bearertoken
 // ============================ taxonomy ============================
 
 func (s ReligionService) ListTaxa(ctx context.Context, token bearertoken.Token, rank, parent, religion, classification, query *string, pageSize *int, pageToken *string) (religionapi.TaxonPage, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.TaxonPage{}, err
 	}
 	limit := pageSizeOr(pageSize)
@@ -246,7 +248,7 @@ func (s ReligionService) CreateTaxon(ctx context.Context, token bearertoken.Toke
 }
 
 func (s ReligionService) GetTaxon(ctx context.Context, token bearertoken.Token, id string) (religionapi.Taxon, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.Taxon{}, err
 	}
 	t, err := s.app.GetTaxon(ctx, id)
@@ -299,7 +301,7 @@ func (s ReligionService) RebuildClosure(ctx context.Context, token bearertoken.T
 }
 
 func (s ReligionService) GetEffectiveClassifications(ctx context.Context, token bearertoken.Token, taxonID string) (religionapi.ClassificationList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, readPerm, ""); err != nil {
 		return religionapi.ClassificationList{}, err
 	}
 	cls, err := s.app.EffectiveClassifications(ctx, taxonID)

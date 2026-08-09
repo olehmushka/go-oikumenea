@@ -333,7 +333,9 @@ app-side `public_precision` coarsening. Clergy *offices* (membership Positions) 
 
 ## Authorization touchpoints
 
-Defines/gates: `religion.read`, `religion.catalog.manage` (instance), `religionorg.manage`,
+Defines/gates: `religion.read` — the instance-wide taxonomy/catalog/discovery reads, satisfied for a
+service principal holding the grant or a person via the PDP (RequireServiceOrPerson) — plus
+`religion.catalog.manage` (instance), `religionorg.manage`,
 `clergy.manage`, `affiliation.manage`, `site.manage`, `schedule.manage` — the unit-scoped ones checked
 against the relevant **organization unit** over the **`canonical`** graph (so authority cascades down a
 governance subtree exactly as for any unit). Discovery reads pass the **shadow-visibility gate** and the
