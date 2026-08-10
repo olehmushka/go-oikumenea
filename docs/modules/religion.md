@@ -339,7 +339,14 @@ service principal holding the grant or a person via the PDP (RequireServiceOrPer
 `clergy.manage`, `affiliation.manage`, `site.manage`, `schedule.manage` — the unit-scoped ones checked
 against the relevant **organization unit** over the **`canonical`** graph (so authority cascades down a
 governance subtree exactly as for any unit). Discovery reads pass the **shadow-visibility gate** and the
-**`public_precision`** projection. **Neither a clergy grade nor an affiliation is ever an authz input**
+**`public_precision`** projection. `religion_sites`/`religion_service_schedules`/`religion_aliases`
+additionally carry an RLS `visibility = 'public'` SELECT-only bypass (GH-34, migration `0025`, mirroring
+`tenant_units_public_read` — see D-RLSDefenseInDepth) so a `religion.read` grant's "instance-wide"
+promise holds at the **DB layer** too, not just the PEP: a service principal holding only an
+instance-wide grant (`org_id IS NULL`) now actually sees `public` discovery rows, matching what
+`SearchSites` already queries. `unlisted`/`private` sites are unaffected — they still require org-scoped
+reach (or instance-admin), exactly as `D-ServiceIdentities`' "an instance-wide grant confers no
+operational reach" rule requires. **Neither a clergy grade nor an affiliation is ever an authz input**
 (D-ClergyCredential / D-ReligiousAffiliation, parallel to D-Rank) — authority comes only from role
 assignments.
 
