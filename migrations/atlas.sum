@@ -1,4 +1,4 @@
-h1:ZipMeGUF2L0OPLeChJRxHZba4NpWcY9YuDR9P/UwmNA=
+h1:waXMbQEAPMjrANovBoYbgsBmf0XvydPxRsxTEYoTJUw=
 0001_platform_core.sql h1:c4WwIF4z9hfxCrl+IBaqR0fYO9ICqMz3Ga6iM/OXtpg=
 0002_tenant_rank.sql h1:bJbgk9xm7zrkXCjv1YWGSBtWDipt06zQrz8rDDWjZoA=
 0003_person_membership.sql h1:NS6tiM/3nkBNXaln2e6VzCXPUwhpo0I+T044Gi5miUc=
@@ -23,3 +23,4 @@ h1:ZipMeGUF2L0OPLeChJRxHZba4NpWcY9YuDR9P/UwmNA=
 0022_tenant_unit_search.sql h1:MhdQT8vlOf8aGJZJwXt5stPsVdmOJeOJ4ovMlTLGzqI=
 0023_facet_location_assignment.sql h1:yQse5CbqOmOvWisHIDFn5tCPbgzLU19nq+XzKg7Di9k=
 0024_facet_enrollment.sql h1:uw+wqHKD9mR/2YpjIqFmAsTEXIuWelo1QE7MJjjpaHw=
+0025_religion_public_read.sql h1:8jcFGV5oYd51bRMNBYI5ZaOZ4PJ9xbbyCLClUDosyvg=

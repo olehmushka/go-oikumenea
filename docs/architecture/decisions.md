@@ -816,6 +816,22 @@ the tightened policies **atomically in one revision**, since on a fresh install 
 which the policy outruns the plumbing. The staged (permissive-first) rollout re-applies for any
 **post-v1** RLS change.
 
+**A `visibility = 'public'` row is a second, orthogonal, reach-independent SELECT affordance —
+`tenant_units_public_read` (migration `0006_person_ext`) and, since migration `0025`,
+`religion_sites_public_read` / `religion_service_schedules_public_read` / `religion_aliases_public_read`
+(GH-34).** Each is a second permissive `FOR SELECT`-only policy on an already reach-gated table —
+Postgres OR-combines permissive policies per command, so a public row is visible **regardless of
+caller or grant shape**, while writes and non-public rows stay governed by the table's main reach
+policy. This does **not** reopen `D-ServiceIdentities`' M55 rule that an instance-wide
+(`org_id IS NULL`) principal grant "confers no operational reach" (`authz_principal_org_in_reach`,
+migration `0011_infra`, unchanged) — that rule is about *operational* (org-scoped, non-public) reach.
+`visibility = 'public'` rows were always meant to be broadly discoverable by design (the shadow gate's
+"public units are discoverable" rule, and religion's `SearchSites` already hard-coding
+`visibility = 'public'` in its own query); the RLS backstop had simply fallen out of sync with that
+app-layer decision for the religion discovery tables. A person subject and a service principal see
+public rows identically — the PEP/permission-code check (e.g. `religion.read`) still decides who may
+call the endpoint at all; RLS only mirrors what the app layer already decided is public.
+
 ### D-PersonReadScope — A person's read scope projects through its memberships
 
 **Extended by D-PersonSearch**: a text `query` on the directory list folds a pg_trgm predicate
