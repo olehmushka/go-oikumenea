@@ -443,6 +443,92 @@ func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode stri
 	return out, err
 }
 
+// CreateUnitWithEdge atomically creates a unit under parentID and attaches the parent->child edge
+// in ONE transaction (GH-36 fix), unlike CreateUnit+AddEdge run separately. It mints the child's id
+// up front and seeds its tenant_unit_closure rows BEFORE the unit's own INSERT, so
+// tenant_units_reach's WITH CHECK finds a subtree match on that row instead of racing an
+// unpopulated closure — the structural reason a genuinely-authorized non-admin person could never
+// pass RLS on a brand-new unit's first insert. Use this (not CreateUnit) whenever the caller already
+// has a parent at creation time; CreateUnit remains for root units, which have no closure to seed.
+func (s *Service) CreateUnitWithEdge(ctx context.Context, u domain.Unit, parentID, graphCode string) (domain.Unit, error) {
+	graphCode = defaultGraph(graphCode)
+	if u.Visibility == "" {
+		u.Visibility = domain.VisibilityPublic
+	}
+	if u.State == "" {
+		u.State = domain.StateActive
+	}
+	var out domain.Unit
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		org, err := repo.GetOrganization(ctx, u.OrgID)
+		if err != nil {
+			return err
+		}
+		if u.DomainID == "" {
+			u.DomainID = org.DomainID
+		}
+		if u.KindID != nil {
+			k, err := repo.GetUnitKind(ctx, *u.KindID)
+			if err != nil {
+				return err
+			}
+			if k.DomainID != u.DomainID {
+				return domain.ErrUnitKindNotFound
+			}
+		}
+		if err := u.Validate(); err != nil {
+			return err
+		}
+		if _, err := repo.GetUnit(ctx, parentID); err != nil {
+			return err
+		}
+		g, err := repo.GetGraphForOrgByCode(ctx, &u.OrgID, graphCode)
+		if err != nil {
+			return err
+		}
+		if err := repo.LockGraphForClosure(ctx, g.ID); err != nil {
+			return err
+		}
+		childID, err := mintUnitID(ctx, tx)
+		if err != nil {
+			return err
+		}
+		// Closure BEFORE the unit's own row exists — tenant_unit_closure has no FK to tenant_units,
+		// and is RLS-exempt, so this is safe; a freshly minted id can't already be anyone's ancestor,
+		// so no cycle guard is needed (unlike AddEdge, which attaches an EXISTING child).
+		if err := repo.ExtendClosureForEdge(ctx, g.ID, parentID, childID); err != nil {
+			return err
+		}
+		created, err := repo.InsertUnitWithID(ctx, childID, u)
+		if err != nil {
+			return err
+		}
+		if _, err := repo.InsertEdge(ctx, g.ID, parentID, childID, ""); err != nil {
+			return err
+		}
+		if err := s.record(ctx, tx, "unit.create", "unit", created.ID, created.ID, created); err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "unit.edge.add", "unit", childID, childID, map[string]string{
+			"graph": g.Code, "parentId": parentID, "childId": childID,
+		})
+	})
+	return out, err
+}
+
+// mintUnitID mints a Unit RID (tenant service=4, kind=object=1, type=unit=1) inside tx, ahead of
+// this unit's own INSERT — CreateUnitWithEdge needs the id before the row exists so it can seed
+// tenant_unit_closure for it first (GH-36 fix).
+func mintUnitID(ctx context.Context, tx pgx.Tx) (string, error) {
+	var rid string
+	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_id(4, 1, 1)").Scan(&rid); err != nil {
+		return "", err
+	}
+	return rid, nil
+}
+
 // RemoveEdge detaches childID from parentID within a graph (default command), incrementally
 // shrinks the graph's closure (M48), and records the action. Detaching an absent edge is a no-op
 // (idempotent) — and skipping the shrink then is load-bearing: without the edge, acyclicity does

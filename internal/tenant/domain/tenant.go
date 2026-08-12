@@ -387,6 +387,10 @@ type Repository interface {
 
 	// units
 	InsertUnit(ctx context.Context, u Unit) (Unit, error)
+	// InsertUnitWithID is InsertUnit with a caller-minted id (GH-36 fix): lets a caller seed this
+	// unit's tenant_unit_closure rows before its own INSERT, so tenant_units_reach's WITH CHECK has
+	// a subtree match to find on a brand-new row instead of racing an unpopulated closure.
+	InsertUnitWithID(ctx context.Context, id string, u Unit) (Unit, error)
 	GetUnit(ctx context.Context, id string) (Unit, error)
 	UpdateUnit(ctx context.Context, id string, patch UnitPatch) (Unit, error)
 	SetUnitState(ctx context.Context, id string, state State) (Unit, error)

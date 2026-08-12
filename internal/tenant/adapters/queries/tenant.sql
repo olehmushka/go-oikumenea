@@ -120,6 +120,15 @@ SELECT @org_id, @domain_id, sqlc.narg('kind_id'), sqlc.narg('code'), @name, sqlc
        COALESCE((SELECT d.pdp_scoped FROM oikumenea.tenant_domains d WHERE d.id = @domain_id), true), @metadata
 RETURNING *;
 
+-- name: InsertUnitWithID :one
+-- Same as InsertUnit but with a caller-minted id (GH-36 fix): child-org creation needs the id
+-- BEFORE this row's own INSERT, so tenant_unit_closure can be seeded for it first and this row's
+-- tenant_units_reach WITH CHECK finds a subtree match instead of racing an unpopulated closure.
+INSERT INTO oikumenea.tenant_units (id, org_id, domain_id, kind_id, code, name, level, visibility, pdp_scoped, metadata)
+SELECT @id, @org_id, @domain_id, sqlc.narg('kind_id'), sqlc.narg('code'), @name, sqlc.narg('level'), @visibility,
+       COALESCE((SELECT d.pdp_scoped FROM oikumenea.tenant_domains d WHERE d.id = @domain_id), true), @metadata
+RETURNING *;
+
 -- name: GetUnit :one
 SELECT * FROM oikumenea.tenant_units WHERE id = @id AND deleted_at IS NULL;
 

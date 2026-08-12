@@ -558,8 +558,9 @@ func (s *Service) CreateRootOrg(ctx context.Context, code, name, visibility, org
 
 // CreateChildOrg builds a child religious-body unit under parentUnitID in the canonical graph (a tenant
 // unit + the canonical parent→child edge + the child's profile + an optional primary classification),
-// rejecting it if the parent carries an active excludes_child_creation policy. The tenant operations run
-// in their own transactions (D-Hexagonal cross-module mutation), so this is sequential, not atomic.
+// rejecting it if the parent carries an active excludes_child_creation policy. The unit+edge creation is
+// atomic (tenant.CreateUnitWithEdge, GH-36 fix); the profile/classification writes that follow still run
+// in their own transactions (D-Hexagonal cross-module mutation), so only the tail is sequential.
 func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name, visibility, orgKindID, primaryTaxonID string) (domain.OrgProfile, error) {
 	excluded, err := s.newRepo(s.querier(ctx)).HasActivePolicy(ctx, parentUnitID, domain.PolicyExcludesChildCreation)
 	if err != nil {
@@ -579,17 +580,14 @@ func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name, 
 	if err != nil {
 		return domain.OrgProfile{}, err
 	}
-	child, err := s.tenant.CreateUnit(ctx, tenantdomain.Unit{
+	child, err := s.tenant.CreateUnitWithEdge(ctx, tenantdomain.Unit{
 		OrgID:      parent.OrgID,
 		DomainID:   parent.DomainID,
 		Code:       &code,
 		Name:       name,
 		Visibility: vis,
-	})
+	}, parentUnitID, canonicalGraph)
 	if err != nil {
-		return domain.OrgProfile{}, err
-	}
-	if _, err := s.tenant.AddEdge(ctx, child.ID, parentUnitID, canonicalGraph); err != nil {
 		return domain.OrgProfile{}, err
 	}
 	var kindPtr *string

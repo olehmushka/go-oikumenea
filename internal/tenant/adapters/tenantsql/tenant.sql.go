@@ -804,6 +804,61 @@ func (q *Queries) InsertUnitLanguage(ctx context.Context, arg InsertUnitLanguage
 	return err
 }
 
+const insertUnitWithID = `-- name: InsertUnitWithID :one
+INSERT INTO oikumenea.tenant_units (id, org_id, domain_id, kind_id, code, name, level, visibility, pdp_scoped, metadata)
+SELECT $1, $2, $3, $4, $5, $6, $7, $8,
+       COALESCE((SELECT d.pdp_scoped FROM oikumenea.tenant_domains d WHERE d.id = $3), true), $9
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at, search_text
+`
+
+type InsertUnitWithIDParams struct {
+	ID         string
+	OrgID      string
+	DomainID   string
+	KindID     pgtype.Text
+	Code       pgtype.Text
+	Name       string
+	Level      pgtype.Int2
+	Visibility string
+	Metadata   []byte
+}
+
+// Same as InsertUnit but with a caller-minted id (GH-36 fix): child-org creation needs the id
+// BEFORE this row's own INSERT, so tenant_unit_closure can be seeded for it first and this row's
+// tenant_units_reach WITH CHECK finds a subtree match instead of racing an unpopulated closure.
+func (q *Queries) InsertUnitWithID(ctx context.Context, arg InsertUnitWithIDParams) (OikumeneaTenantUnit, error) {
+	row := q.db.QueryRow(ctx, insertUnitWithID,
+		arg.ID,
+		arg.OrgID,
+		arg.DomainID,
+		arg.KindID,
+		arg.Code,
+		arg.Name,
+		arg.Level,
+		arg.Visibility,
+		arg.Metadata,
+	)
+	var i OikumeneaTenantUnit
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.DomainID,
+		&i.KindID,
+		&i.Code,
+		&i.Name,
+		&i.Level,
+		&i.Visibility,
+		&i.State,
+		&i.PdpScoped,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.SearchText,
+	)
+	return i, err
+}
+
 const listAncestors = `-- name: ListAncestors :many
 SELECT u.id, u.code, u.name, u.visibility, c.depth
 FROM oikumenea.tenant_unit_closure c

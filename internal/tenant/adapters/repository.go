@@ -62,6 +62,34 @@ func (r *Repository) InsertUnit(ctx context.Context, u domain.Unit) (domain.Unit
 	return toUnit(row), nil
 }
 
+// InsertUnitWithID is InsertUnit with a caller-minted id (GH-36 fix): child-org creation needs the
+// row's id known before the INSERT so tenant_unit_closure can be seeded for it first, letting
+// tenant_units_reach's WITH CHECK find a subtree match on this row's own insert.
+func (r *Repository) InsertUnitWithID(ctx context.Context, id string, u domain.Unit) (domain.Unit, error) {
+	metadata := u.Metadata
+	if len(metadata) == 0 {
+		metadata = json.RawMessage("{}") // the column is NOT NULL; default empty object
+	}
+	row, err := r.q.InsertUnitWithID(ctx, tenantsql.InsertUnitWithIDParams{
+		ID:         id,
+		OrgID:      u.OrgID,
+		DomainID:   u.DomainID,
+		KindID:     textPtr(u.KindID),
+		Code:       textPtr(u.Code),
+		Name:       u.Name,
+		Level:      int2Ptr(u.Level),
+		Visibility: string(u.Visibility),
+		Metadata:   metadata,
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.Unit{}, domain.ErrUnitCodeConflict
+		}
+		return domain.Unit{}, err
+	}
+	return toUnit(row), nil
+}
+
 func (r *Repository) GetUnit(ctx context.Context, id string) (domain.Unit, error) {
 	row, err := r.q.GetUnit(ctx, id)
 	if err != nil {
