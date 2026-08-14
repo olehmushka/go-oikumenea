@@ -41,8 +41,9 @@ code **12**) also owns the shared **geo registry** — `geo_countries` (`Country
 / `geo_places.id` are the reference keys, with ISO `code` and `wof_id` retained as `UNIQUE` lookup /
 concordance keys. Every country FK across person/document/rank/contact references `geo_countries(id)`,
 and the country **RID flows end-to-end** (domain → Conjure → web); the ISO code is lookup-only. A
-read-only **`GeoService`** (`GET /geo/countries`, permission `country.read`) returns `{id, code, name,
-status}` so clients resolve a code to its RID and populate country pickers. The registry is written by
+read-only **`GeoService`** (`GET /geo/countries`, permission `country.read`, satisfied for a service
+principal holding the grant or a person via the PDP — `RequireServiceOrPerson`) returns `{id, code,
+name, status}` so clients resolve a code to its RID and populate country pickers. The registry is written by
 the hermenea import pipeline (geo-countries / WOF), which streams natural keys and resolves
 `wof_id`/`code → id` in SQL on upsert.
 

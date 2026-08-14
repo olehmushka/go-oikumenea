@@ -6,8 +6,11 @@
 // code in internal/conjure is never hand-edited.
 //
 // Authorization (M7): reads require `country.read` (held anywhere — the country registry is
-// instance-global, not unit-keyed), enforced via the PEP. The bearer token carries the acting
-// subject (interim: token == person RID; see internal/authorization/pep).
+// instance-global, not unit-keyed), enforced via the PEP's RequireServiceOrPerson — a service
+// principal holding the grant, or a person via the PDP (GH-37: RequireAnywhere's person-shaped
+// subject resolution structurally denied every machine caller regardless of grants, the same class
+// of gap fixed for religion.read in GH-33). The bearer token carries the acting subject (interim:
+// token == person RID; see internal/authorization/pep).
 package transport
 
 import (
@@ -56,7 +59,7 @@ var _ geoapi.GeoService = Service{}
 
 // ListCountries implements GET /countries.
 func (s Service) ListCountries(ctx context.Context, token bearertoken.Token) (geoapi.CountryList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermCountryRead)); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, string(authzdomain.PermCountryRead), ""); err != nil {
 		return geoapi.CountryList{}, err
 	}
 	countries, err := s.app.ListCountries(ctx)
@@ -86,7 +89,7 @@ func toAPICountry(c domain.Country, name map[string]string) geoapi.Country {
 // ListPlaces implements GET /places — active gazetteer places of a placetype (default region) under a
 // country, for region pickers (D-GeoPlaces).
 func (s Service) ListPlaces(ctx context.Context, token bearertoken.Token, country string, placetype *string) (geoapi.PlaceList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermCountryRead)); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, string(authzdomain.PermCountryRead), ""); err != nil {
 		return geoapi.PlaceList{}, err
 	}
 	pt := ""
@@ -107,7 +110,7 @@ func (s Service) ListPlaces(ctx context.Context, token bearertoken.Token, countr
 // ResolveCoordinate implements GET /resolve — reverse-geocode a coordinate to country + nearest place
 // for the locations-form prefill (D-GeoPlaces).
 func (s Service) ResolveCoordinate(ctx context.Context, token bearertoken.Token, lat, lng float64) (geoapi.CoordinateResolution, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermCountryRead)); err != nil {
+	if err := s.pep.RequireServiceOrPerson(ctx, token, string(authzdomain.PermCountryRead), ""); err != nil {
 		return geoapi.CoordinateResolution{}, err
 	}
 	res, err := s.app.ResolveCoordinate(ctx, lat, lng)
