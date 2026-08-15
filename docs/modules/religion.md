@@ -297,7 +297,7 @@ Shabbat, daily mass, puja, meditation), special.
 | `PUT /units/{unitId}/type-overrides` · `GET /units/{unitId}/effective-type` | Set / read the unit theism override (resolved) | `religionorg.manage` / `religion.read` |
 | `GET·POST·DELETE /units/{unitId}/religion-policies` | Manage data-driven org policies | `religionorg.manage` (on the unit) |
 | `POST /religion-orgs` | Create a top-level body (church-domain org + root unit + profile — M41) | `religion.catalog.manage` (instance) |
-| `POST /units/{unitId}/child-orgs` | Create a child org unit + canonical edge (blocked by `excludes_child_creation`) | `religionorg.manage` (on the unit) |
+| `POST /units/{unitId}/child-orgs` | Create a child org unit + canonical edge (blocked by `excludes_child_creation`) | `religionorg.manage` (on the unit for a person; a service principal instead needs an INSTANCE-WIDE grant — `RequireServiceOrTarget`, GH-39) |
 | `GET·PUT /grade-categories` · `/clergy-grades?tradition=` · `/office-types` | Read / manage the clergy catalogs (M23) | `religion.read` / `religion.catalog.manage` (instance) |
 | `GET /persons/{id}/clergy-credentials` · `GET /units/{unitId}/clergy-credentials` | List a person's / a unit's clergy credentials | `religion.read` (unit read on the unit) |
 | `POST /persons/{id}/clergy-credentials` · `PUT /clergy-credentials/{id}` | Add / status-flip a credential (indelible; no delete) | `clergy.manage` (on the conferring unit) |
@@ -346,7 +346,16 @@ promise holds at the **DB layer** too, not just the PEP: a service principal hol
 instance-wide grant (`org_id IS NULL`) now actually sees `public` discovery rows, matching what
 `SearchSites` already queries. `unlisted`/`private` sites are unaffected — they still require org-scoped
 reach (or instance-admin), exactly as `D-ServiceIdentities`' "an instance-wide grant confers no
-operational reach" rule requires. **Neither a clergy grade nor an affiliation is ever an authz input**
+operational reach" rule requires. `CreateChildOrg` (GH-39) is the one **write** reachable by a machine
+subject: it gates via `pep.RequireServiceOrTarget`, which keeps a person's check exactly as
+target-scoped as `Require(religionorg.manage, unitID)` always was (unlike `RequireServiceOrPerson`,
+whose person arm is the broader `RequireAnywhere` — folding `CreateChildOrg` into that pattern would
+have let any person holding `religionorg.manage` anywhere create a child org under any unit, which is
+why it needed its own PEP method rather than reusing the read-surface one) and lets a machine subject
+in via its flat grant set, checked **instance-wide only** — a principal grant has no unit/subtree
+scope yet, so an org confined to one jurisdiction-sync subtree is, in the permission model, actually
+instance-wide; only the calling application keeps it pointed at the intended units (an explicitly
+open question, not resolved by GH-39). **Neither a clergy grade nor an affiliation is ever an authz input**
 (D-ClergyCredential / D-ReligiousAffiliation, parallel to D-Rank) — authority comes only from role
 assignments.
 
