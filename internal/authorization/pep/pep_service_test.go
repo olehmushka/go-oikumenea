@@ -101,4 +101,26 @@ func TestUnauthenticatedDeniedEverywhere(t *testing.T) {
 	if err := e.RequireAnywhere(ctx, tok, "person.read"); err == nil {
 		t.Error("RequireAnywhere allowed an unauthenticated request")
 	}
+	if err := e.RequireServiceOrTarget(ctx, tok, "religionorg.manage", "unit-1"); err == nil {
+		t.Error("RequireServiceOrTarget allowed an unauthenticated request")
+	}
+}
+
+// TestRequireServiceOrTargetUnauthenticated (GH-39) pins that RequireServiceOrTarget denies an
+// unauthenticated request at the same empty-subject guard Require uses, WITHOUT ever reaching the
+// bound service — proving it did not swap in RequireAnywhere's looser "held somewhere" check for the
+// person arm (that swap is exactly the regression this method exists to avoid; see its doc comment).
+// The enforcer is deliberately unbound: a wrong dispatch that touched svc would nil-panic here rather
+// than silently passing.
+//
+// A real machine or person subject exercises e.svc immediately (HoldsPrincipalPermission /
+// Enforce respectively), which an unbound enforcer cannot survive — those two branches, and the
+// property that a person's check stays target-scoped rather than "anywhere", are proven against a
+// bound service by the TestRequireServiceOrTarget_* integration tests in internal/authorization.
+func TestRequireServiceOrTargetUnauthenticated(t *testing.T) {
+	e := NewUnbound()
+	var tok bearertoken.Token
+	if err := e.RequireServiceOrTarget(context.Background(), tok, "religionorg.manage", "unit-1"); err == nil {
+		t.Fatal("RequireServiceOrTarget allowed an unauthenticated request")
+	}
 }

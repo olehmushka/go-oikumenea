@@ -5,9 +5,10 @@
 // each op (taxonomy/catalog/discovery reads on religion.read via RequireServiceOrPerson — a service
 // principal holding the grant or a person via the PDP — and writes on religion.catalog.manage via
 // RequireAnywhere, person-only, instance reference data; per-unit org ops on religionorg.manage, checked
-// against the unit over the canonical graph), assembles translatable names as locale->text maps via the
-// localization service, and maps domain sentinels to the Conjure Religion:* errors. Generated code is
-// never hand-edited.
+// against the unit over the canonical graph for a person, person-only except CreateChildOrg, which is
+// also reachable by a service principal holding an instance-wide grant via RequireServiceOrTarget —
+// GH-39), assembles translatable names as locale->text maps via the localization service, and maps
+// domain sentinels to the Conjure Religion:* errors. Generated code is never hand-edited.
 package transport
 
 import (
@@ -427,8 +428,14 @@ func (s ReligionService) RemoveOrgPolicy(ctx context.Context, token bearertoken.
 	return s.mapError(ctx, s.app.RemoveOrgPolicy(ctx, unitID, policyID))
 }
 
+// CreateChildOrg is reachable by both a person (target-scoped, exactly as before) and a machine
+// subject holding an instance-wide religionorg.manage grant (GH-39: pep.Require structurally denies
+// every service principal regardless of grants, since it resolves the subject as a person RID —
+// RequireServiceOrTarget adds the machine door without widening the person's check to "anywhere",
+// see its doc comment for why that would have been a real regression here, unlike the read-only
+// religion.read/country.read fixes this issue is otherwise the same class as).
 func (s ReligionService) CreateChildOrg(ctx context.Context, token bearertoken.Token, unitID string, req religionapi.CreateChildOrgRequest) (religionapi.OrgProfile, error) {
-	if err := s.pep.Require(ctx, token, orgPerm, unitID); err != nil {
+	if err := s.pep.RequireServiceOrTarget(ctx, token, orgPerm, unitID); err != nil {
 		return religionapi.OrgProfile{}, err
 	}
 	p, err := s.app.CreateChildOrg(ctx, unitID, req.Code, req.Name, strOr(req.Visibility), strOr(req.OrgKindId), strOr(req.PrimaryTaxonId))

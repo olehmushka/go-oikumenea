@@ -204,6 +204,27 @@ func (e *Enforcer) RequireServiceOrPerson(ctx context.Context, token bearertoken
 	return e.RequireAnywhere(ctx, token, action)
 }
 
+// RequireServiceOrTarget gates a UNIT-SCOPED WRITE reachable by both a machine and a person, WITHOUT
+// widening the person's check the way RequireServiceOrPerson would: a person subject goes through the
+// exact same target-scoped Require(action, unitID) as an unguarded call, so their authority stays
+// bound to units their assignment actually reaches. A machine subject has no unit reach at all (M51 /
+// D-ServiceIdentities), so it is checked against its flat grant set via RequireService with orgID ""
+// — only an INSTANCE-WIDE grant satisfies it, unitID is not consulted for a machine caller.
+//
+// This is deliberate, not an oversight (GH-39): principal grants carry no unit/subtree scope today,
+// so there is no narrower shape to check a machine against. A grant made to satisfy one intended
+// subtree is instance-wide in practice — the calling application, not the permission model, is what
+// keeps it pointed at the right units. Do not "fix" this by passing unitID's owning org as orgID
+// without first reading GH-39: that would silently invent an org-scoping story RequireService's
+// contract does not promise for unit-shaped actions (orgID there means a tenant ORGANIZATION, not a
+// unit), and would not close the actual scoping gap the issue leaves open.
+func (e *Enforcer) RequireServiceOrTarget(ctx context.Context, token bearertoken.Token, action, unitID string) error {
+	if authn.IsService(ctx) {
+		return e.RequireService(ctx, token, action, "")
+	}
+	return e.Require(ctx, token, action, unitID)
+}
+
 // RequireImport gates the generic data-import endpoint (M16 / D-Hermenea). Since M51 the importer is
 // a REGISTERED service principal holding an `import.manage` grant like any other — the hard-coded
 // `hermenea-importer` exemption is gone, so a machine's import rights are grantable and revocable. A
