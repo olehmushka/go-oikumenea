@@ -1962,6 +1962,19 @@ still denies a machine — the reach is bounded to what its org grant authorizes
 is immediate (grants read live). See D-RLSLiveReach's dated extension and
 [milestones M55](../milestones.md).
 
+**GH-41 gotcha (confirmed 2026-08-16, not a policy or GUC-propagation bug).** A write whose sqlc
+query uses `RETURNING` — `tenant.CreateUnitWithEdge`'s `InsertEdge` among them — needs a
+`.read`-suffixed org-scoped grant **in addition to** the write-shaped one (e.g. `religionorg.manage`
+alone is not enough; `religionorg.manage` + `religion.read` is). In this Postgres version, a row
+whose `WITH CHECK` (write) passes but whose table-level `USING` (read) does not raises the same
+"new row violates row-level security policy" error for the `RETURNING` clause — it does not silently
+return an empty result. This mirrors a requirement a person caller already has (see
+`internal/religion/rls_createchildorg_integration_test.go`'s `seedSubtreeOrgManageGrant`, which grants
+both for the same reason); GH-41 was this gotcha hitting a machine caller for the first time,
+undocumented until now. Live-diagnosed via `internal/religion/rls_createchildorg_principal_integration_test.go`
+(`TestRLSCreateChildOrg_ServicePrincipalWithOrgScopedGrant`), which pins both the failure (manage-only)
+and the fix (manage + read).
+
 ### D-HeadlessTopology — oikumenea is internal-only behind unprivileged user-token-passthrough facades (extends L-AuthzOnly, amends D-WebUI)
 
 **Decision.** In the target topology **oikumenea has no public exposure**: it listens on an
