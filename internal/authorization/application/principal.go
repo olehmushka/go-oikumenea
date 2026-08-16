@@ -27,6 +27,15 @@ type PrincipalRepositoryFactory func(conn db.DBTX) domain.PrincipalRepository
 // The principal is validated through the cross-module PrincipalDirectory port rather than a join
 // into identity-federation's tables (CLAUDE.md: cross-module queries are interface calls). Unknown
 // permission codes are rejected against the closed Go catalog, exactly as role permissions are.
+//
+// GH-41: a write-shaped grant (e.g. `<module>.manage`) alone is not enough for a write whose sqlc
+// query uses `RETURNING` — Postgres also enforces the table's SELECT-applicable RLS policy on the
+// returned row, which needs a `.read`-suffixed grant on the SAME org. A principal driving
+// tenant.CreateUnitWithEdge (or any other RETURNING-using cross-table write) needs BOTH grants,
+// exactly as a person caller already does (internal/religion/rls_createchildorg_integration_test.go's
+// seedSubtreeOrgManageGrant grants BOTH religionorg.manage and religion.read for this reason). Grant
+// only the write permission and the write itself succeeds while its RETURNING clause fails RLS —
+// confusing because the error names the table being written to, not the missing read grant.
 func (s *Service) GrantPrincipalPermission(ctx context.Context, in domain.PrincipalGrantInput) (domain.PrincipalGrant, error) {
 	if err := in.Validate(); err != nil {
 		return domain.PrincipalGrant{}, err

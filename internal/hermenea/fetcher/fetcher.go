@@ -15,7 +15,6 @@
 package fetcher
 
 import (
-	"compress/bzip2"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -30,7 +29,9 @@ import (
 	"strings"
 	"time"
 
+	factbookclient "github.com/olehmushka/go-factbook-client"
 	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
+	wofclient "github.com/olehmushka/go-wof-client"
 )
 
 // maxPayload bounds a fetched body (16 MiB) so a runaway source can't exhaust memory.
@@ -55,7 +56,9 @@ func Default() Registry {
 		// run; bounded by the job-timeout context instead (mirrors WOFSQLite).
 		domain.FetcherHTTPFiles: HTTPFiles{client: &http.Client{Timeout: 0}},
 		// Factbook stages ~260 country files; no fixed client deadline (bounded by the job timeout).
-		domain.FetcherFactbook: Factbook{client: &http.Client{Timeout: 0}},
+		domain.FetcherFactbook: Factbook{client: factbookclient.New(&http.Client{Timeout: 0})},
+		// A single SPARQL query, not a streaming download — bounded like the generic HTTP fetcher.
+		domain.FetcherWikidataSPARQL: WikidataSPARQL{client: &http.Client{Timeout: 30 * time.Second}},
 	}
 }
 
@@ -109,8 +112,11 @@ func (File) Fetch(_ context.Context, src domain.Source) (domain.RawBatch, error)
 // WOFSQLite stages a Who's-On-First SQLite distribution (D-GeoPlaces): it streams the source's
 // `.db.bz2` over HTTP, bzip2-decompresses it to a temp file, and returns the file reference — the
 // payload (gigabytes of geometry) never lands in memory or the raw-batch column. The geo-places
-// PagedMapper opens the staged DB. source_version is the response's ETag/Last-Modified (the dist
-// edition), falling back to a checksum of the decompressed bytes.
+// PagedMapper opens the staged DB. source_version is a checksum of the decompressed bytes (an
+// unchanged upstream distribution decompresses identically, so this is idempotency-equivalent to the
+// previous ETag/Last-Modified-based version — go-wof-client's Download doesn't expose response
+// headers, so this is the one observable behavior change from the extraction). The download+
+// decompress mechanics are go-wof-client, extracted from this file.
 type WOFSQLite struct{ client *http.Client }
 
 // Fetch is never called for a StreamingFetcher (the pipeline routes it through Stage).
@@ -125,41 +131,21 @@ var (
 )
 
 func (w WOFSQLite) Stage(ctx context.Context, src domain.Source) (domain.StagedSource, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src.Locator, nil)
-	if err != nil {
-		return domain.StagedSource{}, err
-	}
-	resp, err := w.client.Do(req)
-	if err != nil {
-		return domain.StagedSource{}, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return domain.StagedSource{}, fmt.Errorf("connector wof-sqlite: %s returned %d", src.Locator, resp.StatusCode)
-	}
-
 	f, err := os.CreateTemp("", "wof-*.db")
 	if err != nil {
 		return domain.StagedSource{}, err
 	}
 	path := f.Name()
+	_ = f.Close() // wofclient.Download opens/writes it itself; only the unique temp name is needed here.
 	cleanup := func() { _ = os.Remove(path) }
 
-	// Decompress straight to disk, hashing the decompressed bytes as we go (no full in-memory copy).
-	h := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(f, h), bzip2.NewReader(resp.Body)); err != nil {
-		_ = f.Close()
+	sum, err := wofclient.Download(ctx, w.client, src.Locator, path)
+	if err != nil {
 		cleanup()
-		return domain.StagedSource{}, fmt.Errorf("connector wof-sqlite: decompress %s: %w", src.Locator, err)
-	}
-	if err := f.Close(); err != nil {
-		cleanup()
-		return domain.StagedSource{}, err
+		return domain.StagedSource{}, fmt.Errorf("connector wof-sqlite: %w", err)
 	}
 
-	sum := hex.EncodeToString(h.Sum(nil))
-	version := firstNonEmpty(resp.Header.Get("ETag"), resp.Header.Get("Last-Modified"), sum[:12])
-	return domain.StagedSource{Path: path, SourceVersion: version, Checksum: sum, Cleanup: cleanup}, nil
+	return domain.StagedSource{Path: path, SourceVersion: sum[:12], Checksum: sum, Cleanup: cleanup}, nil
 }
 
 // HTTPFiles stages a whitespace-separated LIST of URLs to a temp directory (D-Languages, M18): each is

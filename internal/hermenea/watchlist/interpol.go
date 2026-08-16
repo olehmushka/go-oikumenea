@@ -5,54 +5,39 @@ package watchlist
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
+	interpolclient "github.com/olehmushka/go-interpol-client"
 	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
 	"github.com/olehmushka/go-oikumenea/internal/hermenea/fetcher"
 )
 
 // InterpolBaseURL is INTERPOL's public Red Notices endpoint (documented at interpol.api.bund.dev, the
 // original todo.md item 1 / D-Watchlists first live-lookup connector). Overridable for tests.
-const InterpolBaseURL = "https://ws-public.interpol.int/notices/v1/red"
+const InterpolBaseURL = interpolclient.DefaultBaseURL
 
 // Interpol screens a name against INTERPOL's public Red Notices list. It is the real live-lookup
 // connector (D-Watchlists): a non-empty result set is a hit on INTERPOL_RED. Egress lives here in the
-// companion — oikumenea's PDP core never calls out.
+// companion — oikumenea's PDP core never calls out. The transport layer (the actual API call) is
+// go-interpol-client, extracted from this file; the score heuristic and Hit-building below stay
+// here — hermenea's own screening business logic, not something a generic API client should decide.
 type Interpol struct {
-	baseURL string
-	client  *http.Client
+	client *interpolclient.Client
 }
 
 // NewInterpol builds the provider. An empty baseURL falls back to the public endpoint; a nil client
-// gets a 15s default.
-func NewInterpol(baseURL string, client *http.Client) Interpol {
-	if baseURL == "" {
-		baseURL = InterpolBaseURL
+// gets go-interpol-client's own 15s default.
+func NewInterpol(baseURL string, httpClient *http.Client) Interpol {
+	opts := []interpolclient.Option{interpolclient.WithUserAgent(fetcher.UserAgent())}
+	if baseURL != "" {
+		opts = append(opts, interpolclient.WithBaseURL(baseURL))
 	}
-	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
-	}
-	return Interpol{baseURL: baseURL, client: client}
+	return Interpol{client: interpolclient.New(httpClient, opts...)}
 }
 
 func (Interpol) Name() string { return "interpol-red" }
-
-// interpolResponse is the subset of the Red Notices response we consume.
-type interpolResponse struct {
-	Total    int `json:"total"`
-	Embedded struct {
-		Notices []struct {
-			Forename string `json:"forename"`
-			Name     string `json:"name"`
-		} `json:"notices"`
-	} `json:"_embedded"`
-}
 
 // Screen queries the Red Notices endpoint by surname (+ forename when derivable). A non-empty result set
 // is a hit; the score is 1.0 on an exact case-insensitive full-name match among the results, else 0.6.
@@ -61,42 +46,18 @@ func (i Interpol) Screen(ctx context.Context, q domain.WatchlistQuery) (Hit, err
 	if surname == "" {
 		return Hit{}, nil
 	}
-	params := url.Values{}
-	params.Set("name", surname)
-	if forename != "" {
-		params.Set("forename", forename)
-	}
-	params.Set("resultPerPage", "20")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, i.baseURL+"?"+params.Encode(), nil)
-	if err != nil {
-		return Hit{}, err
-	}
-	req.Header.Set("User-Agent", fetcher.UserAgent())
-	req.Header.Set("Accept", "application/json")
-	resp, err := i.client.Do(req)
+	out, err := i.client.SearchRedNotices(ctx, interpolclient.Query{Surname: surname, Forename: forename})
 	if err != nil {
 		return Hit{}, fmt.Errorf("interpol screen: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return Hit{}, fmt.Errorf("interpol screen: %s returned %d", i.baseURL, resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		return Hit{}, err
-	}
-	var out interpolResponse
-	if err := json.Unmarshal(body, &out); err != nil {
-		return Hit{}, fmt.Errorf("interpol screen: decode: %w", err)
-	}
-	if out.Total == 0 && len(out.Embedded.Notices) == 0 {
+	if out.Total == 0 && len(out.Notices) == 0 {
 		return Hit{}, nil
 	}
 
 	score := 0.6
 	want := strings.ToLower(strings.TrimSpace(q.FullName))
-	for _, n := range out.Embedded.Notices {
+	for _, n := range out.Notices {
 		full := strings.ToLower(strings.TrimSpace(n.Forename + " " + n.Name))
 		if full == want {
 			score = 1.0
