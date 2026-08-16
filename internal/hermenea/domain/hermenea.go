@@ -37,6 +37,14 @@ const (
 	// country files (whole Factbook docs) exceed the 16 MiB in-memory cap, so the set is staged to disk and
 	// parsed by a PagedMapper. The locator is `owner/repo@ref` (default `factbook/factbook.json@master`).
 	FetcherFactbook = "factbook"
+	// FetcherWikidataSPARQL runs a source's SPARQL query (extracted from the locator) against a
+	// Wikidata-compatible endpoint via go-wikidata-client, then re-encodes the typed result into the
+	// same SPARQL 1.1 JSON Results shape the generic `http` connector already hands a SPARQL-consuming
+	// Mapper (e.g. wikidataorgs.Mapper) — so no Mapper needed to change when this fetcher type was
+	// added. Locator is the SAME full-URL shape the `http` connector already uses for Wikidata sources
+	// ("https://query.wikidata.org/sparql?format=json&query=<encoded query>"); a source can keep using
+	// `http` unchanged, or opt into this type for the same query.
+	FetcherWikidataSPARQL = "wikidata-sparql"
 )
 
 // Job types in the queue.

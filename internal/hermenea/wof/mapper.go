@@ -6,17 +6,18 @@
 // stages it to disk), walks the four administrative placetypes parent-first (country → region →
 // county → locality), and emits bounded pages of canonical geo-places records for oikumenea's
 // POST /import/geo-places endpoint. Geometry travels as GeoJSON text; oikumenea materializes it via
-// PostGIS. The SQLite read uses the cgo-free modernc.org/sqlite driver.
+// PostGIS. The SQLite read (the cgo-free modernc.org/sqlite driver, the spr/geojson query) is
+// go-wof-client, extracted from this file; the WOF-property-to-geo_places-field mapping below stays
+// here — hermenea/oikumenea's own domain, not the client's.
 package wof
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 
 	"github.com/olehmushka/go-oikumenea/internal/hermenea/domain"
-	_ "modernc.org/sqlite" // registers the cgo-free "sqlite" database/sql driver
+	wofclient "github.com/olehmushka/go-wof-client"
 )
 
 // ObjectTypeGeoPlaces is the oikumenea import object-type this mapper feeds (the source's object_type).
@@ -46,7 +47,7 @@ var _ domain.PagedMapper = GeoPlacesMapper{}
 // that isn't in the Ukraine admin dist, which would otherwise fail the whole region page on the
 // geo_places.parent_id RESTRICT FK.
 func (m GeoPlacesMapper) MapPaged(ctx context.Context, staged domain.StagedSource, emit domain.PageFunc) error {
-	db, err := sql.Open("sqlite", staged.Path)
+	db, err := wofclient.Open(staged.Path)
 	if err != nil {
 		return fmt.Errorf("open wof sqlite: %w", err)
 	}
@@ -63,31 +64,12 @@ func (m GeoPlacesMapper) MapPaged(ctx context.Context, staged domain.StagedSourc
 
 // streamPlacetype pages over one placetype's standard-place rows joined to their canonical geometry,
 // recording each emitted wof_id in `emitted` and dropping a parentId that references a place not in it.
-func (m GeoPlacesMapper) streamPlacetype(ctx context.Context, db *sql.DB, placetype string, emitted map[int64]bool, emit domain.PageFunc) error {
-	rows, err := db.QueryContext(ctx, `
-		SELECT s.country, s.is_current, g.body
-		FROM spr s
-		JOIN geojson g ON g.id = s.id
-		WHERE s.placetype = ? AND g.is_alt = 0
-		ORDER BY s.id`, placetype)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rows.Close() }()
-
+func (m GeoPlacesMapper) streamPlacetype(ctx context.Context, db *wofclient.DB, placetype string, emitted map[int64]bool, emit domain.PageFunc) error {
 	page := make([]map[string]any, 0, pageSize)
-	for rows.Next() {
-		var (
-			country   sql.NullString
-			isCurrent sql.NullInt64
-			body      []byte
-		)
-		if err := rows.Scan(&country, &isCurrent, &body); err != nil {
-			return err
-		}
-		rec, err := mapFeature(placetype, country.String, int(isCurrent.Int64), body)
+	err := db.Placetype(ctx, placetype, func(f wofclient.Feature) error {
+		rec, err := mapFeature(placetype, f.Country, f.IsCurrent, f.Body)
 		if err != nil {
-			continue // skip a malformed feature rather than abort the whole backfill
+			return nil // skip a malformed feature rather than abort the whole backfill
 		}
 		// Drop a parent the import hasn't seen (out-of-dist / disputed-territory reference) so the row
 		// lands top-level instead of failing the page's RESTRICT FK; record this id for its children.
@@ -104,8 +86,9 @@ func (m GeoPlacesMapper) streamPlacetype(ctx context.Context, db *sql.DB, placet
 			}
 			page = make([]map[string]any, 0, pageSize)
 		}
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 	if len(page) > 0 {
