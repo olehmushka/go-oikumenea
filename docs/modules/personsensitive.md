@@ -134,6 +134,17 @@ uniqueness). **Jurisdiction** is a hard FK to `geo_countries` (D-Geo). **Never i
 crypto-erased on purge. **Suppression:** `is_suppressed` + `suppressed_reason ∈ {sealed, expunged}`
 mark a record that is **retained** but withheld from the normal read gate — see Authorization below.
 
+### Religious events (D-LifeEvents, M62; designed)
+
+**`person_religious_events`** (`pii:special`, GDPR Art. 9) — baptism, confirmation, bar/bat mitzvah
+and the other `religious`-category life events. The shape matches personprofile's `person_events`
+(type, genealogical date, place, description, `source` / `confidence` / `source_ref`), but **the type,
+date, place and description are all envelope-encrypted**, because a baptism date or a parish discloses
+religion as surely as the event type does. Only `person_id`, attribution and timestamps are clear.
+Many rows per person; crypto-erased on purge. Read code `person.religious_event.read`, in the
+sensitive-reader base role. The [genealogy](genealogy.md) export decrypts these only with the
+additional `genealogy.export.special`.
+
 ## Conjure endpoint sketch
 
 No separate service. The sensitive operations are the physical-identity / ethnicity / overlay /
@@ -164,7 +175,8 @@ access; it calls the PDP via the shared transport.
 The `pii:special` Art. 9/Art. 10 reads each carry **their own need-to-know code**, composed into the
 additive **sensitive-reader** base role and deliberately NOT implied by unit-admin (D-DataScope, R-14):
 `person.ethnicity.read`, `person.political_leaning.read`, `person.party_membership.read`,
-`person.health.read`, and `person.legal-record.read` (D-LegalRecords, M38). Legal records add a
+`person.health.read`, `person.legal-record.read` (D-LegalRecords, M38), and the designed
+`person.religious_event.read` (D-LifeEvents, M62). Legal records add a
 **second, stricter** gate: **sealed/expunged (suppressed)** rows are withheld from
 `person.legal-record.read` and revealed only to a caller who **also** holds
 `person.legal-record.read-suppressed` (in **no** base role — granted explicitly) or is an instance

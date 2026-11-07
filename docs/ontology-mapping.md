@@ -128,10 +128,15 @@ Real-world entities with identity over time → Objects.
 | `BankAccount` *(planned, M44)* | [finance](modules/finance.md) | no | `status` + soft-delete; **crypto-erase on purge** | `finance_accounts` (**RID service 19**, `19,1,1`); `institution_id` → a `company`-domain `tenant_organizations` (the bank, M41); **envelope-encrypted IBAN** + blind index (unique among active), `currency` (ISO 4217), `account_type_id`; `pii:sensitive` value; D-Finance |
 | `PaymentCard` *(planned, M44)* | [finance](modules/finance.md) | no | soft-delete; **crypto-erase on purge** | `finance_cards` (`19,1,2`); `account_id` → `finance_accounts` (containment FK); **envelope-encrypted PAN** + display `bin`/`last_four`, `card_type ∈ {debit,credit}`, `network_id`, optional expiry + `cardholder_person_id`; **no CVV column** (PCI-DSS Req 3.2); `pii:sensitive`; D-Finance |
 | `AccountType` / `CardNetwork` *(planned, M44)* | [finance](modules/finance.md) | yes (`code`/`name`) | `status` + soft-delete | catalogs (`19,1,3` / `19,1,4`): account kinds (current/savings/deposit/loan…) + card networks (visa/mastercard/amex…) |
+| `PersonEventType` *(planned, M62)* | [person](modules/person.md) | yes (`code`/`name`) | `status` + soft-delete | life-event catalog (`category ∈ vital\|religious\|migration\|civil\|occupational\|other`, `gedcom_tag`); pinax-seeded; D-LifeEvents |
+| `PersonEvent` *(planned, M62)* | [person](modules/person.md) (personprofile) | no | soft-delete | `person_events`: a dated (genealogical date), placed (`geo_places` + text) life event, `pii:basic`, `source`/`confidence`/`source_ref`; never `religious`-category; D-LifeEvents |
+| `PersonReligiousEvent` *(planned, M62)* | [personsensitive](modules/personsensitive.md) | no | soft-delete; **crypto-erase on purge** | `person_religious_events`: baptism/confirmation/…, `pii:special`; type, date, place and description **all envelope-encrypted**; D-LifeEvents |
+| `GenealogyExportJob` *(planned, M63)* | [genealogy](modules/genealogy.md) | no | **hard-deleted at TTL** (crypto-erase) | `genealogy_export_jobs` (**RID service 21**, `21,1,1`); an async GEDCOM export: requester, params, status, lease, envelope-encrypted result; D-GenealogyExport |
+| `GenealogyImportBatch` / `GenealogyImportIndividual` / `GenealogyImportFamily` *(planned, M64)* | [genealogy](modules/genealogy.md) | no | TTL unless committed; raw file dropped on commit | `21,1,2` / `21,1,3` / `21,1,4`: an uploaded GEDCOM (encrypted raw file) and its staged `INDI` / `FAM` rows with match candidates and review decisions; D-GenealogyImport |
 
 (Planned-cluster RID type codes are allocated in `pkg/rid` + migration `0000` on build — person
 service object 11+ / link 9+, account/platform as noted, external-organizations = service 18,
-**finance = service 19** (M44).)
+**finance = service 19** (M44), connector = service 20 (M53), **genealogy = service 21** (M63).)
 
 **Non-Objects (correctly):** `Atomic permission` is **code, not data** — a closed vocabulary in Go,
 not a table ([authorization](modules/authorization.md)). `Vacancy` is a **derived predicate** (active
@@ -179,8 +184,8 @@ non-RID / multi-ended / encrypted-end Links (`locale_language`, `has_ethnicity`,
 | `OF_EMAIL_TYPE` / `OF_PHONE_TYPE` | email/phone → type catalog | [person](modules/person.md) | — | — |
 | `REACHABLE_ON` | `PersonEmail`/`PersonPhone` → `Platform` | [person](modules/person.md) | XOR phone/email, `is_primary`, `verified_at` | — (messenger-category only) |
 | `HOLDS_ACCOUNT` | `Person` → `PersonSocialAccount` | [person](modules/person.md) | **`source` (self_declared/operator_verified/imported) + `confidence` (confirmed/probable/possible)** — a sourced, weighted attribution claim | `status`; scoped through the holder; see §4.4 |
-| `PARTNERED_WITH` | `Person` → `Person` | [person](modules/person.md) | symmetric (canonical pair); `status ∈ engaged\|married\|divorced\|widowed\|annulled\|dissolved` | **yes — `effective_from`/`effective_to`** |
-| `KIN_PARENT_OF` | `Person` → `Person` | [person](modules/person.md) | directional `parent_of`; `status ∈ active\|disestablished` | siblings derived, not stored |
+| `PARTNERED_WITH` | `Person` → `Person` | [person](modules/person.md) | symmetric (canonical pair); `status ∈ engaged\|married\|divorced\|widowed\|annulled\|dissolved`; *(planned, M60–M61)* `place_id` → `geo_places` + `place_text`, `source`/`confidence`/`source_ref`, genealogical dates | **yes — `effective_from`/`effective_to`** |
+| `KIN_PARENT_OF` | `Person` → `Person` | [person](modules/person.md) | directional `parent_of`; `status ∈ active\|disestablished`; *(planned, M60)* `kind ∈ biological\|adoptive\|step\|foster\|unknown` + `source`/`confidence`/`source_ref` | siblings derived, not stored; *(M60)* acyclic, ≤2 active biological parents |
 | `GUARDIAN_OF` | `Person` → `Person` | [person](modules/person.md) | `relation_code`, `status` | **yes — effective interval** |
 | `SPONSOR_OF` | `Person` → `Person` | [person](modules/person.md) | catalog `relation_code` (godparent/advisor/mentor) | **yes — effective interval** |
 | `NEXT_OF_KIN` | `Person` → `Person` | [person](modules/person.md) | in-directory nomination, `relation_code`, `priority` | — |
@@ -281,6 +286,13 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   `RecordLoginEvent` (M37, `system`-actor); `RecordLegalRecord` (M38, criminal/arrest/court).
   Every special-category write carries a `legal_basis` and is
   fully audited (D-OverlayFoundation / D-SpecialPII).
+- **Planned (M60–M64 — genealogy cluster):** `UpsertPersonEvent` / `RecordReligiousEvent` (**M62,
+  D-LifeEvents**); `RequestGenealogyExport` (`action__request_genealogy_export`, **M63,
+  D-GenealogyExport**) — records the root, the params, person/placeholder counts and every
+  `pii:special` class included — plus an audited download read; `UploadGenealogyImport` /
+  `DecideGenealogyImportRow` / `CommitGenealogyImport` (`action__commit_genealogy_import`, **M64,
+  D-GenealogyImport**). The commit's person writes go through PersonService, so each also records
+  that service's own Action.
 - **Order-driven effects (the strongest ontology fit):** `IssueOrder` is one Action whose effects are
   **emitted as domain events** (`AppointmentOrdered`, `RemovalOrdered`, `RankChangeOrdered`) that
   membership/person subscribers apply **in the same transaction**, citing `order_item_id` provenance.

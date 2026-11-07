@@ -1,4 +1,4 @@
-# Roadmap decisions (planned tier — M16–M54)
+# Roadmap decisions (planned tier — M16–M54, M60–M64)
 
 The landed architectural decisions for the **planned milestones M16–M54** — verticals that are
 **decided and designed but not yet built** (no `internal/` or `migrations/` artifacts exist for them
@@ -34,6 +34,12 @@ client-credentials → service principals; its RLS reach arm split out to **M55*
 (M53, a connector registry + the push / pull-wiring / on-demand-lookup contract — its RLS service arm
 split out to **M55**) · **D-DataPacks** (M54, plugins as versioned data packs + per-module enable
 flags).
+
+The **genealogy cluster** (M60–M64, groomed 2026-11-07): **D-GenealogyModel** (M60, typed kinship +
+attributed family links + birth/death places; fixes the relationship lists' missing read scope) ·
+**D-GenealogicalDates** (M61, approximate dates, resolves DS-38a) · **D-LifeEvents** (M62, dated and
+placed events; religious events encrypted) · **D-GenealogyExport** (M63, GEDCOM 5.5.1 export as an
+async job) · **D-GenealogyImport** (M64, staged GEDCOM import with operator review).
 
 The **person-intelligence / OSINT-enrichment cluster** (M29–M37, derived from
 [`draft_superbrain_schema.md`](../draft_superbrain_schema.md)): **D-OverlayFoundation** (M29, the
@@ -94,6 +100,11 @@ index in [`decisions.md`](decisions.md).
 | [D-ServiceIdentities](#d-serviceidentities--machine-clients-authenticate-via-idp-client-credentials-and-resolve-to-service-principals-extends-d-hermenea-l-authzonly) | Machine clients via IdP client-credentials → service principals |
 | [D-ConnectorPlane](#d-connectorplane--a-connector-registry--a-three-mode-contract-push-pull-wiring-on-demand-lookup-extends-d-hermenea-d-watchlists) | A connector registry + the push / pull-wiring / lookup contract |
 | [D-DataPacks](#d-datapacks--plugins-are-versioned-data-packs--per-module-enable-flags-no-runtime-code-loading-extends-d-pinax-d-i18n) | Plugins are versioned data packs + per-module enable flags |
+| [D-GenealogyModel](#d-genealogymodel--typed-kinship-attributed-family-links--birthdeath-places-extends-d-personrelationships-d-geoplaces-d-overlayfoundation-tightens-d-linkpermissions) | Typed kinship, attributed family links, birth/death places; relationship lists honor read scope |
+| [D-GenealogicalDates](#d-genealogicaldates--qualified-partial-precision-dates-beside-the-exact-date-columns-resolves-ds-38-part-a-extends-d-personbio) | Qualified, partial-precision dates beside the exact DATE columns |
+| [D-LifeEvents](#d-lifeevents--catalog-typed-dated-placed-person-events-religious-events-encrypted-extends-d-genealogymodel-d-genealogicaldates-d-specialpii) | Catalog-typed, dated, placed person events; religious events encrypted |
+| [D-GenealogyExport](#d-genealogyexport--a-per-hop-gated-recursive-family-walk-serialized-as-gedcom-551-by-an-async-job-extends-d-linktraversal-d-linkpermissions-d-personreadscope-d-eventoutbox-d-cryptoprovider-amends-d-visibilityscope-for-this-surface) | Per-hop-gated recursive family walk → GEDCOM 5.5.1, async job |
+| [D-GenealogyImport](#d-genealogyimport--staged-gedcom-import-with-suggested-matches-and-operator-review-extends-d-genealogyexport-d-genealogymodel-d-overlayfoundation) | Staged GEDCOM import: suggested matches, operator review, commit |
 
 ---
 
@@ -2161,3 +2172,275 @@ not by dropping link descriptors** — the generic traversal is permission-gated
 its facets unreachable; the descriptors stay registered so the R-28 boot coverage assertion holds and
 re-enabling needs no descriptor surgery. Search providers ARE skipped directly (a disabled vertical
 passes a nil service). Schema always migrates.
+
+---
+
+## Genealogy cluster (M60–M64)
+
+A MyHeritage-style **family-tree export (GEDCOM 5.5.1) and staged import**, built on the person
+module's existing family graph (`link__kin_parent_of`, `link__partnered_with` — D-PersonRelationships,
+M14). Groomed 2026-11-07. The order is **enrich the model first, then export, then import**: an export
+of today's model would carry untyped parent links, exact-only dates and country-level birthplaces, which
+is a thin and in places a misleading genealogical file. Module doc: [genealogy](../modules/genealogy.md).
+
+### D-GenealogyModel — Typed kinship, attributed family links & birth/death places (extends D-PersonRelationships, D-GeoPlaces, D-OverlayFoundation; tightens D-LinkPermissions)
+
+**Decision.** Four additive changes to the person family graph, and one fix.
+1. **Kinship kind.** `person_kinships.kind ∈ {biological, adoptive, step, foster, unknown}` (TEXT +
+   CHECK, NOT NULL DEFAULT `unknown`). It is an attribute of the one active row per pair, not a second
+   row. **At most two active `biological` parents per child** (app-enforced in the domain's
+   `Kinship.Validate` path, like the one-active-marriage rule). **No ancestry cycles:** an upsert that
+   would make a person their own ancestor is refused (`ErrKinshipCycle`, a 409), checked by a bounded
+   recursive CTE over active rows. The export walk relies on this and also keeps its own visited set.
+2. **Attribution on the two family links.** `source ∈ {self_declared, operator_verified, imported}` +
+   `confidence ∈ {confirmed, probable, possible}` + an optional `source_ref TEXT` (e.g. a GEDCOM import
+   batch RID) on `person_kinships` and `person_partnerships` — the exact vocabulary
+   `person_addresses` / `person_name_variants` already use. Existing rows backfill to
+   `operator_verified` / `confirmed`, which is what they were.
+3. **Birth and death places.** `person_persons.place_of_birth_id` / `place_of_death_id` → `geo_places`
+   (the WOF gazetteer, D-GeoPlaces), each with a verbatim `*_place_text` for historical names that do
+   not resolve to a modern place ("Lemberg, Galicia, Austria-Hungary"). Both `pii:basic`.
+   `country_of_birth_id` stays and is derived from the place when a place is set and the country is not.
+4. **Partnership place.** `person_partnerships.place_id` → `geo_places` + `place_text` (where a
+   marriage was contracted).
+5. **Fix — relationship lists honor person read scope.** Today the six per-person relationship list
+   endpoints (`internal/person/transport/relationships.go`) check only `RequireAnywhere(<code>)`: they
+   never test `ReadablePerson` on the path person and never trim counterparts. The relationship tables
+   carry no RLS, so nothing backstops it. Each list now (a) 404s a path person the caller cannot read,
+   exactly like `GetPerson`, and (b) drops rows whose counterpart the caller cannot read (the
+   D-VisibilityScope trim the links engine already applies). A drift-guard test enumerates every
+   `List*` relationship handler and fails if one lacks the scope call. **This ships as M60 ticket 0,
+   before anything else in the cluster**, because every later milestone reads these links.
+
+`Kinship` in `api/person.conjure.yml` also starts returning `validFrom` / `validTo`, which the table has
+always had.
+
+**Why.** GEDCOM's family model needs the pedigree type (`PEDI birth|adopted|foster`), and a genealogy
+file without places is half a file. Attribution is the difference between a researched tree and a
+guessed one; the import (D-GenealogyImport) has to be able to say "this came from file X, probably".
+The read-scope gap is an existing defect, and a multi-generation export would multiply it.
+
+**Why not** (a) *`location_locations` for places*: `location` is a precise point or address
+(D-Location); a birthplace is a town in a gazetteer, and WOF already gives the containment chain the
+GEDCOM `PLAC` hierarchy needs. (b) *A separate row per kind* (biological + step for the same pair):
+the same two people have one parent relationship; its nature is an attribute. (c) *Free-text places
+only*: they cannot be searched, faceted or placed in a hierarchy; the verbatim text is kept beside the
+FK, not in place of it.
+
+**Consequence.** One migration (`person_kinships` +4 columns, `person_partnerships` +5,
+`person_persons` +4); `pkg/` gains no new machinery. Lands as **M60** ([milestones](../milestones.md)).
+Additive; ticket 0 changes behavior only for callers who were reading people outside their reach.
+
+### D-GenealogicalDates — Qualified, partial-precision dates beside the exact DATE columns (resolves DS-38 part a; extends D-PersonBio)
+
+**Decision.** A **genealogical date** is a value of
+`{date, precision ∈ year|month|day, qualifier ∈ exact|about|before|after|between|estimated|calculated,
+dateTo?, phrase?}`. It is stored as **sibling columns beside the existing `DATE`**, not a new type:
+`birthdate` gains `birthdate_precision` (DEFAULT `day`), `birthdate_qualifier` (DEFAULT `exact`),
+`birthdate_to` (only for `between`) and `birthdate_phrase` (verbatim original, e.g. "Easter 1850");
+the same four on `date_of_death`, on `person_partnerships.effective_from` / `effective_to`, and on
+every `person_events` date (D-LifeEvents). The existing `DATE` column stays the **sort and filter
+key**, normalized to the first day of its period (year precision → `YYYY-01-01`). Validation: a
+`year` value has month = day = 1, a `month` value has day = 1; `between` requires `dateTo > date`;
+`dateTo` is NULL otherwise. Calendar is **Gregorian only**. Conjure gains a `GenealogicalDate` object
+carried **alongside** the old string fields (expand); the old fields keep returning the sort key.
+Existing rows are `exact` / `day` by default, so there is no backfill.
+
+**Why.** Genealogy is mostly approximate: a parish record says "about 1850", a census gives an age.
+Forcing a full date invents precision that is not in the source. This is exactly DS-38's trigger (a).
+Sibling columns keep every existing query, index, facet and sort working unchanged.
+
+**Why not** (a) *A Postgres composite type or a `daterange`*: neither expresses `about` or `before`,
+and both break the existing `DATE` consumers. (b) *A JSONB date*: unindexed, and it duplicates the
+truth. (c) *A free-text GEDCOM date string*: unparseable for sort, filter and age facets.
+
+**Consequence.** Age-band facets (D-ObjectFacets) keep reading the normalized `DATE`; an approximate
+birthdate falls into the band of its normalized value, which is documented imprecision, not a bug.
+GEDCOM mapping is one-to-one (`ABT` / `BEF` / `AFT` / `BET … AND …` / `EST` / `CAL`; `phrase` → `INT
+… (phrase)`). Julian and dual dating (`@#DJULIAN@`) and gender identity (DS-38 part b) stay parked.
+Lands as **M61**. Additive (expand only; there is no contract phase planned).
+
+### D-LifeEvents — Catalog-typed, dated, placed person events; religious events encrypted (extends D-GenealogyModel, D-GenealogicalDates, D-SpecialPII)
+
+**Decision.** A person's life events become first-class **Objects**.
+- **`person_event_types`** — an instance-extensible catalog (`code` + translatable `name`,
+  D-Code / D-i18n) with `category ∈ {vital, religious, migration, civil, occupational, other}` and
+  a `gedcom_tag` (`BURI`, `CREM`, `CHR`, `EMIG`, `IMMI`, `NATU`, `OCCU`, `RESI`, `GRAD`, `RETI`,
+  `CENS`, `BAPM`, `CONF`, `BARM`, `BASM`, `EVEN` …). Seeded through pinax (D-Pinax).
+- **`person_events`** (personprofile, `pii:basic`) — `person_id`, `event_type_id`, a genealogical date,
+  `place_id` → `geo_places` + `place_text`, `description`, `source` / `confidence` / `source_ref`,
+  soft-delete. **Many rows per person.** A `religious`-category type is **refused** here.
+- **`person_religious_events`** (personsensitive, `pii:special`, GDPR Art. 9) — the same shape, but
+  the **event type, place, description and date are all envelope-encrypted**: a baptism date or parish
+  discloses religion as surely as the type does. Only `person_id`, `source`, `confidence` and the
+  timestamps are clear. Crypto-erased on purge, like every other encrypted person table.
+- **Birth and death stay on the person row.** They are not duplicated as events; the export
+  synthesizes `BIRT` / `DEAT` from `person_persons` (one home per fact).
+- **Codes:** `person.event.read` joins the additive `person-relationship-reader` base role;
+  `person.religious_event.read` joins the **sensitive-reader** base role (never implied by unit
+  admin — D-DataScope, R-14). Writes ride `person.update`, like the other person enrichments.
+
+**Why.** Burials, emigrations and baptisms are the bulk of a genealogical record. A religious event is
+special-category data in every jurisdiction this deployment targets, so it follows the
+legal-records / health precedent and not the plain-table one.
+
+**Why not** (a) *One table with an encrypted-if-religious flag*: mixes tiers in one table, which the
+PII guards (`plaintext_test.go`) cannot classify per row. (b) *Reusing `religion_affiliations`*: an
+affiliation is a standing membership, not a dated event. (c) *Moving birth/death into events*:
+breaks every existing birthdate consumer and facet for no gain.
+
+**Consequence.** Two tables + one catalog in the person service RID space (object slots allocated on
+build after `6,1,22`); `ontology-mapping.md` gains `PersonEvent`, `PersonReligiousEvent`,
+`PersonEventType`. Lands as **M62**. Additive.
+
+### D-GenealogyExport — A per-hop-gated recursive family walk, serialized as GEDCOM 5.5.1 by an async job (extends D-LinkTraversal, D-LinkPermissions, D-PersonReadScope, D-EventOutbox, D-CryptoProvider; amends D-VisibilityScope for this surface)
+
+**Decision.** A new **`genealogy`** module (RID **service 21**, `pkg/rid.SvcGenealogy`) exports a
+person's family tree as a **GEDCOM 5.5.1** file (`CHAR UTF-8`, `FORM LINEAGE-LINKED`).
+
+*The walk.* From a root person, breadth-first over **active** `person_kinships` (up and/or down) and
+`person_partnerships`; `direction ∈ {ancestors, descendants, both}`; `generations` 1–10 (default 5);
+`includeSiblings` (children of the root's parents) and `includePartners` (default true). Siblings are
+derived, never stored, as today. **Caps: 10 generations and 5,000 persons**; hitting a cap finishes the
+job `done` with `truncated = true` and a `NOTE` in the file header — truncation is not failure. A
+visited set makes every person appear once (pedigree collapse: cousin marriages produce one `INDI`
+with several `FAMC`).
+
+*The gate, per hop.* It reuses the D-LinkTraversal rules but needs its own walker, because
+`searchAround` is clamped to 2 hops.
+- **Arm codes.** The kinship arm needs `person.kinship.read`; the partnership arm needs
+  `person.partnership.read`. A missing code skips that arm entirely, as in the links engine.
+- **Node read.** Every reached person is tested with `ReadablePerson` (D-PersonReadScope) plus the
+  shadow gate.
+- **Placeholder.** An **unreadable person becomes a placeholder `INDI`** (`NAME Private //`, nothing
+  else — **no RID, no `_UID`, no sex, no dates**; a per-file xref only) and **the walk does not continue
+  through it**.
+- **The one amendment to D-VisibilityScope.** Everywhere else an unreadable neighbor is trimmed
+  silently. Here the placeholder discloses that a relationship *exists* and its kind, never who it is
+  with. A tree with silent holes is worse than useless: a child shown with one parent reads as a fact.
+  The caller must already hold the arm's read code to see even that.
+
+*What a node carries.*
+- **`pii:basic`** (with the base read code): names, variants and sex. The primary name is
+  `NAME given given2 /prefix surname surname2/` with `GIVN` / `SURN` / `SPFX` / `NSFX` / `NPFX`.
+  Variants become extra `NAME` records with `TYPE maiden|aka|immigrant`; transliterations become
+  `ROMN`. Also birth and death with genealogical dates and places, partnerships as `FAM` (`MARR` /
+  `DIV` / `ENGA` from status and dates), and events when `includeEvents` is set and the caller holds
+  `person.event.read`.
+- **`pii:contact`**: addresses become `RESI` / `ADDR` only with `includeContact` + `person.address.read`.
+- **`pii:special`**: religious events, the only special class in scope, come only with
+  `includeSpecial` + **`genealogy.export.special`** + `person.religious_event.read`. Decryption goes
+  through the existing crypto path.
+
+**No living-person masking:** PII tiers and codes are the sole filter, exactly as on every other
+surface.
+
+*Encoding rules.* Pedigree type → `PEDI` (`biological` → `birth`, `adoptive` → `adopted`, `foster` →
+`foster`, `step` → `_PEDI step`, `unknown` → no tag). Partners fill `HUSB` / `WIFE` by sex; a same-sex
+or unknown-sex pair fills the slots in order and the `FAM` carries `_TYPE` — a known 5.5.1 limit, fixed
+by the GEDCOM 7 seam. Place names come from the `geo_places` ancestry, joined innermost-first, in a
+request `locale` (default: the instance default), which also picks the catalog labels. Lines are
+≤255 characters with `CONC` / `CONT`. `SOUR` records are emitted per distinct `source`. The writer is
+a pure domain package with golden-file tests; it imports no framework.
+
+*The job.*
+- **Creating it.** `POST /genealogy/exports` inserts a `genealogy_export_jobs` row (`21,1,1`: status
+  `queued|running|done|failed|expired`, `requester_principal_id`, request params, `lease_until`,
+  `expires_at`, `truncated`, counts) and its outbox event (`genealogy.export.requested`) **in one
+  transaction**. The dispatcher only wakes the runner. A bounded pool (`genealogy.export.workers`,
+  default 2) claims jobs `FOR UPDATE SKIP LOCKED`, so a long walk never blocks the outbox, and an
+  expired lease re-queues a crashed job.
+- **Runtime re-check.** **The runner re-evaluates authorization as the requester at run time** —
+  current grants, current `authz_epoch` — never a snapshot from creation. A requester who lost
+  `genealogy.export` meanwhile gets `failed: permission_revoked`.
+- **The result is always envelope-encrypted** (ciphertext + wrapped DEK, D-CryptoProvider), because it
+  may hold decrypted special data. It expires after `genealogy.export.ttl` (default 24h).
+  - Expired rows are deleted opportunistically on every job creation and lazily on read; no scheduler
+    is needed (D-Worker stays superseded).
+  - On `PersonPurged`, unexpired jobs rooted at the purged person are deleted; the TTL bounds the rest.
+- **Endpoints.** `GET /genealogy/exports/{id}` (status) and `GET /genealogy/exports/{id}/file`
+  (Conjure `binary`, `text/vnd.familysearch.gedcom`, `Content-Disposition` `<root-name>.ged`).
+  - **A job is visible only to its requester** (others get 404, instance admins excepted), and the
+    download re-checks `genealogy.export`.
+  - `GET /genealogy/exports` lists the caller's own jobs.
+
+*Self-service.* `POST /me/genealogy/exports` roots at the caller's linked person (account → person) and
+otherwise applies **the same rules** — the same `genealogy.export` code, the same reach. There is
+**no kin exception**: a person exporting their own tree sees placeholders for relatives outside their
+reach, which for most deceased ancestors (no membership ⇒ instance-wide-only, D-PersonReadScope) means
+most of the tree. **The root itself must be readable** on both paths: D-PersonReadScope has no self
+exemption, so an unreadable root is refused at creation with the same 404 as `GetPerson`. A job is
+never queued for a person the caller cannot see. `/me/capabilities` reports whether the caller can
+export.
+
+*Audit.* `action__request_genealogy_export` records the root, the params, person and placeholder
+counts, `truncated`, and **every special data class included**. Each download is a separate audited
+read.
+
+**Why.** GEDCOM 5.5.1 is what MyHeritage, Ancestry and FamilySearch actually import. An async job is
+needed because a 5,000-person walk with per-node scope checks and optional decryption does not belong
+on a request thread. Re-checking at run time keeps a queued job from outliving a revoked grant.
+
+**Why not** (a) *GEDCOM 7 or a JSON tree first*: fewer consumers; both stay open seams over the same
+walk. (b) *Synchronous export*: rejected in grooming in favor of async. (c) *A self-service kin
+exception*: it would widen D-PersonReadScope for every person with an account; rejected in grooming.
+(d) *Living-person masking*: rejected in grooming — the PII tiers already decide what leaves. (e)
+*Object storage for results*: DS-39 is still parked, and a TTL'd encrypted `bytea` of a few MB is
+enough. (f) *Extending `searchAround`'s depth clamp*: that clamp protects an interactive endpoint;
+a background walk with its own caps is a different budget. (g) *Running the walk in hermenea*:
+hermenea has no access to the caller's authorization context and must not; the export is a read of
+oikumenea's own data.
+
+**Consequence.** New module `internal/genealogy` (domain: the walker + GEDCOM writer; application: the
+job service; adapters: the job table + a person-read port onto PersonService/personprofile/
+personsensitive), `api/genealogy.conjure.yml`, one migration. Codes `genealogy.export` (new
+`genealogy-exporter` base role) and `genealogy.export.special` (in no base role; granted explicitly).
+Console: an "Export family tree" action on the person page and a jobs list with download. Lands as
+**M63**. Additive.
+
+### D-GenealogyImport — Staged GEDCOM import with suggested matches and operator review (extends D-GenealogyExport, D-GenealogyModel, D-OverlayFoundation)
+
+**Decision.** A GEDCOM file comes **in** through three steps, never one.
+1. **Upload + parse.** `POST /genealogy/imports` (Conjure `binary` body, ≤20 MB, configurable)
+   creates a `genealogy_import_batches` row (`21,1,2`) holding the **envelope-encrypted raw file**.
+   The same runner pool parses it asynchronously into staging rows:
+   - `genealogy_import_individuals` (`21,1,3`), with names, sex, genealogical dates, places as text
+     and events as JSONB;
+   - `genealogy_import_families` (`21,1,4`).
+   **UTF-8 / UTF-16 only**; an ANSEL file is rejected with a clear error (open seam). Unknown tags are
+   kept verbatim in the staging JSONB and listed in the review, never silently dropped.
+2. **Match + review.**
+   - **Suggestions.** Each staged individual gets candidates from the person trigram search (R-21
+     `search_text`), scored on name similarity, birth year ±2 and sex. **Candidates are restricted to
+     persons the importer can read** — a suggestion list must not become a way to probe the directory.
+   - **Decisions.** The operator records one per individual: **match** to an existing person (adds
+     only facts the person lacks; **never overwrites**; conflicts are shown side by side and may be
+     kept as name variants or events), **create** (a new `status = 'provisional'` person, M29), or
+     **skip**.
+   - Decisions are stored on the staging row; nothing touches the directory yet.
+3. **Commit.** An explicit, audited Action (`action__commit_genealogy_import`) applies every decided
+   row **through the PersonService / personprofile application APIs** — never raw SQL into person
+   tables. It works in chunks, is idempotent per staging row (a commit cursor; a re-run resumes), and
+   stamps every created link and event `source = imported`, `confidence = possible` (the operator may
+   raise it in review) and `source_ref = <batch RID>`. Undecided rows block the commit.
+
+**Codes:** `genealogy.import` (upload, review) and `genealogy.import.commit`, both **instance-scope
+only**. Provisional persons have no membership, so under D-PersonReadScope only an instance-wide
+reader can see them; a unit-scoped importer would create people they could not read back. Batches
+and their staged rows expire with the raw file (`genealogy.import.ttl`, default 30 days) unless
+committed; a committed batch keeps its staging rows as the provenance record and drops the raw file.
+
+**Why.** Automatic matching in a personnel registry writes facts onto real, identifiable people; a
+wrong merge is worse than a duplicate. Staging plus review makes every write to a real person a
+recorded human decision. Restricting candidates to readable persons keeps the import from widening
+reach.
+
+**Why not** (a) *Auto-match on exact keys*: wrong merges on common names; rejected in grooming. (b)
+*Always create new*: duplicates the existing directory, which is the most valuable match target. (c)
+*Import through hermenea + `POST /import/{objectType}`*: that path is a code-keyed bulk upsert with no
+review step and runs as a system actor; a human-reviewed file upload is a different shape. (A pull
+connector for an online genealogy API is a separate open seam.)
+
+**Consequence.** Three staging tables + one batch table in the `genealogy_*` prefix, the import half of
+`api/genealogy.conjure.yml`, and a console review screen (staged person ↔ candidates, side-by-side
+facts, decision buttons, commit). Lands as **M64**. Additive.

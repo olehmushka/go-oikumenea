@@ -51,6 +51,9 @@ The erasure half (Art. 17) is **already covered** by the operator-driven purge; 
 is deferred.
 - *Default* — no self-service export; subject-rights erasure is the operator purge path.
 - *Trigger* — a self-service access/portability export is wanted → additive read endpoint. `parked`
+- *Note (2026-11-07)* — the [genealogy](modules/genealogy.md) self-service export
+  (`POST /me/genealogy/exports`, M63, D-GenealogyExport) covers **family-tree portability only** and
+  applies normal read scope; it does not satisfy Art. 15/20 and does not unpark this item.
 
 **DS-38 · Partial / approximate birthdate & death date (+ gender identity).**
 Narrowed by [D-PersonBio](architecture/decisions.md): `birthdate` and `date_of_death` (M12) ship as full
@@ -61,6 +64,10 @@ Narrowed by [D-PersonBio](architecture/decisions.md): `birthdate` and `date_of_d
   blocker is now lifted** by [D-SpecialPII](architecture/roadmap-decisions.md) (the envelope extends to
   `pii:special` person fields, M24), so *storing* it is an additive encrypted column — a separate parked
   product choice, no longer gated on the envelope. `parked`
+- *Resolution (2026-11-07)* — part **(a)** is **decided** as
+  [D-GenealogicalDates](architecture/roadmap-decisions.md#d-genealogicaldates--qualified-partial-precision-dates-beside-the-exact-date-columns-resolves-ds-38-part-a-extends-d-personbio)
+  (M61): qualifier + precision sibling columns beside the exact `DATE`s. Part **(b)** (gender
+  identity) stays `parked`.
 
 **DS-40 · Phone carrier / provider lookup.**
 Introduced by [D-PersonContactChannels](architecture/decisions.md): `person_phones` derives the

@@ -431,8 +431,11 @@ without them — never a zeroed bucket, never a 403.
 - `attributes` JSONB awaits column-ization as real directory fields stabilize.
 - Self-service subject-rights export is a future additive endpoint; MVP erasure is the
   operator-driven purge.
-- **Partial / approximate birthdate** (year-only or year-month) is parked — the default is a full
-  `DATE` (open-questions DS-38).
+  Family-tree portability (GEDCOM) is designed separately as [genealogy](genealogy.md) M63; it is not
+  a full Art. 15/20 export.
+- **Partial / approximate birthdate** (year-only or year-month): **designed for M61**
+  (D-GenealogicalDates) as sibling qualifier/precision columns beside the exact `DATE` — see
+  *Genealogy enrichment* below (resolves open-questions DS-38 part a).
 - **Gender identity** (distinct from ISO 5218 `sex`) is parked — it is `pii:special` (GDPR Art. 9)
   and must not be stored until the envelope-encryption seam ships (D-PersonBio, DS-29).
 - **CLDR long tail** (Arabic nasab chains, 4+ surnames, clan/tribal names) is intentionally **not**
@@ -499,3 +502,29 @@ without them — never a zeroed bucket, never a 403.
 All cluster tables extend the person **purge** erasure list (`pii:contact`/`pii:basic` NULLed;
 `pii:sensitive`/`pii:special` crypto-erased), per [D-PIITiers](../architecture/decisions.md). Reads on
 person-PII overlays project through D-PersonReadScope; writes are audited.
+
+## Genealogy enrichment (M60–M62, designed)
+
+The person family graph is enriched before the [genealogy](genealogy.md) module exports it
+(D-GenealogyModel, D-GenealogicalDates, D-LifeEvents in
+[roadmap-decisions](../architecture/roadmap-decisions.md)). All of it lives in this module family;
+genealogy owns no family data.
+
+- **M60 ticket 0 — relationship lists honor read scope.** The six per-person relationship list
+  endpoints check only `RequireAnywhere(<code>)` today: no `ReadablePerson` on the path person, no
+  trim of counterparts, and no RLS on the relationship tables to backstop it. They gain the
+  `GetPerson` 404 and the D-VisibilityScope counterpart trim, plus a drift guard. This ships first.
+- **Kinship kind** (M60): `person_kinships.kind ∈ {biological, adoptive, step, foster, unknown}`.
+  At most two active biological parents per child; **no ancestry cycles** (`ErrKinshipCycle`).
+- **Attribution** (M60): `source` / `confidence` / `source_ref` on kinships and partnerships, the same
+  vocabulary as addresses and name variants. Existing rows are `operator_verified` / `confirmed`.
+- **Places** (M60): `place_of_birth_id` / `place_of_death_id` → `geo_places` with a verbatim
+  `*_place_text` for historical names (`pii:basic`); `person_partnerships.place_id` + `place_text`.
+  `country_of_birth_id` stays and is derived from the place when unset.
+- **Genealogical dates** (M61): `*_precision` / `*_qualifier` / `*_to` / `*_phrase` beside
+  `birthdate`, `date_of_death` and the partnership dates. The `DATE` stays the sort/filter key,
+  normalized to the period start. Gregorian only.
+- **Life events** (M62): `person_event_types` (catalog with a `gedcom_tag`) + `person_events`
+  (personprofile, `pii:basic`, `person.event.read`). Religious events live encrypted in
+  [personsensitive](personsensitive.md). Birth and death stay on the person row, not as events.
+
