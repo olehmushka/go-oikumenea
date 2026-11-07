@@ -97,12 +97,16 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [external-organizations](modules/external-organizations.md) *(M30)* | A registry of external organizations (party / government body / foreign military / NGO / lobbying registrant) — the node-space the M33 person↔org institutional ties point at when the org is neither an operator unit nor an M21 company. Catalog-typed, provisional/resolved, hermenea-fed. |
 | [finance](modules/finance.md) *(M44)* | Bank accounts (envelope-encrypted **IBAN**) & payment cards (envelope-encrypted **PAN**, BIN/last-4 display, **no CVV**) as authoritative directory data; a polymorphic person\|company holder link; a **bank is a `company`-domain tenant-org** (M21/M41), not a new entity. |
 | [connector](modules/connector.md) *(M53)* | The **connector plane** — the core-side registry of the connector fleet (`Connector`/`Source`/`SyncRun` Objects) that generalizes hermenea into one of a family of agents. **Visibility, not orchestration**: connectors self-register and report their sync runs; the core displays and audits, never schedules. Plus the pull-wiring read codes and the generalized on-demand-lookup seam (D-ConnectorPlane). |
+| [genealogy](modules/genealogy.md) *(M63–M64, designed)* | **Family-tree export and import in GEDCOM 5.5.1** (MyHeritage / Ancestry / FamilySearch). The export is an async, per-hop-gated recursive walk over the person family graph, with placeholders for unreadable relatives and an encrypted TTL'd result. The import is staged: upload, parse, suggested matches limited to readable persons, operator review, then commit through PersonService. Owns jobs, files and staging only, not family data (that stays in person; the model enrichment is M60–M62). |
 
 The remaining planned milestones extend existing modules rather than adding new ones: the
 **person-intelligence / OSINT-enrichment cluster** (M29, M31–M36; [draft_superbrain_schema.md](draft_superbrain_schema.md))
 enriches [person](modules/person.md); the login security log (M37) extends
 [identity-federation](modules/identity-federation.md). **M38** (criminal/legal records) and **M39**
 (compensation/payroll) are **deferred stubs** — designed in their own later sessions.
+The **genealogy cluster** (M60–M64) enriches [person](modules/person.md) first (typed kinship,
+places, approximate dates, life events; M60–M62), then adds the [genealogy](modules/genealogy.md)
+module for GEDCOM export (M63) and import (M64).
 
 A **consumer** of the above (not a backend module), documented alongside them:
 

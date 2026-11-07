@@ -801,15 +801,50 @@ brings the deployment into **PCI-DSS cardholder-data scope**.
 
 ---
 
+## Genealogy (M60–M64, designed)
+
+**GEDCOM.** The de-facto genealogy interchange format (FamilySearch). The [genealogy](modules/genealogy.md)
+module writes and reads **5.5.1** (`CHAR UTF-8`, `FORM LINEAGE-LINKED`), the version MyHeritage,
+Ancestry and FamilySearch import; GEDCOM 7 is an open seam. Records are `INDI` (a person) and `FAM` (a
+partnership and/or a set of children), linked by per-file xrefs (D-GenealogyExport).
+
+**Kinship kind (pedigree type).** The nature of a parent→child link: `biological`, `adoptive`, `step`,
+`foster` or `unknown` — an attribute of the one active `link__kin_parent_of` row, mapped to GEDCOM
+`PEDI` (D-GenealogyModel, M60).
+
+**Genealogical date.** A date with a **precision** (year/month/day) and a **qualifier**
+(`exact`/`about`/`before`/`after`/`between`/`estimated`/`calculated`), stored beside the exact `DATE`,
+which stays the sort key (D-GenealogicalDates, M61; resolves DS-38a). Maps to GEDCOM `ABT`/`BEF`/
+`AFT`/`BET … AND …`/`EST`/`CAL`.
+
+**Life event.** A dated, placed fact in a person's life (burial, emigration, occupation, …), typed by
+the `person_event_types` catalog. **Religious events** (baptism, confirmation, …) are `pii:special`
+and envelope-encrypted in personsensitive. Birth and death are **not** events; they stay on the person
+row (D-LifeEvents, M62).
+
+**Pedigree / family walk.** The export's breadth-first traversal over kinship and partnership links from
+a root person — ancestors, descendants or both — gated per hop and capped at 10 generations / 5,000
+persons. **Pedigree collapse** (one ancestor reached twice, e.g. a cousin marriage) yields one `INDI`
+with several `FAMC` (D-GenealogyExport).
+
+**Placeholder node.** In an export, a relative the caller cannot read: an `INDI` named "Private" with
+no RID, no attributes and a per-file xref only. The walk stops there. It discloses that a relationship
+exists, never who it is with — the one recorded amendment to D-VisibilityScope (D-GenealogyExport).
+
+**Import staging / match review.** An uploaded GEDCOM is parsed into staging rows; each staged person
+gets match candidates (readable persons only) and an operator decision — **match** (add missing facts,
+never overwrite), **create** (a provisional person) or **skip** — before an explicit commit writes
+anything to the directory (D-GenealogyImport, M64).
+
 ## Alphabetical index
 
 Account · Account holder · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Bank / financial institution · Bank account · Beneficial owner (UBO) · Blind index ·
 Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Connector plane · Country · Data ingestion / connector · Data pack · Document · Document attribute schema · Document type · Dormant seam ·
-Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity · Facade · Finance module ·
-Gate · Graph (named hierarchy) · Hermenea · History tier · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
+Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity · Facade · Finance module · GEDCOM · Genealogical date ·
+Gate · Graph (named hierarchy) · Hermenea · History tier · Import staging / match review · Instance admin · Kinship kind (pedigree type) · Languoid · Level · Life event · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
 North star · Object (type) · Object history · Object-set · Ontology · Order ·
-Order category · Order item · Order type · Org kind · Payment card · PDP · PDP context · Person · person core / personprofile / personsensitive · Personal code ·
-Personal-code scheme · Phone (contact) · Phone type · PII tier · Pinax (reference plane) · Position · `origin` (seeded/operator) · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
+Order category · Order item · Order type · Org kind · Payment card · PDP · PDP context · Pedigree / family walk · Person · person core / personprofile / personsensitive · Personal code ·
+Personal-code scheme · Phone (contact) · Phone type · PII tier · Placeholder node · Pinax (reference plane) · Position · `origin` (seeded/operator) · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
 Rank scheme · Rank system · Rank type · Religion (faith) · Religious affiliation · Religious organization · Religious site · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
 Service principal · Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unified search · Unit · Unit graph (DAG) · Unit kind ·
 Vacancy · Vehicle · Vehicle brand · Vehicle registration · Visibility · Visibility scope · Wiring API · Writing system
