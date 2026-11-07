@@ -19,6 +19,9 @@ func (s Service) ListCitizenships(ctx context.Context, token bearertoken.Token, 
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	cs, err := s.profile.ListCitizenships(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -62,6 +65,9 @@ func (s Service) DeleteCitizenship(ctx context.Context, token bearertoken.Token,
 
 func (s Service) ListResidences(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Residence, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	rs, err := s.profile.ListResidences(ctx, personID)
@@ -109,6 +115,9 @@ func (s Service) ListEmails(ctx context.Context, token bearertoken.Token, person
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	es, err := s.profile.ListEmails(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -151,6 +160,9 @@ func (s Service) DeleteEmail(ctx context.Context, token bearertoken.Token, perso
 
 func (s Service) ListPhones(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Phone, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	ps, err := s.profile.ListPhones(ctx, personID)
@@ -197,6 +209,9 @@ func (s Service) ListCallSigns(ctx context.Context, token bearertoken.Token, per
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	cs, err := s.profile.ListCallSigns(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -240,6 +255,9 @@ func (s Service) ListMessengerLinks(ctx context.Context, token bearertoken.Token
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	ls, err := s.profile.ListMessengerLinks(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -279,6 +297,9 @@ func (s Service) DeleteMessengerLink(ctx context.Context, token bearertoken.Toke
 
 func (s Service) ListSocialAccounts(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.SocialAccount, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	as, err := s.profile.ListSocialAccounts(ctx, personID)
@@ -326,6 +347,9 @@ func (s Service) DeleteSocialAccount(ctx context.Context, token bearertoken.Toke
 // ListPersonLanguages implements GET /persons/{personId}/languages (D-Languages, M18).
 func (s Service) ListPersonLanguages(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.PersonLanguage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	ls, err := s.profile.ListPersonLanguages(ctx, personID)
@@ -399,6 +423,9 @@ func (s Service) toAPIPersonLanguages(ctx context.Context, ls []domain.PersonLan
 
 func (s Service) ListSocialAccountHandles(ctx context.Context, token bearertoken.Token, personID, socialAccountID string) ([]personapi.SocialAccountHandle, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	hs, err := s.profile.ListSocialAccountHandles(ctx, personID, socialAccountID)

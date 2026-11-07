@@ -22,6 +22,9 @@ func (s Service) ListPartyMemberships(ctx context.Context, token bearertoken.Tok
 	if err := s.pep.RequireAnywhere(ctx, token, permPartyMembershipRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	ps, err := s.sensitive.ListPartyMemberships(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -69,6 +72,9 @@ func (s Service) DeletePartyMembership(ctx context.Context, token bearertoken.To
 
 func (s Service) ListGovernmentPositions(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.GovernmentPosition, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	gs, err := s.profile.ListGovernmentPositions(ctx, personID)
@@ -121,6 +127,9 @@ func (s Service) DeleteGovernmentPosition(ctx context.Context, token bearertoken
 
 func (s Service) ListLobbyingRelationships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.LobbyingRelationship, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	ls, err := s.profile.ListLobbyingRelationships(ctx, personID)
@@ -176,6 +185,9 @@ func (s Service) DeleteLobbyingRelationship(ctx context.Context, token bearertok
 
 func (s Service) ListExternalReferences(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.ExternalReference, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	rs, err := s.profile.ListExternalReferences(ctx, personID)

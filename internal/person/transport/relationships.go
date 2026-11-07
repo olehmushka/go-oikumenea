@@ -56,8 +56,14 @@ func (s Service) ListPartnerships(ctx context.Context, token bearertoken.Token, 
 	if err := s.pep.RequireAnywhere(ctx, token, permPartnershipRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	rs, err := s.profile.ListPartnerships(ctx, personID)
 	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	if rs, err = trimByCounterpart(ctx, s, personID, rs, func(r domain.Partnership) (string, string) { return r.PersonIDA, r.PersonIDB }); err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
 	out := make([]personapi.Partnership, 0, len(rs))
@@ -89,8 +95,14 @@ func (s Service) ListKinships(ctx context.Context, token bearertoken.Token, pers
 	if err := s.pep.RequireAnywhere(ctx, token, permKinshipRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	rs, err := s.profile.ListKinships(ctx, personID)
 	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	if rs, err = trimByCounterpart(ctx, s, personID, rs, func(r domain.Kinship) (string, string) { return r.ParentID, r.ChildID }); err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
 	out := make([]personapi.Kinship, 0, len(rs))
@@ -121,8 +133,14 @@ func (s Service) ListGuardianships(ctx context.Context, token bearertoken.Token,
 	if err := s.pep.RequireAnywhere(ctx, token, permGuardianshipRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	rs, err := s.profile.ListGuardianships(ctx, personID)
 	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	if rs, err = trimByCounterpart(ctx, s, personID, rs, func(r domain.Guardianship) (string, string) { return r.GuardianID, r.WardID }); err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
 	out := make([]personapi.Guardianship, 0, len(rs))
@@ -154,8 +172,14 @@ func (s Service) ListSponsorships(ctx context.Context, token bearertoken.Token, 
 	if err := s.pep.RequireAnywhere(ctx, token, permSponsorshipRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	rs, err := s.profile.ListSponsorships(ctx, personID)
 	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	if rs, err = trimByCounterpart(ctx, s, personID, rs, func(r domain.Sponsorship) (string, string) { return r.SponsorID, r.SponsoredID }); err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
 	out := make([]personapi.Sponsorship, 0, len(rs))
@@ -188,8 +212,14 @@ func (s Service) ListNextOfKin(ctx context.Context, token bearertoken.Token, per
 	if err := s.pep.RequireAnywhere(ctx, token, permNextOfKinRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	rs, err := s.profile.ListNextOfKin(ctx, personID)
 	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	if rs, err = trimByCounterpart(ctx, s, personID, rs, func(r domain.NextOfKin) (string, string) { return r.SubjectID, r.ContactID }); err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
 	out := make([]personapi.NextOfKin, 0, len(rs))
@@ -217,8 +247,14 @@ func (s Service) ListAssociations(ctx context.Context, token bearertoken.Token, 
 	if err := s.pep.RequireAnywhere(ctx, token, permAssociationRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	rs, err := s.profile.ListAssociations(ctx, personID)
 	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	if rs, err = trimByCounterpart(ctx, s, personID, rs, func(r domain.Association) (string, string) { return r.PersonIDA, r.PersonIDB }); err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
 	out := make([]personapi.Association, 0, len(rs))

@@ -47,6 +47,9 @@ func (s Service) ListPhysicalDescriptions(ctx context.Context, token bearertoken
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	ds, err := s.sensitive.ListPhysicalDescriptions(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -96,6 +99,9 @@ func (s Service) ListDistinguishingMarks(ctx context.Context, token bearertoken.
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	ms, err := s.sensitive.ListDistinguishingMarks(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -140,6 +146,9 @@ func (s Service) ListAddresses(ctx context.Context, token bearertoken.Token, per
 	// Where a person lives is its own disclosure (D-LinkPermissions) — same code as the lives_at
 	// traversal arm, so the person page and the object graph agree.
 	if err := s.pep.RequireAnywhere(ctx, token, permAddressRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	as, err := s.profile.ListAddresses(ctx, personID)
@@ -277,6 +286,9 @@ func toAPIEthnicityType(t domain.EthnicityType, name map[string]string, langs, c
 
 func (s Service) ListEthnicities(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Ethnicity, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permEthnicityRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	es, err := s.sensitive.ListEthnicities(ctx, personID)

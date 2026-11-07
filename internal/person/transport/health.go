@@ -20,6 +20,9 @@ func (s Service) ListHealthRecords(ctx context.Context, token bearertoken.Token,
 	if err := s.pep.RequireAnywhere(ctx, token, permHealthRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	hs, err := s.sensitive.ListHealthRecords(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -65,6 +68,9 @@ func (s Service) DeleteHealthRecord(ctx context.Context, token bearertoken.Token
 
 func (s Service) ListInsurance(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Insurance, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	is, err := s.sensitive.ListInsurance(ctx, personID)

@@ -157,20 +157,9 @@ func (s Service) GetPerson(ctx context.Context, token bearertoken.Token, personI
 	}
 	// Read-scope projection (D-PersonReadScope): the holder of person.read may only read a person whose
 	// active-membership units intersect the subject's effective readable reach (or an instance admin).
-	// A non-readable person is reported as not-found, so existence does not leak. The reach test is a
-	// SQL point probe (R-02.1); the admin short-circuit rides the request authority snapshot.
-	subject, isAdmin, err := s.pep.SubjectAuthority(ctx)
-	if err != nil {
-		return personapi.Person{}, s.mapError(ctx, err, personID)
-	}
-	if !isAdmin {
-		ok, err := s.app.ReadablePerson(ctx, subject, personID)
-		if err != nil {
-			return personapi.Person{}, s.mapError(ctx, err, personID)
-		}
-		if !ok {
-			return personapi.Person{}, personapi.NewPersonNotFound(personID)
-		}
+	// A non-readable person is reported as not-found, so existence does not leak (readscope.go).
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return personapi.Person{}, err
 	}
 	p, err := s.app.GetPerson(ctx, personID)
 	if err != nil {

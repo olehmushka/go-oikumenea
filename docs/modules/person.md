@@ -375,6 +375,16 @@ unit, so the intersection is empty and they are readable **only on the instance 
 *Invariants*). There is **no "self" read exemption**. [document](document.md) reads inherit this rule
 through the holder.
 
+**Every per-person read applies it (M60 ticket 0).** Not only `GET /persons/{personId}`: every
+`GET /persons/{personId}/…` sub-resource (contacts, addresses, physical identity, health, legal
+records, overlays, watchlist, the six relationship lists, …) answers `PersonNotFound` (404) for a person
+outside the caller's read scope, **after** its own permission code is checked. The six person↔person
+relationship lists also **drop rows whose counterpart is unreadable** (the D-VisibilityScope trim). One
+transport helper owns the rule (`requireReadablePerson` / `trimByCounterpart`), and a drift guard holds
+every `GET /persons/{personId}…` operation in `api/person.conjure.yml` to it. Until M60 ticket 0 only
+`getPerson` applied it, and no person-family table has RLS, so one grant anywhere read any person's
+sub-resources instance-wide.
+
 **Facet rule (M56/M57, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)).**
 `GET /stats/persons` computes every count **inside** the read-scope predicate above — the same SQL
 semi-join the list uses, never a post-paged tally. **No facet exists over an envelope-encrypted
@@ -428,6 +438,11 @@ without them — never a zeroed bucket, never a 403.
 ## Open seams / future
 
 - Cross-deployment / federation of person identity is **out of scope** (single domain).
+- **Write-side reach on per-person sub-resources.** Every `Upsert*` / `Delete*` under
+  `/persons/{personId}/…` (and `DeleteRelationship`) checks only `RequireAnywhere(person.update)`:
+  neither the path person nor a relationship's counterpart is held to any reach. M60 ticket 0 fixed
+  the read side only; writes need a decided **writable-reach** rule (update-bearing assignments, not
+  `person.read` reach) before they can be gated.
 - `attributes` JSONB awaits column-ization as real directory fields stabilize.
 - Self-service subject-rights export is a future additive endpoint; MVP erasure is the
   operator-driven purge.
@@ -510,10 +525,11 @@ The person family graph is enriched before the [genealogy](genealogy.md) module 
 [roadmap-decisions](../architecture/roadmap-decisions.md)). All of it lives in this module family;
 genealogy owns no family data.
 
-- **M60 ticket 0 — relationship lists honor read scope.** The six per-person relationship list
-  endpoints check only `RequireAnywhere(<code>)` today: no `ReadablePerson` on the path person, no
-  trim of counterparts, and no RLS on the relationship tables to backstop it. They gain the
-  `GetPerson` 404 and the D-VisibilityScope counterpart trim, plus a drift guard. This ships first.
+- **M60 ticket 0 — every per-person read honors read scope (built).** Widened from the six
+  relationship lists to all 31 `GET /persons/{personId}…` handlers, which checked only
+  `RequireAnywhere(<code>)`: they now 404 a path person outside the caller's read scope (like
+  `GetPerson`), the six relationship lists also trim unreadable counterparts, and a contract-driven
+  drift guard covers them (see *Authorization touchpoints*). Writes are a separate seam (below).
 - **Kinship kind** (M60): `person_kinships.kind ∈ {biological, adoptive, step, foster, unknown}`.
   At most two active biological parents per child; **no ancestry cycles** (`ErrKinshipCycle`).
 - **Attribution** (M60): `source` / `confidence` / `source_ref` on kinships and partnerships, the same

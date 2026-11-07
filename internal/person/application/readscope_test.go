@@ -39,6 +39,37 @@ func (f fakeMembership) SubjectCanReadPerson(_ context.Context, subjectPersonID,
 	return f.allow[subjectPersonID][personID], nil
 }
 
+func (f fakeMembership) SubjectReadablePersonsAmong(_ context.Context, subjectPersonID string, personIDs []string) ([]string, error) {
+	var out []string
+	for _, id := range personIDs {
+		if f.allow[subjectPersonID][id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// TestReadablePersonsAmong pins the batch probe the relationship lists trim counterparts with (M60
+// ticket 0): it returns exactly the in-reach subset, and an empty subject reads nobody — even when the
+// membership seam would have answered for "".
+func TestReadablePersonsAmong(t *testing.T) {
+	svc := application.NewService(nil, nil, nil, func() int { return 0 })
+	svc.SetMembershipReader(fakeMembership{allow: map[string]map[string]bool{
+		"reader-A": {"p-1": true, "p-3": true},
+		"":         {"p-1": true},
+	}})
+	got, err := svc.ReadablePersonsAmong(context.Background(), "reader-A", []string{"p-1", "p-2", "p-3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "p-1" || got[1] != "p-3" {
+		t.Errorf("reader-A among [p-1 p-2 p-3] = %v, want [p-1 p-3]", got)
+	}
+	if got, _ := svc.ReadablePersonsAmong(context.Background(), "", []string{"p-1"}); len(got) != 0 {
+		t.Errorf("empty subject read %v, want nothing", got)
+	}
+}
+
 func TestReadablePerson(t *testing.T) {
 	svc := application.NewService(nil, nil, nil, func() int { return 0 })
 	svc.SetMembershipReader(fakeMembership{allow: map[string]map[string]bool{

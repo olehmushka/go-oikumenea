@@ -2203,13 +2203,19 @@ is a thin and in places a misleading genealogical file. Module doc: [genealogy](
    `country_of_birth_id` stays and is derived from the place when a place is set and the country is not.
 4. **Partnership place.** `person_partnerships.place_id` → `geo_places` + `place_text` (where a
    marriage was contracted).
-5. **Fix — relationship lists honor person read scope.** Today the six per-person relationship list
-   endpoints (`internal/person/transport/relationships.go`) check only `RequireAnywhere(<code>)`: they
-   never test `ReadablePerson` on the path person and never trim counterparts. The relationship tables
-   carry no RLS, so nothing backstops it. Each list now (a) 404s a path person the caller cannot read,
-   exactly like `GetPerson`, and (b) drops rows whose counterpart the caller cannot read (the
-   D-VisibilityScope trim the links engine already applies). A drift-guard test enumerates every
-   `List*` relationship handler and fails if one lacks the scope call. **This ships as M60 ticket 0,
+5. **Fix — every per-person read honors person read scope.** As first written this named the six
+   per-person relationship lists (`internal/person/transport/relationships.go`), which check only
+   `RequireAnywhere(<code>)`: no `ReadablePerson` on the path person, no counterpart trim, and no RLS
+   on the relationship tables to backstop it. Building it showed **the whole module had the gap**: of
+   the 31 `GET /persons/{personId}…` handlers only `getPerson` applied D-PersonReadScope, so emails,
+   addresses, health and legal records, ethnicity, watchlist match, political leaning, … were readable
+   for any person by anyone holding the code anywhere. So every one of them now (a) 404s a path person
+   the caller cannot read, exactly like `GetPerson`, and the six relationship lists also (b) drop rows
+   whose counterpart the caller cannot read (the D-VisibilityScope trim the links engine already
+   applies). One transport helper owns the rule, and a drift guard holds **every**
+   `GET /persons/{personId}…` operation in `api/person.conjure.yml` to it, so a new endpoint is covered
+   by the contract, not a hand-kept list. The **write** side (`Upsert*` / `Delete*`, ungated by reach)
+   is a recorded follow-up needing its own writable-reach decision. **This shipped as M60 ticket 0,
    before anything else in the cluster**, because every later milestone reads these links.
 
 `Kinship` in `api/person.conjure.yml` also starts returning `validFrom` / `validTo`, which the table has
@@ -2229,7 +2235,8 @@ FK, not in place of it.
 
 **Consequence.** One migration (`person_kinships` +4 columns, `person_partnerships` +5,
 `person_persons` +4); `pkg/` gains no new machinery. Lands as **M60** ([milestones](../milestones.md)).
-Additive; ticket 0 changes behavior only for callers who were reading people outside their reach.
+Additive; ticket 0 changes behavior only for callers who were reading people outside their reach
+(they now get 404 / trimmed lists).
 
 ### D-GenealogicalDates — Qualified, partial-precision dates beside the exact DATE columns (resolves DS-38 part a; extends D-PersonBio)
 

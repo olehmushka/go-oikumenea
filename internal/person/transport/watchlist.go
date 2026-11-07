@@ -33,6 +33,9 @@ func (s Service) GetWatchlistMatch(ctx context.Context, token bearertoken.Token,
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	m, ok, err := s.sensitive.GetWatchlistMatch(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -48,6 +51,9 @@ func (s Service) GetWatchlistMatch(ctx context.Context, token bearertoken.Token,
 
 func (s Service) ListRegulatorySanctions(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.RegulatorySanction, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	xs, err := s.sensitive.ListRegulatorySanctions(ctx, personID)

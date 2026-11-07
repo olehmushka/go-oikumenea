@@ -73,6 +73,10 @@ type MembershipReader interface {
 	// consumes it, the same direction as the @query predicate R-06 already folded in.
 	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after string, f domain.PersonFilter, limit int) ([]string, error)
 	SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error)
+	// SubjectReadablePersonsAmong is the batch form of SubjectCanReadPerson: the subset of candidates
+	// in the subject's readable reach (unordered). The relationship lists trim counterparts with it
+	// (M60 ticket 0).
+	SubjectReadablePersonsAmong(ctx context.Context, subjectPersonID string, personIDs []string) ([]string, error)
 	// VisiblePersonStatsForSubject is the dashboard counterpart (M57 / D-ObjectFacets): the same
 	// filter and the same visibility predicate, aggregated instead of paged. It lives behind this
 	// seam for the same reason the id query does — the reach never leaves the database.
@@ -337,6 +341,16 @@ func (s *Service) ReadablePerson(ctx context.Context, subjectPersonID, personID 
 		return false, nil
 	}
 	return s.membership.SubjectCanReadPerson(ctx, subjectPersonID, personID)
+}
+
+// ReadablePersonsAmong is the batch form of ReadablePerson: the subset of personIDs the subject may
+// read under D-PersonReadScope, as one SQL semi-join (unordered set semantics). The instance-admin
+// short-circuit is again the caller's. An empty subject reads nobody.
+func (s *Service) ReadablePersonsAmong(ctx context.Context, subjectPersonID string, personIDs []string) ([]string, error) {
+	if subjectPersonID == "" || len(personIDs) == 0 {
+		return nil, nil
+	}
+	return s.membership.SubjectReadablePersonsAmong(ctx, subjectPersonID, personIDs)
 }
 
 // ListVisiblePersons returns the keyset-paginated union of people a non-instance-admin subject may

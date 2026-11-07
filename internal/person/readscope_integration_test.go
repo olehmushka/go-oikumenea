@@ -171,4 +171,17 @@ func TestReadScopeProjection_Integration(t *testing.T) {
 	if len(emptyPage.Persons) != 0 {
 		t.Fatalf("grant-less subject must see an empty directory, got %d persons", len(emptyPage.Persons))
 	}
+
+	// ReadablePersonsAmong (M60 ticket 0 — the relationship lists' counterpart trim): the batch probe
+	// answers exactly what the point probe answers, per candidate.
+	among, err := svc.ReadablePersonsAmong(ctx, reader, []string{pInA, pInB, pNone})
+	if err != nil {
+		t.Fatalf("ReadablePersonsAmong: %v", err)
+	}
+	if len(among) != 1 || among[0] != pInA {
+		t.Fatalf("ReadablePersonsAmong(reader, [inA inB none]) = %v, want [%s]", among, pInA)
+	}
+	if among, err := svc.ReadablePersonsAmong(ctx, pInB, []string{pInA, pInB}); err != nil || len(among) != 0 {
+		t.Fatalf("grant-less subject's batch probe = %v, %v; want empty", among, err)
+	}
 }

@@ -21,6 +21,9 @@ func (s Service) ListCryptoWallets(ctx context.Context, token bearertoken.Token,
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	ws, err := s.sensitive.ListCryptoWallets(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -70,6 +73,9 @@ func (s Service) ListPersonalities(ctx context.Context, token bearertoken.Token,
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	ps, err := s.sensitive.ListPersonalities(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -116,6 +122,9 @@ func (s Service) DeletePersonality(ctx context.Context, token bearertoken.Token,
 
 func (s Service) GetPoliticalLeaning(ctx context.Context, token bearertoken.Token, personID string) (*personapi.PoliticalLeaning, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permPoliticalLeaningRead); err != nil {
+		return nil, err
+	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
 		return nil, err
 	}
 	l, err := s.sensitive.GetPoliticalLeaning(ctx, personID)

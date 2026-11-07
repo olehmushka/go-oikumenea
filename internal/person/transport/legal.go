@@ -20,6 +20,9 @@ func (s Service) ListLegalRecords(ctx context.Context, token bearertoken.Token, 
 	if err := s.pep.RequireAnywhere(ctx, token, permLegalRecordRead); err != nil {
 		return nil, err
 	}
+	if err := s.requireReadablePerson(ctx, personID); err != nil {
+		return nil, err
+	}
 	includeSuppressed, err := s.pep.AllowedAnywhere(ctx, token, permLegalRecordReadSuppressed)
 	if err != nil {
 		return nil, err
