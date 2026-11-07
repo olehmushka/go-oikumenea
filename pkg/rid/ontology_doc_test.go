@@ -44,6 +44,23 @@ func TestOntologyMappingCitesOnlyRealTypes(t *testing.T) {
 		{15, 1, 1}: true,
 	}
 
+	// Triples RESERVED by a decided-but-unbuilt milestone: the catalog assigns them so the design can
+	// name its types, but pkg/rid (boot-asserted equal to the SQL seed) gains them only with the
+	// migration that creates the tables. Each entry must be DELETED when its type lands — the check
+	// below fails once a reserved triple is real, so this list cannot outlive the reservation.
+	reserved := map[[3]int]string{
+		// genealogy = RID service 21 (D-GenealogyExport M63, D-GenealogyImport M64).
+		{21, 1, 1}: "M63 genealogy_export_jobs",
+		{21, 1, 2}: "M64 genealogy_import_batches",
+		{21, 1, 3}: "M64 genealogy_import_individuals",
+		{21, 1, 4}: "M64 genealogy_import_families",
+	}
+	for key, owner := range reserved {
+		if real[key] {
+			t.Errorf("reserved triple %v (%s) now exists in pkg/rid — drop it from `reserved`", key, owner)
+		}
+	}
+
 	// Tolerant extractor over prose: "S,K,C" where C is a single code, a "/"-list (9/10/11), or a
 	// "..range" (16..20). Restricted to object/link kinds (1,2); action citations (kind 3) are by name.
 	tripleRe := regexp.MustCompile(`(\d+)\s*,\s*(\d+)\s*,\s*(\d+(?:\.\.\d+)?(?:/\d+)*)`)
@@ -56,7 +73,7 @@ func TestOntologyMappingCitesOnlyRealTypes(t *testing.T) {
 		}
 		for _, code := range expandCodes(m[3]) {
 			key := [3]int{svc, kind, code}
-			if real[key] || allowedAbsent[key] {
+			if _, isReserved := reserved[key]; real[key] || allowedAbsent[key] || isReserved {
 				continue
 			}
 			offenders = append(offenders, m[0])
